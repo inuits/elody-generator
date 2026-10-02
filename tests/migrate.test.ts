@@ -90,3 +90,27 @@ describe("migration to the standard terms (sh:name, sh:path, sh:group)", () => {
     expect((await validateDeclaration(migrated.ttl)).issues.map(formatIssue)).toEqual([]);
   });
 });
+
+describe("migrating an already migrated declaration", () => {
+  const once = migrateDeclaration(legacy, undefined, {
+    translations: { en: { metadata: { labels: { name: "Name" } } } },
+  });
+
+  it("is idempotent", () => {
+    expect(migrateDeclaration(once.ttl).ttl).toBe(once.ttl);
+  });
+
+  it("turns a panel that references its fields by sh:path into a group once the order matches", async () => {
+    // swap repository (3) and description (2) on the component, as a client would to align card and panel
+    const swapped = once.ttl
+      .replace(/(sh:path em:description ;[^\]]*?sh:order )2( ;[^\]]*?sh:group|\s*;)/, "$13$2")
+      .replace(/(sh:path em:repository ;[^\]]*?sh:order )3/, "$12");
+    const again = migrateDeclaration(swapped);
+    expect(again.ttl).toMatch(/ui:ComponentUi-repoInfo\s+a sh:PropertyGroup/);
+    expect(again.notes.some((note) => note.includes('"repoInfo"'))).toBe(false);
+    const { entities } = await readUiDeclaration(again.ttl);
+    const component = entities.find((entity) => entity.graphqlType === "GithubProcessor")!;
+    const panel = component.detail!.columns[0].elements[0].panels.find((p) => p.alias === "repoInfo")!;
+    expect(panel.fields).toEqual(["name", "repository", "description", "url", "owner", "language", "stars", "defaultBranch"]);
+  });
+});

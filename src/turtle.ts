@@ -58,7 +58,17 @@ export class TurtleWriter {
       .map(([prefix, iri]) => `@prefix ${(prefix + ":").padEnd(7)} <${iri}> .`)
       .join("\n");
     const blocks: string[] = [];
-    for (const subject of this.bySubject.keys()) {
+    // stable layout: entity UIs first, then every other named node by IRI; blank roots keep their order
+    const isEntityUi = (subject: string) =>
+      (this.bySubject.get(subject) ?? []).some((q) => q.predicate.value === rdf("type") && q.object.value === `${ELODY}EntityUi`);
+    const subjects = [...this.bySubject.keys()].sort((a, b) => {
+      const blankA = a.startsWith("_:") || this.isBlank(a), blankB = b.startsWith("_:") || this.isBlank(b);
+      if (blankA || blankB) return Number(blankA) - Number(blankB);
+      const ea = isEntityUi(a), eb = isEntityUi(b);
+      if (ea !== eb) return ea ? -1 : 1;
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
+    for (const subject of subjects) {
       if (subject.startsWith("_:") || this.isBlank(subject)) {
         if ((this.referenceCount.get(subject) ?? 0) !== 0) continue;
         if (this.listHeads.has(subject)) continue;
@@ -87,7 +97,7 @@ export class TurtleWriter {
       const ia = PREDICATE_ORDER.indexOf(a);
       const ib = PREDICATE_ORDER.indexOf(b);
       if (ia !== -1 || ib !== -1) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-      return 0;
+      return a < b ? -1 : a > b ? 1 : 0;
     });
     const indent = "  ".repeat(depth);
     const lines = ordered.map((predicate) => {

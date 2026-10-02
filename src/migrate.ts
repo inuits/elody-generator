@@ -89,6 +89,13 @@ class Migration {
   private bool = (value: boolean) => literal(value ? "true" : "false", namedNode(`${XSD}boolean`));
   private int = (value: number) => literal(String(value), namedNode(`${XSD}integer`));
 
+  /** The value of an enumeration predicate: kept when already an instance, converted when a string. */
+  private enumTerm(node: string, predicate: string, classIri: string): Term | undefined {
+    const term = this.r.term(node, predicate);
+    if (!term) return undefined;
+    return term.termType === "Literal" ? this.instance(classIri, term.value, predicate) : term;
+  }
+
   private instance(classIri: string, value: string, predicate: string): Term {
     const instance = this.o.instanceFor(classIri, value);
     if (!instance) {
@@ -147,16 +154,19 @@ class Migration {
     this.groupOfPanel = new Map();
     const byName = new Map<string, string>();
     for (const property of r.nodes(entity, sh("property"))) {
-      const name = r.literals(property, sh("name"))[0] ?? r.value(property, elody("key"));
+      const name = this.untaggedName(property) ?? r.value(property, elody("key"));
       if (name) byName.set(name, property);
+      const path = r.node(property, sh("path"));
+      if (path) byName.set(path, property);
     }
     const detail = r.node(entity, elody("detail"));
     const panels = detail
       ? r.nodes(detail, elody("column")).flatMap((c) => r.nodes(c, elody("element"))).flatMap((e) => r.nodes(e, elody("panel")))
       : [];
     for (const panel of panels) {
+      if (r.hasType(panel, sh("PropertyGroup"))) continue; // already a group
       const alias = r.value(panel, elody("alias"));
-      const fields = r.literals(panel, elody("field"));
+      const fields = r.values(panel, elody("field"));
       const properties = fields.map((field) => byName.get(field));
       const orders = properties.map((p) => (p && r.has(p, sh("order")) ? r.order(p) : undefined));
       const resolvable = alias && fields.length && properties.every(Boolean) && orders.every((o) => o !== undefined);
@@ -184,7 +194,7 @@ class Migration {
   }
 
   /** rdfs:label (translation key) → elody:labelKey (+ texts); sh:name as key → derived from sh:path or elody:key. */
-  private labelAndKey(node: string, out: Term, textPredicate: string) {
+  private labelAndKey(node: string, out: Term, textPredicate: string, pathOverride?: string) {
     const r = this.r;
     const key = r.literals(node, rdfs("label"))[0];
     if (key !== undefined) {
@@ -192,9 +202,19 @@ class Migration {
       for (const text of this.labelTexts(key)) this.add(out, textPredicate, text);
     }
     if (textPredicate !== sh("name")) return;
-    const name = r.literals(node, sh("name"))[0];
-    const path = r.node(node, sh("path"));
+    // language-tagged sh:name values are label texts: keep them
+    for (const q of r.quadsOf(node))
+      if (q.predicate.value === sh("name") && (q.object as Term & { language?: string }).language) this.add(out, sh("name"), q.object);
+    // an untagged sh:name was the metadata key (old use)
+    const name = this.untaggedName(node);
+    const path = pathOverride ?? r.node(node, sh("path"));
     if (name !== undefined && !(path && localName(path) === name)) this.add(out, elody("key"), literal(name));
+  }
+
+  private untaggedName(node: string): string | undefined {
+    return this.r.quadsOf(node).find(
+      (q) => q.predicate.value === sh("name") && q.object.termType === "Literal" && !(q.object as Term & { language?: string }).language,
+    )?.object.value;
   }
 
   private entity(entity: string) {
@@ -214,6 +234,14 @@ class Migration {
       else if (p === elody("bulkOperation")) this.add(subject, p, this.bulkOperation(o.value));
       else if (p === elody("customBulkOperations")) this.add(subject, p, this.customOps(o.value));
       else if (p === elody("createForm")) this.add(subject, elody("form"), this.form(o.value, paths));
+      else if (p === elody("form") && o.termType === "NamedNode" && r.hasType(o.value, elody("Form"))) {
+        // a form already declared as a node (an earlier migration): keep it as it is
+        this.add(subject, p, o);
+        if (!this.emittedGroups.has(o.value)) {
+          this.emittedGroups.add(o.value);
+          this.copyRest(o.value, o, new Set());
+        }
+      }
       else if (p === elody("repetitiveForm") || p === elody("guidedFlow"))
         this.add(subject, elody("guidedFlow"), this.flow(o.value));
       else if (p === elody("picker")) this.add(subject, p, this.picker(o.value));
@@ -275,12 +303,12 @@ class Migration {
     }
     if (r.has(node, elody("hidden"))) this.add(out, dash("hidden"), this.bool(r.literal(node, elody("hidden")) === true));
     if (r.has(node, elody("editable"))) this.add(out, dash("readOnly"), this.bool(r.literal(node, elody("editable")) === false));
-    const unit = r.value(node, elody("unit"));
-    if (unit) this.add(out, elody("unit"), this.instance(elody("Unit"), unit, elody("unit")));
-    const direction = r.value(node, elody("defaultSortDirection"));
-    if (direction) this.add(out, elody("defaultSortDirection"), this.instance(elody("SortDirection"), direction, elody("defaultSortDirection")));
-    const source = r.value(node, elody("source"));
-    if (source) this.add(out, elody("source"), this.instance(elody("ValueSource"), source, elody("source")));
+    const unit = this.enumTerm(node, elody("unit"), elody("Unit"));
+    if (unit) this.add(out, elody("unit"), unit);
+    const direction = this.enumTerm(node, elody("defaultSortDirection"), elody("SortDirection"));
+    if (direction) this.add(out, elody("defaultSortDirection"), direction);
+    const source = this.enumTerm(node, elody("source"), elody("ValueSource"));
+    if (source) this.add(out, elody("source"), source);
     const role = r.value(node, dash("propertyRole"));
     if (role === dash("LabelRole")) this.add(out, shui("propertyRole"), namedNode(shui("LabelRole")));
     else if (role) this.add(out, dash("propertyRole"), namedNode(role));
@@ -341,10 +369,10 @@ class Migration {
     const context = r.node(node, elody("context"));
     if (context) {
       const copy = this.blank();
-      const mode = r.value(context, elody("activeViewMode"));
-      if (mode) this.add(copy, elody("activeViewMode"), this.instance(elody("InteractionMode"), mode, elody("activeViewMode")));
-      const selection = r.value(context, elody("selection"));
-      if (selection) this.add(copy, elody("selection"), this.instance(elody("SelectionState"), selection, elody("selection")));
+      const mode = this.enumTerm(context, elody("activeViewMode"), elody("InteractionMode"));
+      if (mode) this.add(copy, elody("activeViewMode"), mode);
+      const selection = this.enumTerm(context, elody("selection"), elody("SelectionState"));
+      if (selection) this.add(copy, elody("selection"), selection);
       const tooltip = r.value(context, elody("tooltip"));
       if (tooltip !== undefined) this.add(copy, elody("tooltipLabel"), literal(tooltip));
       this.copyRest(context, copy, new Set([elody("activeViewMode"), elody("selection"), elody("tooltip")]));
@@ -357,8 +385,8 @@ class Migration {
       if (kind) this.add(copy, elody("modalKind"), this.instance(elody("ModalKind"), kind, elody("typeModal")));
       const query = r.value(modal, elody("formQuery"));
       if (query) this.add(copy, elody("form"), this.formReference(query));
-      const permission = r.value(modal, elody("permission"));
-      if (permission) this.add(copy, elody("permission"), this.instance(elody("Permission"), permission, elody("permission")));
+      const permission = this.enumTerm(modal, elody("permission"), elody("Permission"));
+      if (permission) this.add(copy, elody("permission"), permission);
       this.copyRest(modal, copy, new Set([elody("typeModal"), elody("formQuery"), elody("permission")]));
       this.add(out, elody("modal"), copy);
     }
@@ -395,7 +423,7 @@ class Migration {
         else this.note(`input type "${inputType}" has no editor in the ontology; dropped`);
       }
       if (r.literal(field, elody("required")) === true) this.add(copy, sh("minCount"), this.int(1));
-      this.labelAndKey(field, copy, sh("name"));
+      this.labelAndKey(field, copy, sh("name"), path);
       this.copyRest(field, copy, new Set([elody("inputType"), elody("required"), rdfs("label"), sh("name")]));
       this.add(shape, sh("property"), copy);
     }
@@ -459,8 +487,8 @@ class Migration {
     const r = this.r;
     for (const column of r.nodes(node, elody("column"))) {
       const copy = this.blank();
-      const size = r.value(column, elody("size"));
-      if (size) this.add(copy, elody("size"), this.instance(elody("ColumnSize"), size, elody("size")));
+      const size = this.enumTerm(column, elody("size"), elody("ColumnSize"));
+      if (size) this.add(copy, elody("size"), size);
       for (const element of r.nodes(column, elody("element"))) this.add(copy, elody("element"), this.element(element, paths));
       this.copyRest(column, copy, new Set([elody("size"), elody("element")]));
       this.add(out, elody("column"), copy);
@@ -481,6 +509,15 @@ class Migration {
     const pickerList = r.value(node, elody("pickerList"));
     if (pickerList) this.add(out, elody("picker"), this.mint(pickerList));
     for (const panel of r.nodes(node, elody("panel"))) {
+      if (r.hasType(panel, sh("PropertyGroup"))) {
+        const term = r.quadsOf(panel)[0].subject as Term;
+        this.add(out, elody("panel"), term);
+        if (!this.emittedGroups.has(panel)) {
+          this.emittedGroups.add(panel);
+          this.copyRest(panel, term, new Set());
+        }
+        continue;
+      }
       const group = this.groupOfPanel.get(panel);
       if (group) {
         this.add(out, elody("panel"), group);
