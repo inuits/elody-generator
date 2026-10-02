@@ -1,0 +1,40 @@
+{
+  "name": "ui-declaration-module",
+  "version": "0.1.0",
+  "description": "TTL UI declarations (SHACL 1.2 UI + DASH + the elody: ontology) -> generated Elody GraphQL query documents. `elody-ui generate | check | validate | migrate`.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "elody-ui": "./bin/elody-ui.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "ontology",
+    "data",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test:unit": "vitest run",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@zazuko/env": "^3.0.1",
+    "n3": "^1.17.4",
+    "rdf-validate-shacl": "^0.6.5"
+  },
+  "devDependencies": {
+    "@types/n3": "^1.16.4",
+    "@types/node": "^22.13.14",
+    "tsx": "^4.21.0",
+    "typescript": "^5.0.0",
+    "vitest": "3.2.6"
+  },
+  "publishConfig": {
+    "registry": "https://nexus.inuits.io/repository/npm-private"
+  }
+}

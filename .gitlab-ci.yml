@@ -1,0 +1,9 @@
+---
+###############################################################################
+# GRAPHQL MODULE PIPELINE
+###############################################################################
+
+include:
+  - project: 'inuits/gitlab-ci/pipeline-templates'
+    file: 'pipelines/applications/graphql-module-pipeline.yml'
+    ref: 'v4.20.0'

@@ -1,0 +1,530 @@
+@prefix elody:  <https://elody.eu/ns/ui#> .
+@prefix sh:     <http://www.w3.org/ns/shacl#> .
+@prefix shui:   <http://www.w3.org/ns/shacl-ui/> .
+@prefix dash:   <http://datashapes.org/dash#> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+@prefix ui:     <https://dishacled.github.io/demo/ui#> .
+@prefix em:     <https://elody.io/ns/metadata#> .
+
+ui:AlertUi
+  a elody:EntityUi ;
+  elody:graphqlType "Alert" ;
+  elody:emit "file" ;
+  elody:documents "entities" ;
+  elody:viewMode
+    [ sh:order 1 ;
+    elody:mode elody:ListView ] ;
+  sh:property
+    [ sh:path em:message ;
+    sh:name "message" ;
+    rdfs:label "metadata.labels.alert.message" ;
+    sh:order 1 ;
+    shui:propertyRole shui:LabelRole ;
+    elody:colSpan 2 ] ,
+    [ sh:path em:created ;
+    sh:name "created" ;
+    rdfs:label "metadata.labels.alert.created" ;
+    sh:order 2 ;
+    elody:unit elody:DatetimeDmy24 ;
+    elody:defaultSortDirection elody:Descending ;
+    elody:sortable true ] ,
+    [ sh:path em:subject ;
+    sh:name "subject" ;
+    rdfs:label "metadata.labels.alert.subject" ;
+    sh:order 3 ] ,
+    [ sh:path em:uuid ;
+    sh:name "uuid" ;
+    sh:order 4 ;
+    elody:teaser false ] ;
+  elody:filter
+    [ sh:order 1 ;
+    elody:alias "type" ;
+    elody:filterKind elody:TypeFilter ;
+    dash:hidden true ;
+    sh:defaultValue "alert" ] ;
+  elody:detail
+    [ elody:column
+      [ sh:order 1 ;
+      elody:size elody:Width100 ;
+      elody:element
+        [ a elody:ShaclShapeElement ;
+        rdfs:label "panel-labels.alert-shape" ;
+        sh:order 1 ;
+        elody:fieldsKey "shapeFields" ;
+        elody:collapsed false ] ] ;
+    elody:shapeDriven true ] .
+
+ui:ComponentUi
+  a elody:EntityUi ;
+  elody:graphqlType "GithubProcessor" ;
+  elody:emit "file" ;
+  elody:documents "entities" , "filters" , "sortOptions" , "bulkOperations" ;
+  elody:typePills true ;
+  elody:dynamicFormConfig "processorConfig" ;
+  elody:ports "ports" ;
+  elody:viewMode
+    [ sh:order 1 ;
+    elody:mode elody:ListView ;
+    elody:config
+      [ elody:key "multiLine" ;
+      elody:value true ] ,
+      [ elody:key "multiLineColumns" ;
+      elody:value 3 ] ] ,
+    [ sh:order 2 ;
+    elody:mode elody:GridView ] ,
+    [ sh:order 3 ;
+    elody:mode elody:PipelineView ] ;
+  sh:property
+    [ sh:path em:name ;
+    sh:name "name" ;
+    rdfs:label "metadata.labels.name" ;
+    sh:order 1 ;
+    shui:propertyRole shui:LabelRole ;
+    elody:colSpan 2 ;
+    elody:sortable true ] ,
+    [ sh:path em:description ;
+    sh:name "description" ;
+    rdfs:label "metadata.labels.description" ;
+    sh:order 2 ;
+    dash:propertyRole dash:DescriptionRole ;
+    elody:colSpan 3 ] ,
+    [ sh:path em:repository ;
+    sh:name "repository" ;
+    rdfs:label "metadata.labels.repository" ;
+    sh:order 3 ;
+    elody:teaser false ] ,
+    [ sh:path em:runtime ;
+    sh:name "runtime" ;
+    rdfs:label "metadata.labels.runtime" ;
+    sh:order 4 ;
+    shui:viewer elody:PillViewer ;
+    elody:viewerArgument "auto" ;
+    elody:teaser false ] ,
+    [ sh:path em:url ;
+    sh:name "url" ;
+    rdfs:label "metadata.labels.url" ;
+    sh:order 5 ;
+    elody:teaser false ] ,
+    [ sh:path em:owner ;
+    sh:name "owner" ;
+    rdfs:label "metadata.labels.owner" ;
+    sh:order 6 ;
+    elody:teaser false ] ,
+    [ sh:path em:language ;
+    sh:name "language" ;
+    rdfs:label "metadata.labels.language" ;
+    sh:order 7 ;
+    elody:teaser false ] ,
+    [ sh:path em:stars ;
+    sh:name "stars" ;
+    rdfs:label "metadata.labels.stars" ;
+    sh:order 8 ;
+    elody:teaser false ] ,
+    [ sh:path em:defaultBranch ;
+    sh:name "defaultBranch" ;
+    rdfs:label "metadata.labels.default-branch" ;
+    sh:order 9 ;
+    elody:teaser false ] ,
+    [ sh:path em:shaclFiles ;
+    sh:name "shaclFiles" ;
+    rdfs:label "metadata.labels.shacl-files" ;
+    sh:order 10 ;
+    elody:teaser false ] ;
+  elody:filter
+    [ sh:order 1 ;
+    elody:alias "type" ;
+    elody:filterKind elody:TypeFilter ;
+    dash:hidden true ;
+    sh:defaultValue "githubProcessor" ] ,
+    [ rdfs:label "metadata.labels.name" ;
+    sh:order 2 ;
+    elody:alias "name" ;
+    elody:key "elody:1|metadata.name.value" ;
+    elody:filterKind elody:TextFilter ;
+    elody:showTooltip true ;
+    elody:displayedByDefault true ] ;
+  elody:contextMenu
+    [ elody:action
+      [ rdfs:label "contextMenu.contextMenuElodyAction.configureProcessor" ;
+      sh:order 1 ;
+      elody:alias "configure" ;
+      elody:actionKind elody:UpdateMetadataAction ;
+      elody:formSourceRef ui:ProcessorRelationConfig ;
+      elody:formFlow "Update" ;
+      elody:formTitle "modals.configureProcessor.title" ;
+      elody:icon "Settings" ] ,
+      [ rdfs:label "contextMenu.contextMenuElodyAction.connectProcessor" ;
+      sh:order 2 ;
+      elody:alias "connect" ;
+      elody:actionKind elody:UpdateMetadataAction ;
+      elody:formSourceRef ui:ProcessorConnectionsConfig ;
+      elody:formFlow "Update" ;
+      elody:formTitle "modals.connectProcessor.title" ;
+      elody:icon "Link" ] ;
+    elody:forceShow true ;
+    elody:includeBasicActions true ] ;
+  elody:detail
+    [ elody:column
+      [ sh:order 1 ;
+      elody:size elody:Width70 ;
+      elody:element
+        [ a elody:WindowElement ;
+        rdfs:label "window-element-labels.info-window" ;
+        sh:order 1 ;
+        elody:panel
+          [ rdfs:label "panel-labels.repository-info" ;
+          sh:order 1 ;
+          elody:alias "repoInfo" ;
+          elody:panelKind elody:MetadataPanel ;
+          dash:readOnly true ;
+          elody:field
+            em:name ,
+            em:repository ,
+            em:description ,
+            em:url ,
+            em:owner ,
+            em:language ,
+            em:stars ,
+            em:defaultBranch ;
+          elody:collapsed false ] ,
+          [ rdfs:label "panel-labels.shacl-files" ;
+          sh:order 2 ;
+          elody:alias "shaclInfo" ;
+          elody:panelKind elody:MetadataPanel ;
+          dash:readOnly true ;
+          elody:field em:shaclFiles ;
+          elody:collapsed false ] ;
+        elody:expandButton true ] ] ,
+      [ sh:order 2 ;
+      elody:size elody:Width30 ;
+      elody:element
+        [ a elody:WindowElement ;
+        rdfs:label "window-element-labels.import-config" ;
+        sh:order 1 ;
+        elody:panel
+          [ rdfs:label "panel-labels.import-configuration" ;
+          sh:order 1 ;
+          elody:alias "importConfig" ;
+          elody:panelKind elody:MetadataPanel ;
+          dash:readOnly true ;
+          elody:field em:runtime ;
+          elody:collapsed false ] ;
+        elody:expandButton true ] ] ] ;
+  elody:formSource ui:ProcessorRelationConfig , ui:ProcessorConnectionsConfig .
+
+ui:ProcessorRelationConfig
+  elody:queryName "ProcessorRelationConfig" ;
+  elody:resolverField "ProcessorConfigForm" .
+
+ui:ProcessorConnectionsConfig
+  elody:queryName "ProcessorConnectionsConfig" ;
+  elody:resolverField "ProcessorConnectionForm" ;
+  elody:withParent true .
+
+ui:PipelineUi
+  a elody:EntityUi ;
+  elody:graphqlType "Pipeline" ;
+  elody:emit "file" ;
+  elody:viewMode
+    [ sh:order 1 ;
+    elody:mode elody:ListView ] ,
+    [ sh:order 2 ;
+    elody:mode elody:GridView ] ;
+  sh:property
+    [ sh:path em:name ;
+    sh:name "name" ;
+    rdfs:label "metadata.labels.name" ;
+    sh:order 1 ;
+    shui:propertyRole shui:LabelRole ;
+    elody:sortable true ] ,
+    [ sh:path em:description ;
+    sh:name "description" ;
+    rdfs:label "metadata.labels.description" ;
+    sh:order 2 ;
+    elody:teaser false ] ;
+  elody:filter
+    [ sh:order 1 ;
+    elody:alias "type" ;
+    elody:filterKind elody:TypeFilter ;
+    dash:hidden true ;
+    sh:defaultValue "pipeline" ] ,
+    [ rdfs:label "metadata.labels.name" ;
+    sh:order 2 ;
+    elody:alias "name" ;
+    elody:key "elody:1|metadata.name.value" ;
+    elody:filterKind elody:TextFilter ;
+    elody:showTooltip true ;
+    elody:displayedByDefault true ] ;
+  elody:bulkOperation
+    [ rdfs:label "bulk-operations.create-pipeline" ;
+    sh:order 1 ;
+    elody:operationKind elody:CreateEntityOperation ;
+    elody:context
+      [ elody:activeViewMode elody:ReadMode ;
+      elody:selection elody:NoneSelected ;
+      elody:tooltipLabel "tooltip.bulkOperationsActionBar.readmode-noneselected" ] ;
+    elody:modal
+      [ elody:modalKind elody:DynamicFormModal ;
+      elody:form ui:GetPipelineCreateForm ;
+      elody:permission elody:CanCreate ;
+      elody:formRelationType "isPipelineFor" ;
+      elody:closeConfirmation true ] ;
+    elody:icon "Create" ;
+    elody:primary true ] ;
+  elody:detail
+    [ elody:column
+      [ sh:order 1 ;
+      elody:size elody:Width100 ;
+      elody:element
+        [ a elody:WindowElement ;
+        rdfs:label "window-element-labels.info-window" ;
+        sh:order 1 ;
+        elody:panel
+          [ rdfs:label "panel-labels.pipeline-info" ;
+          sh:order 1 ;
+          elody:alias "info" ;
+          elody:panelKind elody:MetadataPanel ;
+          dash:readOnly true ;
+          elody:field em:name , em:description ;
+          elody:collapsed false ] ;
+        elody:expandButton true ] ,
+        [ a elody:ListElement ;
+        rdfs:label "element-labels.processor-element" ;
+        sh:order 2 ;
+        elody:alias "processors" ;
+        elody:searchInput elody:AdvancedSearchInput ;
+        elody:customBulkOperations ui:GetProcessorOnPipelineOperations ;
+        elody:picker ui:GetEntityPickerListForProcessorsInPipeline ;
+        elody:collapsed false ;
+        elody:entityTypes "githubProcessor" ;
+        elody:relationType "hasProcessor" ;
+        elody:customQuery "GetEntities" ;
+        elody:customQueryFilters "GetRelatedProcessorFilter" ] ] ;
+    elody:fragmentField "pipelineConnections" , "pipelineValidation" ] ;
+  elody:formSource ui:GetPipelineConnections , ui:GetPipelineValidation ;
+  elody:form ui:GetPipelineCreateForm ;
+  elody:customBulkOperations ui:GetRunnerOnPipelineBulkOperations , ui:GetProcessorOnPipelineOperations ;
+  elody:guidedFlow ui:GetRepetitiveFormForComponent ;
+  elody:picker
+    ui:GetEntityPickerListForRunnersInPipeline ,
+    ui:GetEntityPickerListForProcessorsInPipeline .
+
+ui:GetPipelineConnections
+  elody:queryName "GetPipelineConnections" ;
+  elody:resolverField "PipelineConnections" .
+
+ui:GetPipelineValidation
+  elody:queryName "GetPipelineValidation" ;
+  elody:resolverField "PipelineValidation" .
+
+ui:GetPipelineCreateForm
+  a elody:Form ;
+  rdfs:label "navigation.create-pipeline" ;
+  elody:queryName "GetPipelineCreateForm" ;
+  elody:shape
+    [ sh:property
+      [ sh:path em:name ;
+      sh:name "name" ;
+      rdfs:label "metadata.labels.name" ;
+      sh:order 1 ;
+      sh:datatype xsd:string ;
+      sh:minCount 1 ] ,
+      [ sh:path em:description ;
+      sh:name "description" ;
+      rdfs:label "metadata.labels.description" ;
+      sh:order 2 ;
+      sh:datatype xsd:string ] ] ;
+  elody:submit
+    [ rdfs:label "actions.labels.create" ;
+    elody:icon "Create" ;
+    elody:actionQuery "CreateEntity" ;
+    elody:creationType "pipeline" ] .
+
+ui:GetRunnerOnPipelineBulkOperations
+  elody:queryName "GetRunnerOnPipelineBulkOperations" ;
+  elody:operation
+    [ rdfs:label "bulk-operations.create-jsrunner" ;
+    sh:order 1 ;
+    elody:operationKind elody:CreateEntityOperation ;
+    elody:context
+      [ elody:activeViewMode elody:ReadMode ;
+      elody:selection elody:NoneSelected ;
+      elody:tooltipLabel "tooltip.bulkOperationsActionBar.readmode-noneselected" ] ;
+    elody:modal
+      [ elody:modalKind elody:DynamicFormModal ;
+      elody:form ui:GetJsRunnerCreateForm ;
+      elody:permission elody:CanCreate ;
+      elody:formRelationType "isRunnerFor" ;
+      elody:closeConfirmation true ] ;
+    elody:icon "PlusCircle" ;
+    elody:can "update:pipeline:has-runner" ] ,
+    [ rdfs:label "bulk-operations.create-jvmrunner" ;
+    sh:order 2 ;
+    elody:operationKind elody:CreateEntityOperation ;
+    elody:context
+      [ elody:activeViewMode elody:ReadMode ;
+      elody:selection elody:NoneSelected ;
+      elody:tooltipLabel "tooltip.bulkOperationsActionBar.readmode-noneselected" ] ;
+    elody:modal
+      [ elody:modalKind elody:DynamicFormModal ;
+      elody:form ui:GetJvmRunnerCreateForm ;
+      elody:permission elody:CanCreate ;
+      elody:formRelationType "isRunnerFor" ;
+      elody:closeConfirmation true ] ;
+    elody:icon "PlusCircle" ;
+    elody:can "update:pipeline:has-runner" ] ,
+    [ rdfs:label "bulk-operations.create-pyrunner" ;
+    sh:order 3 ;
+    elody:operationKind elody:CreateEntityOperation ;
+    elody:context
+      [ elody:activeViewMode elody:ReadMode ;
+      elody:selection elody:NoneSelected ;
+      elody:tooltipLabel "tooltip.bulkOperationsActionBar.readmode-noneselected" ] ;
+    elody:modal
+      [ elody:modalKind elody:DynamicFormModal ;
+      elody:form ui:GetPyRunnerCreateForm ;
+      elody:permission elody:CanCreate ;
+      elody:formRelationType "isRunnerFor" ;
+      elody:closeConfirmation true ] ;
+    elody:icon "PlusCircle" ;
+    elody:can "update:pipeline:has-runner" ] ,
+    [ rdfs:label "bulk-operations.existing-runner" ;
+    sh:order 4 ;
+    elody:operationKind elody:AddRelationOperation ;
+    elody:context
+      [ elody:activeViewMode elody:ReadMode ;
+      elody:selection elody:NoneSelected ;
+      elody:tooltipLabel "tooltip.bulkOperationsActionBar.readmode-noneselected" ] ;
+    elody:modal
+      [ elody:modalKind elody:DynamicFormModal ;
+      elody:form elody:EntityPickerForm ;
+      elody:permission elody:CanUpdate ;
+      elody:closeConfirmation true ] ;
+    elody:icon "PlusCircle" ;
+    elody:can "update:pipeline:has-runner" ] ,
+    [ rdfs:label "bulk-operations.delete-selected" ;
+    sh:order 5 ;
+    elody:operationKind elody:DeleteEntitiesOperation ;
+    elody:context
+      [ elody:activeViewMode elody:ReadMode ;
+      elody:selection elody:SomeSelected ;
+      elody:tooltipLabel "tooltip.bulkOperationsActionBar.readmode-someselected" ] ;
+    elody:modal
+      [ elody:modalKind elody:DeleteEntitiesModal ;
+      elody:form elody:RemoveFromListForm ;
+      elody:closeConfirmation false ] ;
+    elody:primary false ;
+    elody:can "update:pipeline:has-runner" ] .
+
+ui:GetProcessorOnPipelineOperations
+  elody:queryName "GetProcessorOnPipelineOperations" ;
+  elody:operation
+    [ rdfs:label "bulk-operations.add-processor" ;
+    sh:order 1 ;
+    elody:operationKind elody:AddRelationOperation ;
+    elody:context
+      [ elody:activeViewMode elody:ReadMode ;
+      elody:selection elody:NoneSelected ;
+      elody:tooltipLabel "tooltip.bulkOperationsActionBar.readmode-noneselected" ] ;
+    elody:modal
+      [ elody:modalKind elody:DynamicFormModal ;
+      elody:form elody:EntityPickerForm ;
+      elody:permission elody:CanUpdate ;
+      elody:closeConfirmation true ] ;
+    elody:icon "PlusCircle" ;
+    elody:can "update:pipeline:has-processor" ] ,
+    [ rdfs:label "bulk-operations.delete-selected" ;
+    sh:order 2 ;
+    elody:operationKind elody:DeleteEntitiesOperation ;
+    elody:context
+      [ elody:activeViewMode elody:ReadMode ;
+      elody:selection elody:SomeSelected ;
+      elody:tooltipLabel "tooltip.bulkOperationsActionBar.readmode-someselected" ] ;
+    elody:modal
+      [ elody:modalKind elody:DeleteEntitiesModal ;
+      elody:form elody:RemoveFromListForm ;
+      elody:closeConfirmation false ] ;
+    elody:primary false ;
+    elody:can "update:pipeline:has-processor" ] .
+
+ui:GetRepetitiveFormForComponent
+  rdfs:label "repetitiveForm.add-component-title" ;
+  elody:queryName "GetRepetitiveFormForComponent" ;
+  elody:step
+    [ rdfs:label "repetitiveForm.step-component" ;
+    sh:order 1 ;
+    elody:key "component" ;
+    elody:form ui:GetPipelineCreateForm ;
+    elody:picker ui:GetEntityPickerListForProcessorsInPipeline ;
+    elody:entityType "githubProcessor" ;
+    elody:acceptedTypes "githubProcessor" ;
+    elody:maxSelection 1 ;
+    elody:overviewField
+      [ rdfs:label "metadata.labels.name" ;
+      sh:order 1 ;
+      elody:key "name" ] ,
+      [ rdfs:label "metadata.labels.description" ;
+      sh:order 2 ;
+      elody:key "description" ] ] ;
+  elody:repeatable true ;
+  elody:refetchOnFinish true ;
+  elody:finalize
+    [ elody:fromStep "component" ;
+    elody:relationType "hasProcessor" ] .
+
+ui:GetEntityPickerListForRunnersInPipeline
+  sh:order 1 ;
+  elody:queryName "GetEntityPickerListForRunnersInPipeline" ;
+  elody:result
+    [ elody:graphqlType "JsRunner" ;
+    sh:order 1 ;
+    elody:fragment "minimalJsRunner" ] ,
+    [ elody:graphqlType "PyRunner" ;
+    sh:order 2 ;
+    elody:fragment "minimalPyRunner" ] ,
+    [ elody:graphqlType "JvmRunner" ;
+    sh:order 3 ;
+    elody:fragment "minimalJvmRunner" ] ;
+  elody:filter
+    [ sh:order 1 ;
+    elody:alias "type" ;
+    elody:key "type" ;
+    elody:filterKind elody:SelectionFilter ;
+    dash:hidden true ;
+    sh:defaultValue "jsRunner" , "pyRunner" , "jvmRunner" ;
+    elody:keyAsList false ;
+    elody:defaultValueAsList true ] .
+
+ui:GetEntityPickerListForProcessorsInPipeline
+  sh:order 2 ;
+  elody:queryName "GetEntityPickerListForProcessorsInPipeline" ;
+  elody:result
+    [ elody:graphqlType "GithubProcessor" ;
+    sh:order 1 ;
+    elody:fragment "minimalGithubProcessor" ] ;
+  elody:filter
+    [ sh:order 1 ;
+    elody:alias "type" ;
+    elody:filterKind elody:TypeFilter ;
+    dash:hidden true ;
+    sh:defaultValue "githubProcessor" ] ,
+    [ sh:order 2 ;
+    elody:alias "suggestion" ;
+    elody:key "suggest_for_pipeline" ;
+    elody:filterKind elody:SelectionFilter ;
+    dash:hidden true ;
+    sh:defaultValue "$parentIds" ] ,
+    [ sh:order 3 ;
+    elody:alias "shapeScope" ;
+    elody:key "suggest_for_shape" ;
+    elody:filterKind elody:SelectionFilter ;
+    dash:hidden true ;
+    sh:defaultValue "$portShapeIris" ] ,
+    [ rdfs:label "metadata.labels.name" ;
+    sh:order 4 ;
+    elody:alias "name" ;
+    elody:key "elody:1|metadata.name.value" ;
+    elody:filterKind elody:TextFilter ;
+    elody:showTooltip true ;
+    elody:displayedByDefault true ] .

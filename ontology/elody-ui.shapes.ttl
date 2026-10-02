@@ -1,0 +1,338 @@
+# Meta-shapes: what a valid *.ui.ttl declaration looks like, checked with SHACL Core
+# (rdf-validate-shacl in `elody-ui check`, pySHACL in CI). Retired terms fail hard.
+
+@prefix elody: <https://elody.eu/ns/ui#> .
+@prefix meta:  <https://elody.eu/ns/ui/shapes#> .
+@prefix sh:    <http://www.w3.org/ns/shacl#> .
+@prefix shui:  <http://www.w3.org/ns/shacl-ui/> .
+@prefix dash:  <http://datashapes.org/dash#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+# ------------------------------------------------------------------ EntityUi ---
+
+meta:EntityUiShape a sh:NodeShape ;
+  sh:targetClass elody:EntityUi ;
+  sh:property
+    [ sh:path elody:graphqlType ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ;
+      sh:message "an EntityUi names exactly one GraphQL type" ] ,
+    [ sh:path elody:emit ; sh:maxCount 1 ; sh:in ( "file" "regions" ) ;
+      sh:message "elody:emit is \"file\" or \"regions\"" ] ,
+    [ sh:path elody:documents ; sh:in ( "entities" "filters" "sortOptions" "bulkOperations" ) ;
+      sh:message "elody:documents names a standard document" ] ,
+    [ sh:path elody:viewMode ; sh:minCount 1 ; sh:node meta:ViewModeSelectionShape ;
+      sh:message "an EntityUi declares at least one view mode" ] ,
+    [ sh:path sh:property ; sh:minCount 1 ; sh:node meta:PropertyShapeShape ;
+      sh:message "an EntityUi declares at least one property shape" ] ,
+    # exactly one label role across the property shapes (shui: or dash: predicate)
+    [ sh:path sh:property ;
+      sh:qualifiedValueShape [ sh:or (
+          [ sh:property [ sh:path shui:propertyRole ; sh:hasValue shui:LabelRole ] ]
+          [ sh:property [ sh:path dash:propertyRole ; sh:hasValue dash:LabelRole ] ] ) ] ;
+      sh:qualifiedMinCount 1 ; sh:qualifiedMaxCount 1 ;
+      sh:message "exactly one property shape carries the LabelRole (the card title)" ] ,
+    [ sh:path elody:filter ; sh:node meta:FilterShape ] ,
+    [ sh:path elody:contextMenu ; sh:maxCount 1 ; sh:node meta:ContextMenuShape ] ,
+    [ sh:path elody:bulkOperation ; sh:node meta:BulkOperationShape ] ,
+    [ sh:path elody:customBulkOperations ; sh:node meta:CustomBulkOperationsShape ] ,
+    [ sh:path elody:form ; sh:class elody:Form ; sh:node meta:FormShape ] ,
+    [ sh:path elody:guidedFlow ; sh:node meta:GuidedFlowShape ] ,
+    [ sh:path elody:picker ; sh:node meta:PickerShape ] ,
+    [ sh:path elody:detail ; sh:maxCount 1 ; sh:node meta:DetailLayoutShape ] ,
+    [ sh:path elody:formSource ; sh:node meta:FormSourceShape ] ,
+    [ sh:path elody:typePills ; sh:maxCount 1 ; sh:datatype xsd:boolean ] ,
+    [ sh:path elody:dynamicFormConfig ; sh:maxCount 1 ; sh:datatype xsd:string ] ,
+    [ sh:path elody:ports ; sh:maxCount 1 ; sh:datatype xsd:string ] ,
+    # retired terms on the entity
+    [ sh:path elody:createForm ; sh:maxCount 0 ; sh:message "elody:createForm is retired: declare an elody:Form and reference it with elody:form" ] ,
+    [ sh:path elody:repetitiveForm ; sh:maxCount 0 ; sh:message "elody:repetitiveForm is retired: use elody:guidedFlow" ] .
+
+meta:ViewModeSelectionShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:mode ; sh:minCount 1 ; sh:maxCount 1 ; sh:nodeKind sh:IRI ; sh:class elody:ViewMode ;
+      sh:message "a view mode is an elody:ViewMode instance (elody:ListView, elody:PipelineView, ...), not a string" ] ,
+    [ sh:path sh:order ; sh:maxCount 1 ] ,
+    [ sh:path elody:config ; sh:node meta:ConfigEntryShape ] .
+
+meta:ConfigEntryShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:key ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ] ,
+    [ sh:path elody:value ; sh:minCount 1 ; sh:maxCount 1 ] .
+
+# ------------------------------------------------------------ property shapes ---
+
+meta:PropertyShapeShape a sh:NodeShape ;
+  sh:property
+    [ sh:path sh:name ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ;
+      sh:message "every property shape has one sh:name (the Elody metadata key)" ] ,
+    [ sh:path sh:order ; sh:maxCount 1 ] ,
+    [ sh:path shui:viewer ; sh:maxCount 1 ; sh:nodeKind sh:IRI ;
+      sh:in ( elody:PillViewer elody:LinkViewer elody:RegexpMatchViewer elody:MediafilePreviewViewer elody:MarkdownViewer
+              shui:LiteralViewer shui:HyperlinkViewer shui:LangStringViewer shui:DetailsViewer ) ;
+      sh:message "shui:viewer names a viewer Elody implements" ] ,
+    [ sh:path shui:editor ; sh:maxCount 1 ; sh:nodeKind sh:IRI ;
+      sh:in ( shui:TextFieldEditor shui:TextAreaEditor shui:TextFieldWithLangEditor shui:TextAreaWithLangEditor
+              shui:NumberFieldEditor shui:BooleanEditor shui:DatePickerEditor shui:DateTimePickerEditor
+              shui:EnumSelectEditor shui:InstancesSelectEditor shui:AutoCompleteEditor shui:IRIEditor shui:DetailsEditor
+              elody:EntityPickerEditor elody:RelationSelectEditor elody:RelationMultiSelectEditor
+              elody:MetadataSelectEditor elody:MetadataMultiSelectEditor elody:RadioEditor elody:RangeEditor
+              elody:ColorEditor elody:ResizableTextAreaEditor elody:FileUploadEditor elody:CsvUploadEditor
+              elody:XmlUploadEditor elody:FileSystemImportEditor ) ;
+      sh:message "shui:editor names an editor Elody implements" ] ,
+    [ sh:path elody:unit ; sh:maxCount 1 ; sh:class elody:Unit ;
+      sh:message "elody:unit is an elody:Unit instance" ] ,
+    [ sh:path elody:defaultSortDirection ; sh:maxCount 1 ; sh:class elody:SortDirection ] ,
+    [ sh:path elody:source ; sh:maxCount 1 ; sh:class elody:ValueSource ] ,
+    [ sh:path elody:teaser ; sh:maxCount 1 ; sh:datatype xsd:boolean ] ,
+    [ sh:path elody:sortable ; sh:maxCount 1 ; sh:datatype xsd:boolean ] ,
+    [ sh:path elody:colSpan ; sh:maxCount 1 ; sh:datatype xsd:integer ] ,
+    [ sh:path dash:hidden ; sh:maxCount 1 ; sh:datatype xsd:boolean ] ,
+    [ sh:path dash:readOnly ; sh:maxCount 1 ; sh:datatype xsd:boolean ] ,
+    # retired terms on a property shape
+    [ sh:path elody:formatter ; sh:maxCount 0 ; sh:message "elody:formatter is retired: use shui:viewer (and elody:viewerArgument)" ] ,
+    [ sh:path elody:hidden ; sh:maxCount 0 ; sh:message "elody:hidden is retired: use dash:hidden" ] ,
+    [ sh:path elody:editable ; sh:maxCount 0 ; sh:message "elody:editable is retired: use dash:readOnly" ] ,
+    [ sh:path elody:required ; sh:maxCount 0 ; sh:message "elody:required is retired: use sh:minCount 1" ] ,
+    [ sh:path elody:inputType ; sh:maxCount 0 ; sh:message "elody:inputType is retired: use sh:datatype / sh:class / sh:node or shui:editor" ] ,
+    [ sh:path elody:defaultValue ; sh:maxCount 0 ; sh:message "elody:defaultValue is retired: use sh:defaultValue" ] ,
+    [ sh:path elody:tooltip ; sh:maxCount 0 ; sh:message "elody:tooltip is retired: use sh:description" ] .
+
+# ------------------------------------------------------------------- filters ---
+
+meta:FilterShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:alias ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ] ,
+    [ sh:path elody:filterKind ; sh:minCount 1 ; sh:maxCount 1 ; sh:nodeKind sh:IRI ; sh:class elody:FilterKind ;
+      sh:message "a filter's kind is an elody:FilterKind instance (elody:TextFilter, ...), not a string" ] ,
+    [ sh:path dash:hidden ; sh:maxCount 1 ; sh:datatype xsd:boolean ] ,
+    [ sh:path elody:showTooltip ; sh:maxCount 1 ; sh:datatype xsd:boolean ] ,
+    [ sh:path elody:hidden ; sh:maxCount 0 ; sh:message "elody:hidden is retired: use dash:hidden" ] ,
+    [ sh:path elody:tooltip ; sh:maxCount 0 ; sh:message "elody:tooltip is retired: use elody:showTooltip" ] ,
+    [ sh:path elody:defaultValue ; sh:maxCount 0 ; sh:message "elody:defaultValue is retired: use sh:defaultValue" ] ;
+  # a hidden filter needs a default (there is no UI to fill it in)
+  sh:or (
+    [ sh:property [ sh:path dash:hidden ; sh:maxCount 0 ] ]
+    [ sh:property [ sh:path dash:hidden ; sh:hasValue false ] ]
+    [ sh:property [ sh:path sh:defaultValue ; sh:minCount 1 ] ] ) ;
+  sh:message "a hidden filter carries a sh:defaultValue" .
+
+meta:VisibleFilterLabelShape a sh:NodeShape ;
+  # a visible filter needs a label; expressed as a second shape so the message is specific
+  sh:targetObjectsOf elody:filter ;
+  sh:or (
+    [ sh:property [ sh:path dash:hidden ; sh:hasValue true ] ]
+    [ sh:property [ sh:path elody:filterKind ; sh:hasValue elody:TypeFilter ] ]
+    [ sh:property [ sh:path rdfs:label ; sh:minCount 1 ] ] ) ;
+  sh:message "a visible filter carries an rdfs:label" .
+
+# -------------------------------------------------------------- context menu ---
+
+meta:ContextMenuShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:action ; sh:node meta:ActionShape ] ,
+    [ sh:path elody:forceShow ; sh:maxCount 1 ; sh:datatype xsd:boolean ] ,
+    [ sh:path elody:includeBasicActions ; sh:maxCount 1 ; sh:datatype xsd:boolean ] .
+
+meta:ActionShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:alias ; sh:minCount 1 ; sh:maxCount 1 ] ,
+    [ sh:path elody:actionKind ; sh:minCount 1 ; sh:maxCount 1 ; sh:class elody:ActionKind ;
+      sh:message "an action's kind is an elody:ActionKind instance" ] ,
+    [ sh:path elody:form ; sh:maxCount 1 ; sh:nodeKind sh:BlankNodeOrIRI ] ,
+    [ sh:path elody:formSourceRef ; sh:maxCount 1 ; sh:nodeKind sh:BlankNodeOrIRI ] ,
+    [ sh:path elody:actionType ; sh:maxCount 0 ; sh:message "elody:actionType is retired: use elody:actionKind" ] ,
+    [ sh:path elody:formQuery ; sh:maxCount 0 ; sh:message "elody:formQuery is retired: reference the node with elody:form or elody:formSourceRef" ] .
+
+# ----------------------------------------------------------- bulk operations ---
+
+meta:BulkOperationShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:operationKind ; sh:minCount 1 ; sh:maxCount 1 ; sh:class elody:BulkOperationKind ;
+      sh:message "a bulk operation's kind is an elody:BulkOperationKind instance" ] ,
+    [ sh:path elody:context ; sh:maxCount 1 ; sh:node meta:BulkOperationContextShape ] ,
+    [ sh:path elody:modal ; sh:maxCount 1 ; sh:node meta:BulkOperationModalShape ] ,
+    [ sh:path elody:primary ; sh:maxCount 1 ; sh:datatype xsd:boolean ] ,
+    [ sh:path elody:value ; sh:maxCount 0 ; sh:message "elody:value on a bulk operation is retired: use elody:operationKind" ] .
+
+meta:BulkOperationContextShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:activeViewMode ; sh:minCount 1 ; sh:maxCount 1 ; sh:class elody:InteractionMode ] ,
+    [ sh:path elody:selection ; sh:minCount 1 ; sh:maxCount 1 ; sh:class elody:SelectionState ] ,
+    [ sh:path elody:tooltipLabel ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ] ,
+    [ sh:path elody:tooltip ; sh:maxCount 0 ; sh:message "elody:tooltip is retired: use elody:tooltipLabel" ] .
+
+meta:BulkOperationModalShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:modalKind ; sh:minCount 1 ; sh:maxCount 1 ; sh:class elody:ModalKind ;
+      sh:message "a modal's kind is an elody:ModalKind instance" ] ,
+    [ sh:path elody:form ; sh:maxCount 1 ; sh:nodeKind sh:BlankNodeOrIRI ] ,
+    [ sh:path elody:permission ; sh:maxCount 1 ; sh:class elody:Permission ] ,
+    [ sh:path elody:closeConfirmation ; sh:maxCount 1 ; sh:datatype xsd:boolean ] ,
+    [ sh:path elody:typeModal ; sh:maxCount 0 ; sh:message "elody:typeModal is retired: use elody:modalKind" ] ,
+    [ sh:path elody:formQuery ; sh:maxCount 0 ; sh:message "elody:formQuery is retired: reference the form node with elody:form" ] .
+
+meta:CustomBulkOperationsShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:operation ; sh:minCount 1 ; sh:node meta:BulkOperationShape ] .
+
+# --------------------------------------------------------------------- forms ---
+
+# applied through elody:form on an EntityUi (declared forms); platform forms
+# (elody:PlatformForm) are referenced, not declared, and carry no shape
+meta:FormShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:shape ; sh:minCount 1 ; sh:maxCount 1 ; sh:node meta:FormFieldsShape ;
+      sh:message "a form has one elody:shape holding its fields as property shapes" ] ,
+    [ sh:path elody:submit ; sh:maxCount 1 ] ,
+    [ sh:path elody:queryName ; sh:maxCount 1 ; sh:datatype xsd:string ] ,
+    [ sh:path elody:field ; sh:maxCount 0 ; sh:message "fields live on the form's shape as sh:property, not on the form" ] .
+
+meta:FormFieldsShape a sh:NodeShape ;
+  sh:property
+    [ sh:path sh:property ; sh:minCount 1 ; sh:node meta:FormFieldShape ] .
+
+# a form field must be renderable: a datatype, a class, a nested shape, an enumeration or an explicit editor
+meta:FormFieldShape a sh:NodeShape ;
+  sh:property
+    [ sh:path sh:name ; sh:minCount 1 ; sh:maxCount 1 ] ,
+    [ sh:path elody:inputType ; sh:maxCount 0 ; sh:message "elody:inputType is retired: use sh:datatype / sh:class / sh:node / sh:in or shui:editor" ] ,
+    [ sh:path elody:required ; sh:maxCount 0 ; sh:message "elody:required is retired: use sh:minCount 1" ] ;
+  sh:or (
+    [ sh:property [ sh:path sh:datatype ; sh:minCount 1 ] ]
+    [ sh:property [ sh:path sh:class ; sh:minCount 1 ] ]
+    [ sh:property [ sh:path sh:node ; sh:minCount 1 ] ]
+    [ sh:property [ sh:path sh:in ; sh:minCount 1 ] ]
+    [ sh:property [ sh:path shui:editor ; sh:minCount 1 ] ] ) ;
+  sh:message "a form field is renderable: sh:datatype, sh:class, sh:node, sh:in or shui:editor" .
+
+# -------------------------------------------------------------- guided flows ---
+
+meta:GuidedFlowShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:step ; sh:minCount 1 ; sh:node meta:FlowStepShape ] ,
+    [ sh:path elody:finalize ; sh:maxCount 1 ] .
+
+meta:FlowStepShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:key ; sh:minCount 1 ; sh:maxCount 1 ] ,
+    [ sh:path elody:form ; sh:maxCount 1 ; sh:nodeKind sh:BlankNodeOrIRI ] ,
+    [ sh:path elody:picker ; sh:maxCount 1 ; sh:nodeKind sh:BlankNodeOrIRI ] ,
+    [ sh:path elody:createForm ; sh:maxCount 0 ; sh:message "elody:createForm is retired: reference the form node with elody:form" ] ,
+    [ sh:path elody:pickerQuery ; sh:maxCount 0 ; sh:message "elody:pickerQuery is retired: reference the picker node with elody:picker" ] ,
+    [ sh:path elody:pickerFiltersQuery ; sh:maxCount 0 ; sh:message "elody:pickerFiltersQuery is retired: reference the picker node with elody:picker" ] .
+
+# ------------------------------------------------------------------- pickers ---
+
+meta:PickerShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:result ; sh:minCount 1 ; sh:node meta:PickerResultShape ] ,
+    [ sh:path elody:filter ; sh:node meta:FilterShape ] ,
+    [ sh:path elody:filtersQueryName ; sh:maxCount 0 ; sh:message "elody:filtersQueryName is retired: the filters document is named after the picker" ] .
+
+meta:PickerResultShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:graphqlType ; sh:minCount 1 ; sh:maxCount 1 ] ,
+    [ sh:path elody:fragment ; sh:minCount 1 ; sh:maxCount 1 ] ,
+    [ sh:path elody:type ; sh:maxCount 0 ; sh:message "elody:type is retired: use elody:graphqlType" ] .
+
+# -------------------------------------------------------------------- detail ---
+
+meta:DetailLayoutShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:column ; sh:minCount 1 ; sh:node meta:ColumnShape ] ,
+    [ sh:path elody:shapeDriven ; sh:maxCount 1 ; sh:datatype xsd:boolean ] .
+
+meta:ColumnShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:size ; sh:minCount 1 ; sh:maxCount 1 ; sh:class elody:ColumnSize ;
+      sh:message "a column's size is an elody:ColumnSize instance (elody:Width70, ...)" ] ,
+    [ sh:path elody:element ; sh:minCount 1 ; sh:node meta:ElementShape ] .
+
+meta:ElementShape a sh:NodeShape ;
+  sh:property
+    [ sh:path rdf:type ; sh:minCount 1 ;
+      sh:in ( elody:WindowElement elody:ListElement elody:ShaclShapeElement elody:MarkdownElement ) ;
+      sh:message "an element is typed elody:WindowElement, ListElement, ShaclShapeElement or MarkdownElement" ] ,
+    [ sh:path elody:panel ; sh:node meta:PanelShape ] ,
+    [ sh:path elody:searchInput ; sh:maxCount 1 ; sh:class elody:SearchInputKind ] ,
+    [ sh:path elody:customBulkOperations ; sh:maxCount 1 ; sh:nodeKind sh:BlankNodeOrIRI ;
+      sh:message "a list element references its custom bulk operations as a node" ] ,
+    [ sh:path elody:picker ; sh:maxCount 1 ; sh:nodeKind sh:BlankNodeOrIRI ] ,
+    [ sh:path elody:searchInputType ; sh:maxCount 0 ; sh:message "elody:searchInputType is retired: use elody:searchInput" ] ,
+    [ sh:path elody:pickerList ; sh:maxCount 0 ; sh:message "elody:pickerList is retired: reference the picker node with elody:picker" ] ,
+    [ sh:path elody:pickerFilters ; sh:maxCount 0 ; sh:message "elody:pickerFilters is retired: reference the picker node with elody:picker" ] .
+
+meta:PanelShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:alias ; sh:minCount 1 ; sh:maxCount 1 ] ,
+    [ sh:path elody:panelKind ; sh:minCount 1 ; sh:maxCount 1 ; sh:class elody:PanelKind ;
+      sh:message "a panel's kind is an elody:PanelKind instance (elody:MetadataPanel, ...)" ] ,
+    [ sh:path elody:field ; sh:nodeKind sh:IRI ;
+      sh:message "a panel field references a property shape by its sh:path IRI" ] ,
+    [ sh:path dash:readOnly ; sh:maxCount 1 ; sh:datatype xsd:boolean ] ,
+    [ sh:path elody:panelType ; sh:maxCount 0 ; sh:message "elody:panelType is retired: use elody:panelKind" ] ,
+    [ sh:path elody:editable ; sh:maxCount 0 ; sh:message "elody:editable is retired: use dash:readOnly" ] .
+
+# -------------------------------------------------------------- form sources ---
+
+meta:FormSourceShape a sh:NodeShape ;
+  sh:property
+    [ sh:path elody:resolverField ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ] ,
+    [ sh:path elody:queryName ; sh:maxCount 1 ; sh:datatype xsd:string ] ,
+    [ sh:path elody:withParent ; sh:maxCount 1 ; sh:datatype xsd:boolean ] .
+
+# ------------------------------------------------- retired terms, anywhere ---
+# Top-level shapes per retired predicate, so the report names the term and its
+# replacement on the node that uses it (nested sh:node failures only say
+# "value does not have shape").
+
+meta:RetiredHidden a sh:NodeShape ; sh:targetSubjectsOf elody:hidden ;
+  sh:property [ sh:path elody:hidden ; sh:maxCount 0 ; sh:message "elody:hidden is retired: use dash:hidden" ] .
+meta:RetiredEditable a sh:NodeShape ; sh:targetSubjectsOf elody:editable ;
+  sh:property [ sh:path elody:editable ; sh:maxCount 0 ; sh:message "elody:editable is retired: use dash:readOnly" ] .
+meta:RetiredRequired a sh:NodeShape ; sh:targetSubjectsOf elody:required ;
+  sh:property [ sh:path elody:required ; sh:maxCount 0 ; sh:message "elody:required is retired: use sh:minCount 1" ] .
+meta:RetiredInputType a sh:NodeShape ; sh:targetSubjectsOf elody:inputType ;
+  sh:property [ sh:path elody:inputType ; sh:maxCount 0 ; sh:message "elody:inputType is retired: use sh:datatype / sh:class / sh:node / sh:in or shui:editor" ] .
+meta:RetiredDefaultValue a sh:NodeShape ; sh:targetSubjectsOf elody:defaultValue ;
+  sh:property [ sh:path elody:defaultValue ; sh:maxCount 0 ; sh:message "elody:defaultValue is retired: use sh:defaultValue" ] .
+meta:RetiredTooltip a sh:NodeShape ; sh:targetSubjectsOf elody:tooltip ;
+  sh:property [ sh:path elody:tooltip ; sh:maxCount 0 ; sh:message "elody:tooltip is retired: use elody:showTooltip (filter), elody:tooltipLabel (bulk operation context) or sh:description (property)" ] .
+meta:RetiredFormatter a sh:NodeShape ; sh:targetSubjectsOf elody:formatter ;
+  sh:property [ sh:path elody:formatter ; sh:maxCount 0 ; sh:message "elody:formatter is retired: use shui:viewer (and elody:viewerArgument)" ] .
+meta:RetiredCreateForm a sh:NodeShape ; sh:targetSubjectsOf elody:createForm ;
+  sh:property [ sh:path elody:createForm ; sh:maxCount 0 ; sh:message "elody:createForm is retired: declare an elody:Form and reference it with elody:form" ] .
+meta:RetiredFormQuery a sh:NodeShape ; sh:targetSubjectsOf elody:formQuery ;
+  sh:property [ sh:path elody:formQuery ; sh:maxCount 0 ; sh:message "elody:formQuery is retired: reference the node with elody:form or elody:formSourceRef" ] .
+meta:RetiredActionType a sh:NodeShape ; sh:targetSubjectsOf elody:actionType ;
+  sh:property [ sh:path elody:actionType ; sh:maxCount 0 ; sh:message "elody:actionType is retired: use elody:actionKind" ] .
+meta:RetiredTypeModal a sh:NodeShape ; sh:targetSubjectsOf elody:typeModal ;
+  sh:property [ sh:path elody:typeModal ; sh:maxCount 0 ; sh:message "elody:typeModal is retired: use elody:modalKind" ] .
+meta:RetiredPanelType a sh:NodeShape ; sh:targetSubjectsOf elody:panelType ;
+  sh:property [ sh:path elody:panelType ; sh:maxCount 0 ; sh:message "elody:panelType is retired: use elody:panelKind" ] .
+meta:RetiredSearchInputType a sh:NodeShape ; sh:targetSubjectsOf elody:searchInputType ;
+  sh:property [ sh:path elody:searchInputType ; sh:maxCount 0 ; sh:message "elody:searchInputType is retired: use elody:searchInput" ] .
+meta:RetiredRepetitiveForm a sh:NodeShape ; sh:targetSubjectsOf elody:repetitiveForm ;
+  sh:property [ sh:path elody:repetitiveForm ; sh:maxCount 0 ; sh:message "elody:repetitiveForm is retired: use elody:guidedFlow" ] .
+meta:RetiredPickerQuery a sh:NodeShape ; sh:targetSubjectsOf elody:pickerQuery ;
+  sh:property [ sh:path elody:pickerQuery ; sh:maxCount 0 ; sh:message "elody:pickerQuery is retired: reference the picker node with elody:picker" ] .
+meta:RetiredPickerFiltersQuery a sh:NodeShape ; sh:targetSubjectsOf elody:pickerFiltersQuery ;
+  sh:property [ sh:path elody:pickerFiltersQuery ; sh:maxCount 0 ; sh:message "elody:pickerFiltersQuery is retired: reference the picker node with elody:picker" ] .
+meta:RetiredPickerList a sh:NodeShape ; sh:targetSubjectsOf elody:pickerList ;
+  sh:property [ sh:path elody:pickerList ; sh:maxCount 0 ; sh:message "elody:pickerList is retired: reference the picker node with elody:picker" ] .
+meta:RetiredPickerFilters a sh:NodeShape ; sh:targetSubjectsOf elody:pickerFilters ;
+  sh:property [ sh:path elody:pickerFilters ; sh:maxCount 0 ; sh:message "elody:pickerFilters is retired: reference the picker node with elody:picker" ] .
+meta:RetiredFiltersQueryName a sh:NodeShape ; sh:targetSubjectsOf elody:filtersQueryName ;
+  sh:property [ sh:path elody:filtersQueryName ; sh:maxCount 0 ; sh:message "elody:filtersQueryName is retired: the filters document is named after the picker" ] .
+meta:RetiredType a sh:NodeShape ; sh:targetSubjectsOf elody:type ;
+  sh:property [ sh:path elody:type ; sh:maxCount 0 ; sh:message "elody:type is retired: use elody:graphqlType" ] .
+meta:StringViewMode a sh:NodeShape ; sh:targetSubjectsOf elody:mode ;
+  sh:property [ sh:path elody:mode ; sh:nodeKind sh:IRI ; sh:class elody:ViewMode ;
+    sh:message "elody:mode takes an elody:ViewMode instance (elody:ListView, ...), not a string" ] .
+meta:StringFilterKind a sh:NodeShape ; sh:targetSubjectsOf elody:filterKind ;
+  sh:property [ sh:path elody:filterKind ; sh:nodeKind sh:IRI ; sh:class elody:FilterKind ;
+    sh:message "elody:filterKind takes an elody:FilterKind instance (elody:TextFilter, ...), not a string" ] .
+meta:LegacyDashLabelRole a sh:NodeShape ; sh:targetSubjectsOf dash:propertyRole ;
+  sh:property [ sh:path dash:propertyRole ; sh:not [ sh:hasValue dash:LabelRole ] ;
+    sh:message "the label role is shui:propertyRole shui:LabelRole; dash:propertyRole is for DescriptionRole, IconRole and KeyInfoRole" ] .
