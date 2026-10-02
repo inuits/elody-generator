@@ -50,7 +50,13 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   const emptyEditor = new Map(empty.fields.map((field) => [field.shape, field.editor?.widget ?? ""]));
   const notes: string[] = [];
   const out: Quad[] = [];
-  const add = (s: Term, p: string, o: Term) => out.push(quad(s as never, namedNode(p), o as never));
+  const seen = new Set<string>();
+  const add = (s: Term, p: string, o: Term) => {
+    const id = `${s.termType}:${s.value} ${p} ${o.termType}:${o.value}:${(o as Term & { language?: string }).language ?? ""}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+    out.push(quad(s as never, namedNode(p), o as never));
+  };
   const ui = (name: string) => namedNode(`${ns}${options.id}-${name}`);
 
   // -- copy a node (and its blank-node tree) from the source ------------------------------
@@ -74,6 +80,10 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   add(entity, elody("graphqlType"), literal("BaseEntity"));
   add(entity, elody("documentName"), literal(options.documentName));
   add(entity, elody("emit"), literal("file"));
+  // the ontology anchor: what kind of thing this UI is about (elody:EntityUi is a sh:NodeShape)
+  if (form.nodeShape)
+    for (const q of bySubject.get(form.nodeShape) ?? [])
+      if (q.predicate.value === sh("targetClass")) add(entity, sh("targetClass"), q.object);
   const viewMode = blankNode();
   add(entity, elody("viewMode"), viewMode);
   add(viewMode, elody("mode"), namedNode(elody("ListView")));
