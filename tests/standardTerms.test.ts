@@ -123,3 +123,21 @@ describe("3 · create-form widgets from the scoring system", () => {
     expect(renderCreateForm(entities[0].createForms[0])).toContain('label(input: "ui.t.f")');
   });
 });
+
+describe("shui:defaultOrder in the declaration", () => {
+  const ordered = (config: string) => `${PREFIXES}
+    ui:T a elody:EntityUi ; elody:graphqlType "T" ; elody:viewMode [ elody:mode elody:ListView ] ;
+      sh:property [ sh:path ex:description ; sh:order 5 ] , [ sh:path ex:id ; sh:order -10 ] ,
+                  [ sh:path ex:label ; shui:propertyRole shui:LabelRole ] .
+    ${config}`;
+
+  it("puts properties without sh:order last when no default is configured", async () => {
+    const { entities } = await readUiDeclaration(ordered(""));
+    expect(entities[0].properties.map((p) => p.key)).toEqual(["id", "description", "label"]);
+  });
+
+  it("gives them shui:defaultOrder when the declaration configures it (spec example)", async () => {
+    const { entities } = await readUiDeclaration(ordered("ui:config a shui:Configuration ; shui:defaultOrder 0 ."));
+    expect(entities[0].properties.map((p) => p.key)).toEqual(["id", "label", "description"]);
+  });
+});

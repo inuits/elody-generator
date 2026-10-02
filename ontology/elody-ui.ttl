@@ -476,6 +476,11 @@ elody:graphqlTypes a owl:ObjectProperty ; elody:directive true ;
   rdfs:domain elody:EntityFamily ; rdfs:range rdf:List ;
   rdfs:comment "The GraphQL object types sharing one family fragment, as an RDF list. Directive, same fate as elody:graphqlType."@en .
 
+elody:documentName a owl:DatatypeProperty ; elody:directive true ;
+  rdfs:label "document name"@en ;
+  rdfs:domain elody:EntityUi ; rdfs:range xsd:string ;
+  rdfs:comment "Base name of the generated fragments and documents (minimal<Name>, full<Name>, <name>.queries.ts). Defaults to elody:graphqlType; needed when several declarations render the same GraphQL type, such as a showcase on BaseEntity."@en .
+
 elody:emit a owl:DatatypeProperty ; elody:directive true ;
   rdfs:label "emit mode"@en ;
   rdfs:domain elody:EntityUi ; rdfs:range xsd:string ;

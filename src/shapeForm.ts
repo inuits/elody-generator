@@ -52,6 +52,8 @@ export type SpecForm = {
 
 export type ShapeToFormOptions = {
   shapes: string;
+  /** already parsed shapes (blank-node ids must match the caller's) */
+  shapeQuads?: Quad[];
   data?: string;
   focus?: string;
   nodeShape?: string;
@@ -93,7 +95,7 @@ const localName = (iri: string) => iri.slice(Math.max(iri.lastIndexOf("#"), iri.
 const short = (iri: string) => iri.replace(SHUI, "shui:").replace(SH, "sh:");
 
 export async function shapeToForm(options: ShapeToFormOptions): Promise<SpecForm> {
-  const shapeQuads = new Parser().parse(options.shapes);
+  const shapeQuads = options.shapeQuads ?? new Parser().parse(options.shapes);
   const dataQuads = options.data ? new Parser().parse(options.data) : [];
   const shapes = new Graph(shapeQuads);
   const data = new Graph(dataQuads);

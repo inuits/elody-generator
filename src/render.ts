@@ -481,11 +481,13 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
 // -- whole-file emission -----------------------------------------------------
 
 export function renderEntityFile(entity: M.UiEntity, declaration: string): string {
-  const type = entity.graphqlType;
+  const onType = entity.graphqlType;
+  // fragment and document names: elody:documentName when several declarations share a GraphQL type
+  const type = entity.documentName ?? entity.graphqlType;
   const low = lowerFirst(type);
   const fragments: string[] = [];
 
-  const minimal: string[] = [`  fragment minimal${type} on ${type} {`];
+  const minimal: string[] = [`  fragment minimal${type} on ${onType} {`];
   if (entity.dynamicFormConfigField)
     minimal.push(
       entity.dynamicFormConfigField === "dynamicFormConfig"
@@ -510,7 +512,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   fragments.push(minimal.join("\n"));
 
   if (entity.detail) {
-    const full: string[] = [`  fragment full${type} on ${type} {`];
+    const full: string[] = [`  fragment full${type} on ${onType} {`];
     if (entity.detail.shapeDriven) full.push("    shapeFields");
     full.push("    intialValues {");
     full.push(renderInitialValues(entity, 6, false));
@@ -523,13 +525,13 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   }
 
   const sort = renderSortOptions(entity, 4);
-  if (sort) fragments.push([`  fragment ${low}SortOptions on ${type} {`, sort, "  }"].join("\n"));
+  if (sort) fragments.push([`  fragment ${low}SortOptions on ${onType} {`, sort, "  }"].join("\n"));
 
   if (entity.filters.length > 0)
-    fragments.push([`  fragment filtersFor${type} on ${type} {`, renderFilters(entity, 4), "  }"].join("\n"));
+    fragments.push([`  fragment filtersFor${type} on ${onType} {`, renderFilters(entity, 4), "  }"].join("\n"));
 
   fragments.push(
-    [`  fragment ${low}BulkOperations on ${type} {`, renderBulkOperationOptions(entity.bulkOperations, 4), "  }"].join("\n"),
+    [`  fragment ${low}BulkOperations on ${onType} {`, renderBulkOperationOptions(entity.bulkOperations, 4), "  }"].join("\n"),
   );
 
   const documents: string[] = [];
@@ -560,7 +562,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
         "        id",
         "        uuid",
         "        type",
-        `        ... on ${type} {`,
+        `        ... on ${onType} {`,
         `          ...minimal${type}`,
         "        }",
         "      }",
@@ -573,7 +575,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
       [
         `  query Get${type}Filters($entityType: String!) {`,
         "    EntityTypeFilters(type: $entityType) {",
-        `      ... on ${type} {`,
+        `      ... on ${onType} {`,
         `        ...filtersFor${type}`,
         "      }",
         "    }",
@@ -585,7 +587,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
       [
         `  query Get${type}SortOptions($entityType: String!) {`,
         "    EntityTypeSortOptions(entityType: $entityType) {",
-        `      ... on ${type} {`,
+        `      ... on ${onType} {`,
         `        ...${low}SortOptions`,
         "      }",
         "    }",
@@ -597,7 +599,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
       [
         `  query Get${type}BulkOperations($entityType: String!) {`,
         "    BulkOperations(entityType: $entityType) {",
-        `      ... on ${type} {`,
+        `      ... on ${onType} {`,
         `        ...${low}BulkOperations`,
         "      }",
         "    }",
@@ -655,4 +657,29 @@ export function replaceRegion(source: string, id: string, content: string): stri
   const end = lines.findIndex((line) => line.includes(endMarker(id)));
   if (start === -1 || end === -1 || end < start) throw new Error(`region "${id}" not found`);
   return [...lines.slice(0, start + 1), ...(content ? [content] : []), ...lines.slice(end)].join("\n");
+}
+
+// -- generated custom input fields ----------------------------------------------
+
+/** The module a client imports: field definitions for ElodyInstance and the BaseFieldType extension. */
+export function renderInputFieldsModule(fields: Record<string, unknown>, declaration: string): string {
+  const names = Object.keys(fields).sort();
+  const definitions = names.map((name) => `  ${name}: ${JSON.stringify(fields[name])},`).join("\n");
+  return [
+    `// GENERATED from ${declaration} — do not edit by hand.`,
+    "// Register with ElodyInstance: customInputFields: generatedInputFields,",
+    "// and add generatedInputFieldsSchema to the client's type definitions.",
+    'import { gql } from "graphql-modules";',
+    "",
+    "export const generatedInputFields: Record<string, any> = {",
+    definitions,
+    "};",
+    "",
+    "export const generatedInputFieldsSchema = gql`",
+    "  extend enum BaseFieldType {",
+    ...names.map((name) => `    ${name}`),
+    "  }",
+    "`;",
+    "",
+  ].join("\n");
 }

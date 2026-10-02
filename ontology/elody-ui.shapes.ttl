@@ -17,6 +17,7 @@ meta:EntityUiShape a sh:NodeShape ;
   sh:property
     [ sh:path elody:graphqlType ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ;
       sh:message "an EntityUi names exactly one GraphQL type" ] ,
+    [ sh:path elody:documentName ; sh:maxCount 1 ; sh:datatype xsd:string ] ,
     [ sh:path elody:emit ; sh:maxCount 1 ; sh:in ( "file" "regions" ) ;
       sh:message "elody:emit is \"file\" or \"regions\"" ] ,
     [ sh:path elody:documents ; sh:in ( "entities" "filters" "sortOptions" "bulkOperations" ) ;
@@ -25,13 +26,20 @@ meta:EntityUiShape a sh:NodeShape ;
       sh:message "an EntityUi declares at least one view mode" ] ,
     [ sh:path sh:property ; sh:minCount 1 ; sh:node meta:PropertyShapeShape ;
       sh:message "an EntityUi declares at least one property shape" ] ,
-    # exactly one label role across the property shapes (shui: or dash: predicate)
+    # a label role (the card title): direct on one property shape, or qualified with sh:order on several
+    [ sh:path sh:property ;
+      sh:qualifiedValueShape [ sh:or (
+          [ sh:property [ sh:path shui:propertyRole ; sh:hasValue shui:LabelRole ] ]
+          [ sh:property [ sh:path dash:propertyRole ; sh:hasValue dash:LabelRole ] ]
+          [ sh:property [ sh:path ( shui:propertyRole shui:propertyRole ) ; sh:hasValue shui:LabelRole ] ] ) ] ;
+      sh:qualifiedMinCount 1 ;
+      sh:message "a property shape carries the LabelRole (the card title)" ] ,
     [ sh:path sh:property ;
       sh:qualifiedValueShape [ sh:or (
           [ sh:property [ sh:path shui:propertyRole ; sh:hasValue shui:LabelRole ] ]
           [ sh:property [ sh:path dash:propertyRole ; sh:hasValue dash:LabelRole ] ] ) ] ;
-      sh:qualifiedMinCount 1 ; sh:qualifiedMaxCount 1 ;
-      sh:message "exactly one property shape carries the LabelRole (the card title)" ] ,
+      sh:qualifiedMaxCount 1 ;
+      sh:message "at most one property shape carries a direct LabelRole; use qualified roles with sh:order for precedence" ] ,
     [ sh:path elody:filter ; sh:node meta:FilterShape ] ,
     [ sh:path elody:contextMenu ; sh:maxCount 1 ; sh:node meta:ContextMenuShape ] ,
     [ sh:path elody:bulkOperation ; sh:node meta:BulkOperationShape ] ,
@@ -200,21 +208,14 @@ meta:FormFieldsShape a sh:NodeShape ;
   sh:property
     [ sh:path sh:property ; sh:minCount 1 ; sh:node meta:FormFieldShape ] .
 
-# a form field must be renderable: a datatype, a class, a nested shape, an enumeration or an explicit editor
+# a form field: the widget comes from the SHACL 1.2 UI scoring (text field when nothing scores)
 meta:FormFieldShape a sh:NodeShape ;
   sh:property
     [ sh:path sh:name ; sh:uniqueLang true ] ,
     [ sh:path rdfs:label ; sh:maxCount 0 ;
       sh:message "rdfs:label on a form field: use sh:name for the label text, elody:labelKey for an Elody translation key" ] ,
     [ sh:path elody:inputType ; sh:maxCount 0 ; sh:message "elody:inputType is retired: use sh:datatype / sh:class / sh:node / sh:in or shui:editor" ] ,
-    [ sh:path elody:required ; sh:maxCount 0 ; sh:message "elody:required is retired: use sh:minCount 1" ] ;
-  sh:or (
-    [ sh:property [ sh:path sh:datatype ; sh:minCount 1 ] ]
-    [ sh:property [ sh:path sh:class ; sh:minCount 1 ] ]
-    [ sh:property [ sh:path sh:node ; sh:minCount 1 ] ]
-    [ sh:property [ sh:path sh:in ; sh:minCount 1 ] ]
-    [ sh:property [ sh:path shui:editor ; sh:minCount 1 ] ] ) ;
-  sh:message "a form field is renderable: sh:datatype, sh:class, sh:node, sh:in or shui:editor" .
+    [ sh:path elody:required ; sh:maxCount 0 ; sh:message "elody:required is retired: use sh:minCount 1" ] .
 
 # -------------------------------------------------------------- guided flows ---
 

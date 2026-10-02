@@ -14,14 +14,23 @@ import { DASH, compact, dash, elody, localName, rdf, rdfs, sh, shui } from "./vo
 /** Label texts per language and translation key, from sh:name / rdfs:label literals. */
 export type Translations = Record<string, Record<string, string>>;
 
-export type ParseResult = { entities: M.UiEntity[]; warnings: Warning[]; translations: Translations };
+/** A custom input field definition, as a client registers it with ElodyInstance (customInputFields). */
+export type InputFieldDefinition = Record<string, unknown>;
+
+export type ParseResult = {
+  entities: M.UiEntity[];
+  warnings: Warning[];
+  translations: Translations;
+  /** generated custom input fields, by BaseFieldType name */
+  inputFields: Record<string, InputFieldDefinition>;
+};
 
 export async function readUiDeclaration(ttl: string, ontology: Ontology = defaultOntology()): Promise<ParseResult> {
   const reading = Reading.parse(ttl);
   const editors = await scoreFormEditors(reading);
   const parse = new Parse(reading, ontology, editors);
   const entities = reading.subjectsOfType(elody("EntityUi")).map((subject) => parse.entity(subject));
-  return { entities, warnings: reading.warnings, translations: parse.translations };
+  return { entities, warnings: reading.warnings, translations: parse.translations, inputFields: parse.inputFields };
 }
 
 export async function parseUiDeclaration(ttl: string, ontology: Ontology = defaultOntology()): Promise<M.UiEntity[]> {
@@ -65,6 +74,7 @@ const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slic
 
 class Parse {
   readonly translations: Translations = {};
+  readonly inputFields: Record<string, InputFieldDefinition> = {};
   private groupFields = new Map<string, string[]>();
   /** lower-cased GraphQL type of the entity being parsed, for minted label keys */
   private type = "";
@@ -118,9 +128,47 @@ class Parse {
     return plain === legacyKey ? undefined : plain;
   }
 
-  /** Spec ordering: by sh:order, unordered last, ties by label then identifier. */
+  /**
+   * A create-form field whose editor has no Elody base field type becomes a
+   * generated custom input field (registered by the client, like vlacc's
+   * dropdowns): sh:in → a dropdown with those options; sh:class → a relation
+   * dropdown on that type. Anything else is not expressible in a create form.
+   */
+  private customField(node: string, editor: string, key: string): string {
+    const r = this.r;
+    const single = Number(r.value(node, sh("maxCount")) ?? 0) === 1;
+    const name = `${this.type}${key.charAt(0).toUpperCase()}${key.slice(1)}Field`;
+    if (editor === shui("EnumSelectEditor")) {
+      const values = r.list(r.node(node, sh("in")));
+      this.inputFields[name] = {
+        type: single ? "dropdown" : "dropdownMultiselectMetadata",
+        options: values.map((value) => ({ label: value, value })),
+      };
+      return name;
+    }
+    const cls = r.node(node, sh("class"));
+    if (cls && (editor === shui("InstancesSelectEditor") || editor === shui("AutoCompleteEditor"))) {
+      this.inputFields[name] = {
+        type: single ? "dropdownSingleselectRelations" : "dropdownMultiselectRelations",
+        relationType: `has${key.charAt(0).toUpperCase()}${key.slice(1)}`,
+        advancedFilterInputForRetrievingOptions: [{ type: "type", value: lowerFirst(localName(cls)) }],
+      };
+      return name;
+    }
+    throw new Error(`${compact(editor)} has no create-form field type in the ontology and no generated custom field`);
+  }
+
+  /** shui:defaultOrder of the declaration's global configuration, if any. */
+  private get defaultOrder(): number | null {
+    const config = this.r.subjectsOfType(shui("Configuration"))[0];
+    const value = config ? this.r.literal(config, shui("defaultOrder")) : undefined;
+    return typeof value === "number" ? value : value !== undefined ? Number(value) : null;
+  }
+
+  /** Spec ordering: by sh:order (or shui:defaultOrder), unordered last, ties by label then identifier. */
   private specOrder<T extends { node: string; label: string }>(items: T[]): T[] {
-    const order = (node: string) => (this.r.has(node, sh("order")) ? this.r.order(node) : null);
+    const fallback = this.defaultOrder;
+    const order = (node: string) => (this.r.has(node, sh("order")) ? this.r.order(node) : fallback);
     return [...items].sort((a, b) => {
       const oa = order(a.node), ob = order(b.node);
       if (oa !== null && ob === null) return -1;
@@ -223,7 +271,7 @@ class Parse {
 
   entity(subject: string): M.UiEntity {
     const r = this.r;
-    this.type = lowerFirst(String(r.value(subject, elody("graphqlType")) ?? ""));
+    this.type = lowerFirst(String(r.value(subject, elody("documentName")) ?? r.value(subject, elody("graphqlType")) ?? ""));
     const nodes = r.nodes(subject, sh("property"));
     const parsed = nodes.map((node) => ({ node, property: this.property(node) }));
     const ordered = this.specOrder(parsed.map((p) => ({ ...p, label: p.property.key })));
@@ -239,6 +287,7 @@ class Parse {
     return {
       iri: subject,
       graphqlType: String(r.value(subject, elody("graphqlType")) ?? ""),
+      documentName: r.value(subject, elody("documentName")) || undefined,
       targetClass: r.value(subject, sh("targetClass")),
       emit: r.value(subject, elody("emit")) === "file" ? "file" : "regions",
       documents: r.literals(subject, elody("documents")),
@@ -451,14 +500,14 @@ class Parse {
   private formField(node: string): M.UiCreateFormField {
     const r = this.r;
     const editor = this.scoredEditors.get(node) ?? shui("TextFieldEditor");
-    const inputType = this.o.formFieldType(editor);
-    if (inputType === undefined) throw new Error(`${compact(editor)} has no create-form field type in the ontology`);
+    const key0 = this.keyOf(node);
+    const inputType = this.o.formFieldType(editor) ?? this.customField(node, editor, key0);
     let required = Number(r.value(node, sh("minCount")) ?? 0) >= 1;
     if (!required && r.has(node, elody("required"))) {
       this.retired(node, elody("required"));
       required = r.literal(node, elody("required")) === true;
     }
-    const key = this.keyOf(node);
+    const key = key0;
     return {
       key,
       label: this.labelOf(node, sh("name"), `ui.${this.type}.${key}`, key),

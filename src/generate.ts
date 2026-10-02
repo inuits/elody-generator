@@ -14,6 +14,7 @@ import type { Warning } from "./reading.js";
 import {
   lowerFirst,
   renderEntityFile,
+  renderInputFieldsModule,
   renderInitialValues,
   renderSortOptions,
   renderTeaserFields,
@@ -78,7 +79,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
   if (!declaration) return { entities: [], warnings: [], changed: [], clean: true };
 
   const ttl = readFileSync(join(root, declaration), "utf-8");
-  const { entities, warnings, translations } = await readUiDeclaration(ttl, ontology);
+  const { entities, warnings, translations, inputFields } = await readUiDeclaration(ttl, ontology);
   const changed: string[] = [];
 
   const apply = (file: string, next: string) => {
@@ -95,7 +96,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
   };
 
   for (const entity of entities) {
-    const file = fileTargetFor(entity.graphqlType);
+    const file = fileTargetFor(entity.documentName ?? entity.graphqlType);
     if (entity.emit === "file") {
       apply(file, renderEntityFile(entity, declaration));
       continue;
@@ -110,6 +111,9 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
     patched = replaceRegion(patched, `${prefix}-sort-options`, renderSortOptions(entity, 4));
     apply(file, patched);
   }
+
+  if (Object.keys(inputFields).length)
+    apply(join(DECLARATION_DIR, "generatedFields.ts"), renderInputFieldsModule(inputFields, declaration));
 
   // the label texts of the declaration go into the client's translation bundles
   for (const [language, entries] of Object.entries(translations)) {

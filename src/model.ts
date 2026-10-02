@@ -166,6 +166,8 @@ export type UiFormSource = { queryName: string; field: string; withParent: boole
 export type UiEntity = {
   iri: string;
   graphqlType: string;
+  /** base name of the generated fragments and documents; defaults to graphqlType */
+  documentName?: string;
   targetClass?: string;
   emit: "file" | "regions";
   documents: string[];
