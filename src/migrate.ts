@@ -12,17 +12,26 @@ import { DataFactory, type NamedNode, type Quad, type Term } from "n3";
 import { Ontology, defaultOntology } from "./ontology.js";
 import { Reading } from "./reading.js";
 import { TurtleWriter } from "./turtle.js";
-import { DASH, SH, SHUI, XSD, compact, dash, elody, localName, rdf, sh, shui } from "./vocab.js";
+import { DASH, SH, SHUI, XSD, compact, dash, elody, localName, rdf, rdfs, sh, shui } from "./vocab.js";
 
 const { namedNode, literal, quad: makeQuad } = DataFactory;
 
 export type MigrationResult = { ttl: string; notes: string[] };
 
+/** The client's translation bundles, per language, as nested objects ({ en: { metadata: { labels: { name: "Name" } } } }). */
+export type MigrationOptions = { translations?: Record<string, Record<string, unknown>> };
+
 type Named = NamedNode;
 
-export function migrateDeclaration(ttl: string, ontology: Ontology = defaultOntology()): MigrationResult {
+const lookup = (bundle: Record<string, unknown> | undefined, dotted: string): string | undefined => {
+  let node: unknown = bundle;
+  for (const part of dotted.split(".")) node = node && typeof node === "object" ? (node as Record<string, unknown>)[part] : undefined;
+  return typeof node === "string" ? node : undefined;
+};
+
+export function migrateDeclaration(ttl: string, ontology: Ontology = defaultOntology(), options: MigrationOptions = {}): MigrationResult {
   const reading = Reading.parse(ttl);
-  const migration = new Migration(reading, ontology);
+  const migration = new Migration(reading, ontology, options);
   const quads = migration.run();
   const prefixes = migration.prefixes();
   // keep the source's own prefixes (domain ontologies), never its legacy UI ones
@@ -46,9 +55,15 @@ class Migration {
   private flowNames = new Set<string>();
   private pathByName = new Map<string, Map<string, string>>();
 
+  /** property node → group IRI, panel node → group IRI, for the entity being migrated */
+  private groupOfProperty = new Map<string, Term>();
+  private groupOfPanel = new Map<string, Term>();
+  private emittedGroups = new Set<string>();
+
   constructor(
     private readonly r: Reading,
     private readonly o: Ontology,
+    private readonly options: MigrationOptions = {},
   ) {
     const first = r.subjectsOfType(elody("EntityUi"))[0] ?? "";
     const cut = Math.max(first.lastIndexOf("#"), first.lastIndexOf("/"));
@@ -121,10 +136,72 @@ class Migration {
     return this.out;
   }
 
+  /**
+   * Panels become sh:PropertyGroups when that changes nothing on screen: every
+   * field resolves to a property shape with an sh:order, the panel lists them in
+   * that order, and no property is already in another group.
+   */
+  private planGroups(entity: string) {
+    const r = this.r;
+    this.groupOfProperty = new Map();
+    this.groupOfPanel = new Map();
+    const byName = new Map<string, string>();
+    for (const property of r.nodes(entity, sh("property"))) {
+      const name = r.literals(property, sh("name"))[0] ?? r.value(property, elody("key"));
+      if (name) byName.set(name, property);
+    }
+    const detail = r.node(entity, elody("detail"));
+    const panels = detail
+      ? r.nodes(detail, elody("column")).flatMap((c) => r.nodes(c, elody("element"))).flatMap((e) => r.nodes(e, elody("panel")))
+      : [];
+    for (const panel of panels) {
+      const alias = r.value(panel, elody("alias"));
+      const fields = r.literals(panel, elody("field"));
+      const properties = fields.map((field) => byName.get(field));
+      const orders = properties.map((p) => (p && r.has(p, sh("order")) ? r.order(p) : undefined));
+      const resolvable = alias && fields.length && properties.every(Boolean) && orders.every((o) => o !== undefined);
+      const inOrder = resolvable && orders.every((o, i) => i === 0 || o! > orders[i - 1]!);
+      const free = resolvable && properties.every((p) => !this.groupOfProperty.has(p!));
+      if (!resolvable || !inOrder || !free) {
+        if (alias)
+          this.note(`panel "${alias}" keeps its explicit field list: ${!resolvable ? "not every field resolves to a property shape with an sh:order" : !inOrder ? "its field order differs from the properties' sh:order" : "a field is already in another group"}`);
+        continue;
+      }
+      const group = this.mint(`${localName(entity)}-${alias}`);
+      this.groupOfPanel.set(panel, group);
+      for (const property of properties) this.groupOfProperty.set(property!, group);
+    }
+  }
+
+  /** sh:name texts for a translation key, from the client's bundles. */
+  private labelTexts(key: string): Term[] {
+    return Object.entries(this.options.translations ?? {})
+      .map(([language, bundle]) => {
+        const text = lookup((bundle as Record<string, unknown>)[language] as Record<string, unknown> ?? bundle, key);
+        return text === undefined ? undefined : literal(text, language);
+      })
+      .filter((term): term is NonNullable<typeof term> => term !== undefined) as Term[];
+  }
+
+  /** rdfs:label (translation key) → elody:labelKey (+ texts); sh:name as key → derived from sh:path or elody:key. */
+  private labelAndKey(node: string, out: Term, textPredicate: string) {
+    const r = this.r;
+    const key = r.literals(node, rdfs("label"))[0];
+    if (key !== undefined) {
+      this.add(out, elody("labelKey"), literal(key));
+      for (const text of this.labelTexts(key)) this.add(out, textPredicate, text);
+    }
+    if (textPredicate !== sh("name")) return;
+    const name = r.literals(node, sh("name"))[0];
+    const path = r.node(node, sh("path"));
+    if (name !== undefined && !(path && localName(path) === name)) this.add(out, elody("key"), literal(name));
+  }
+
   private entity(entity: string) {
     const r = this.r;
     const subject = namedNode(entity);
     const paths = this.pathByName.get(entity)!;
+    this.planGroups(entity);
     for (const quad of r.quadsOf(entity)) {
       const p = quad.predicate.value;
       const o = quad.object;
@@ -182,8 +259,11 @@ class Migration {
     const r = this.r;
     const handled = new Set([
       elody("formatter"), elody("hidden"), elody("editable"), elody("unit"), elody("defaultSortDirection"),
-      elody("source"), dash("propertyRole"), elody("tooltip"),
+      elody("source"), dash("propertyRole"), elody("tooltip"), rdfs("label"), sh("name"),
     ]);
+    this.labelAndKey(node, out, sh("name"));
+    const group = this.groupOfProperty.get(node);
+    if (group) this.add(out, sh("group"), group);
     const formatter = r.value(node, elody("formatter"));
     if (formatter) {
       const [name, argument] = formatter.split("|");
@@ -315,7 +395,8 @@ class Migration {
         else this.note(`input type "${inputType}" has no editor in the ontology; dropped`);
       }
       if (r.literal(field, elody("required")) === true) this.add(copy, sh("minCount"), this.int(1));
-      this.copyRest(field, copy, new Set([elody("inputType"), elody("required")]));
+      this.labelAndKey(field, copy, sh("name"));
+      this.copyRest(field, copy, new Set([elody("inputType"), elody("required"), rdfs("label"), sh("name")]));
       this.add(shape, sh("property"), copy);
     }
     this.copyRest(node, out, new Set([elody("field")]));
@@ -400,6 +481,23 @@ class Migration {
     const pickerList = r.value(node, elody("pickerList"));
     if (pickerList) this.add(out, elody("picker"), this.mint(pickerList));
     for (const panel of r.nodes(node, elody("panel"))) {
+      const group = this.groupOfPanel.get(panel);
+      if (group) {
+        this.add(out, elody("panel"), group);
+        if (this.emittedGroups.has(group.value)) continue;
+        this.emittedGroups.add(group.value);
+        this.add(group, rdf("type"), namedNode(sh("PropertyGroup")));
+        this.labelAndKey(panel, group, rdfs("label"));
+        if (r.has(panel, sh("order"))) this.add(group, sh("order"), r.term(panel, sh("order"))!);
+        this.add(group, elody("alias"), literal(r.value(panel, elody("alias"))!));
+        const kind = r.value(panel, elody("panelType"));
+        if (kind) this.add(group, elody("panelKind"), this.instance(elody("PanelKind"), kind, elody("panelType")));
+        else if (r.node(panel, elody("panelKind"))) this.add(group, elody("panelKind"), r.term(panel, elody("panelKind"))!);
+        if (r.has(panel, elody("collapsed"))) this.add(group, elody("collapsed"), r.term(panel, elody("collapsed"))!);
+        if (r.has(panel, elody("editable"))) this.add(group, dash("readOnly"), this.bool(r.literal(panel, elody("editable")) === false));
+        else if (r.has(panel, dash("readOnly"))) this.add(group, dash("readOnly"), r.term(panel, dash("readOnly"))!);
+        continue;
+      }
       const copy = this.blank();
       const panelHandled = new Set([elody("panelType"), elody("editable"), elody("field")]);
       const kind = r.value(panel, elody("panelType"));

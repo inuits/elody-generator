@@ -21,14 +21,14 @@ const r = o.reading;
 const elementClassFor = (field: string) => r.subjectsWith(elody("schemaField"), field)[0];
 
 describe("detail elements in the ontology", () => {
-  it.each(SCHEMA_ELEMENTS)("%s has an element class", (field) => {
+  it.each(SCHEMA_ELEMENTS)("%s has an element class", async (field) => {
     const cls = elementClassFor(field);
     expect(cls, field).toBeDefined();
     expect(r.values(cls, `${RDFS}subClassOf`)).toContain(elody("Element"));
     expect(r.value(cls, `${RDFS}comment`)).toBeTruthy();
   });
 
-  it("keeps the shape element (ahead of master) linked as well", () => {
+  it("keeps the shape element (ahead of master) linked as well", async () => {
     expect(elementClassFor("shaclShapeElement")).toBe(elody("ShaclShapeElement"));
   });
 
@@ -39,7 +39,7 @@ describe("detail elements in the ontology", () => {
     ["MediaElementKind", ["map", "media"]],
     ["ElementAction", ["ocr", "download", "noActions"]],
     ["WysiwygExtension", ["color", "listItem", "textStyle", "starterKit", "bold", "italic", "paragraph", "doc", "text", "hardBreak", "elodyTaggingExtension"]],
-  ])("enumerates every %s value as an instance", (cls, values) => {
+  ])("enumerates every %s value as an instance", async (cls, values) => {
     for (const value of values) expect(o.instanceFor(elody(cls), value), `${cls} ${value}`).toBeDefined();
   });
 });
@@ -72,8 +72,8 @@ describe("declaring the new elements", () => {
     expect(missing.conforms).toBe(false);
   });
 
-  it("refuses an element the generator cannot render yet, naming it", () => {
-    expect(() => readUiDeclaration(declaration(`[ a elody:MapElement ; elody:mapType elody:PointsMap ]`))).toThrow(
+  it("refuses an element the generator cannot render yet, naming it", async () => {
+    await expect(readUiDeclaration(declaration(`[ a elody:MapElement ; elody:mapType elody:PointsMap ]`))).rejects.toThrow(
       /elody:MapElement .* not rendered by the generator yet/,
     );
   });

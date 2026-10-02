@@ -7,20 +7,11 @@ import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { Reading } from "./reading.js";
-import { DCTERMS, OWL, RDF, SH, SHUI, XSD, compact, elody, rdfs, shui } from "./vocab.js";
+import { DCTERMS, OWL, SHUI, compact, elody, rdfs } from "./vocab.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const ONTOLOGY_PATH = join(here, "..", "ontology", "elody-ui.ttl");
 export const META_SHAPES_PATH = join(here, "..", "ontology", "elody-ui.shapes.ttl");
-
-export type EditorFacts = {
-  datatype?: string;
-  hasClass: boolean;
-  hasNode: boolean;
-  hasIn: boolean;
-  nodeKind?: string;
-  singleLine?: boolean;
-};
 
 export class Ontology {
   readonly reading: Reading;
@@ -102,28 +93,6 @@ export class Ontology {
 
   comment(iri: string): string | undefined {
     return this.reading.value(iri, rdfs("comment"));
-  }
-
-  /**
-   * The shui editor the spec's inference picks for a property shape without an
-   * explicit editor (SHACL 1.2 UI scoring, same outcome): enumeration, nested
-   * shape, class, datatype, node kind, single line.
-   */
-  inferEditor(facts: EditorFacts): string {
-    if (facts.hasIn) return shui("EnumSelectEditor");
-    if (facts.hasNode) return shui("DetailsEditor");
-    if (facts.hasClass) return shui("InstancesSelectEditor");
-    const datatype = facts.datatype ?? "";
-    if (datatype === `${RDF}langString`)
-      return facts.singleLine === false ? shui("TextAreaWithLangEditor") : shui("TextFieldWithLangEditor");
-    const numeric = ["integer", "decimal", "double", "float", "int", "long", "nonNegativeInteger", "positiveInteger"];
-    if (numeric.some((name) => datatype === `${XSD}${name}`)) return shui("NumberFieldEditor");
-    if (datatype === `${XSD}boolean`) return shui("BooleanEditor");
-    if (datatype === `${XSD}date`) return shui("DatePickerEditor");
-    if (datatype === `${XSD}dateTime`) return shui("DateTimePickerEditor");
-    if (datatype === `${XSD}anyURI` || (!datatype && facts.nodeKind === `${SH}IRI`)) return shui("IRIEditor");
-    if (facts.singleLine === false) return shui("TextAreaEditor");
-    return shui("TextFieldEditor");
   }
 }
 

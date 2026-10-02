@@ -5,22 +5,50 @@
  * so `check` can report what to migrate.
  */
 import type { Term } from "n3";
+import { Scorer } from "./score.js";
 import * as M from "./model.js";
 import { Ontology, defaultOntology } from "./ontology.js";
 import { Reading, type Literal, type Warning } from "./reading.js";
 import { DASH, compact, dash, elody, localName, rdf, rdfs, sh, shui } from "./vocab.js";
 
-export type ParseResult = { entities: M.UiEntity[]; warnings: Warning[] };
+/** Label texts per language and translation key, from sh:name / rdfs:label literals. */
+export type Translations = Record<string, Record<string, string>>;
 
-export function readUiDeclaration(ttl: string, ontology: Ontology = defaultOntology()): ParseResult {
+export type ParseResult = { entities: M.UiEntity[]; warnings: Warning[]; translations: Translations };
+
+export async function readUiDeclaration(ttl: string, ontology: Ontology = defaultOntology()): Promise<ParseResult> {
   const reading = Reading.parse(ttl);
-  const parse = new Parse(reading, ontology);
+  const editors = await scoreFormEditors(reading);
+  const parse = new Parse(reading, ontology, editors);
   const entities = reading.subjectsOfType(elody("EntityUi")).map((subject) => parse.entity(subject));
-  return { entities, warnings: reading.warnings };
+  return { entities, warnings: reading.warnings, translations: parse.translations };
 }
 
-export function parseUiDeclaration(ttl: string, ontology: Ontology = defaultOntology()): M.UiEntity[] {
-  return readUiDeclaration(ttl, ontology).entities;
+export async function parseUiDeclaration(ttl: string, ontology: Ontology = defaultOntology()): Promise<M.UiEntity[]> {
+  return (await readUiDeclaration(ttl, ontology)).entities;
+}
+
+/**
+ * The SHACL 1.2 UI scoring system picks the editor of every create-form field
+ * (the property shapes under an elody:Form's elody:shape). Fields without any
+ * scored editor get none here; the parser falls back to a text field, which is
+ * the renderer's choice the spec leaves open.
+ */
+async function scoreFormEditors(reading: Reading): Promise<Map<string, string>> {
+  const fields = reading
+    .subjectsOfType(elody("Form"))
+    .flatMap((form) => reading.nodes(form, elody("shape")))
+    .flatMap((shape) => reading.nodes(shape, sh("property")));
+  const editors = new Map<string, string>();
+  if (!fields.length) return editors;
+  const scorer = await Scorer.create({ shapes: reading.quads() });
+  for (const field of fields) {
+    const term = reading.quadsOf(field)[0]?.subject;
+    if (!term) continue;
+    const best = (await scorer.editors(term))[0];
+    if (best) editors.set(field, best.widget);
+  }
+  return editors;
 }
 
 /** Derive a picker's filters document name from its listing document name. */
@@ -33,11 +61,74 @@ const UNRENDERED_ELEMENTS = [
   "ManifestViewerElement", "EntityViewerElement", "ActionElement", "WysiwygElement", "CommentsElement",
 ].map((name) => elody(name));
 
+const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
+
 class Parse {
+  readonly translations: Translations = {};
+  private groupFields = new Map<string, string[]>();
+  /** lower-cased GraphQL type of the entity being parsed, for minted label keys */
+  private type = "";
+
   constructor(
     private readonly r: Reading,
     private readonly o: Ontology,
+    private readonly scoredEditors: Map<string, string> = new Map(),
   ) {}
+
+  // -- keys and labels (sh:name = label text, sh:path = key) ----------------------
+
+  /** The metadata key of a property shape: elody:key, else the sh:path local name, else (old use) sh:name. */
+  private keyOf(node: string): string {
+    const r = this.r;
+    const explicit = r.value(node, elody("key"));
+    if (explicit) return explicit;
+    const path = r.node(node, sh("path"));
+    if (path && !path.startsWith("_:") && !path.startsWith("n3-") && /[:/#]/.test(path)) return localName(path);
+    const name = r.literals(node, sh("name"))[0];
+    if (name !== undefined) {
+      r.warn(node, "sh:name used as the metadata key: give the property an sh:path (or elody:key); sh:name is the label text");
+      return name;
+    }
+    return "";
+  }
+
+  private addTranslation(language: string, key: string, text: string) {
+    (this.translations[language] ??= {})[key] = text;
+  }
+
+  /**
+   * The label a renderer shows, as an Elody translation key: elody:labelKey, else
+   * (old use) rdfs:label on a property shape, else a key minted from `minted`
+   * when the label text is language-tagged. The tagged texts land in
+   * `translations` under that key. An untagged text is the label itself.
+   */
+  private labelOf(node: string, textPredicate: string, minted: string, legacyKey?: string): string | undefined {
+    const r = this.r;
+    const texts = r.quadsOf(node).filter((q) => q.predicate.value === textPredicate && q.object.termType === "Literal");
+    const tagged = texts.filter((q) => (q.object as Term & { language?: string }).language);
+    let key = r.value(node, elody("labelKey"));
+    if (!key && textPredicate === sh("name") && r.has(node, rdfs("label"))) {
+      r.warn(node, "rdfs:label on a property shape is read as an Elody translation key: use elody:labelKey, and sh:name for the label text");
+      key = r.value(node, rdfs("label"));
+    }
+    if (!key && tagged.length) key = minted;
+    for (const q of tagged) if (key) this.addTranslation((q.object as Term & { language: string }).language, key, q.object.value);
+    if (key) return key;
+    const plain = texts.find((q) => !(q.object as Term & { language?: string }).language)?.object.value;
+    return plain === legacyKey ? undefined : plain;
+  }
+
+  /** Spec ordering: by sh:order, unordered last, ties by label then identifier. */
+  private specOrder<T extends { node: string; label: string }>(items: T[]): T[] {
+    const order = (node: string) => (this.r.has(node, sh("order")) ? this.r.order(node) : null);
+    return [...items].sort((a, b) => {
+      const oa = order(a.node), ob = order(b.node);
+      if (oa !== null && ob === null) return -1;
+      if (oa === null && ob !== null) return 1;
+      if (oa !== null && ob !== null && oa !== ob) return oa - ob;
+      return a.label.localeCompare(b.label) || (a.node < b.node ? -1 : a.node > b.node ? 1 : 0);
+    });
+  }
 
   // -- warnings ----------------------------------------------------------------
 
@@ -132,8 +223,18 @@ class Parse {
 
   entity(subject: string): M.UiEntity {
     const r = this.r;
-    const properties = r.byOrder(r.nodes(subject, sh("property"))).map((node) => this.property(node));
+    this.type = lowerFirst(String(r.value(subject, elody("graphqlType")) ?? ""));
+    const nodes = r.nodes(subject, sh("property"));
+    const parsed = nodes.map((node) => ({ node, property: this.property(node) }));
+    const ordered = this.specOrder(parsed.map((p) => ({ ...p, label: p.property.key })));
+    const properties = ordered.map((p) => p.property);
     const pathToKey = new Map(properties.filter((p) => p.path).map((p) => [p.path!, p.key]));
+    // sh:group → the keys of its properties, in the spec's order within the group
+    this.groupFields = new Map();
+    for (const { node, property } of ordered) {
+      const group = r.node(node, sh("group"));
+      if (group) (this.groupFields.get(group) ?? this.groupFields.set(group, []).get(group)!).push(property.key);
+    }
 
     return {
       iri: subject,
@@ -183,10 +284,11 @@ class Parse {
     const readOnly = r.has(node, elody("editable"))
       ? (this.retired(node, elody("editable")), r.literal(node, elody("editable")) === false)
       : r.literal(node, dash("readOnly")) === true;
+    const key = this.keyOf(node);
     return {
-      key: String(r.value(node, sh("name")) ?? ""),
+      key,
       path: r.node(node, sh("path")),
-      label: r.value(node, rdfs("label")),
+      label: this.labelOf(node, sh("name"), `ui.${this.type}.${key}`, key),
       order: r.order(node),
       colSpan: typeof colSpan === "number" ? colSpan : undefined,
       unit: this.enumValue(node, elody("unit"), elody("Unit")),
@@ -318,7 +420,7 @@ class Parse {
         return {
           queryName: this.queryNameOf(node, "form"),
           label: r.value(node, rdfs("label")),
-          fields: r.byOrder(r.nodes(shape, sh("property"))).map((field) => this.formField(field)),
+          fields: this.specOrder(r.nodes(shape, sh("property")).map((node) => ({ node, label: this.keyOf(node) }))).map((field) => this.formField(field.node)),
           submit: this.submit(r.node(node, elody("submit"))),
         };
       });
@@ -345,23 +447,10 @@ class Parse {
     };
   }
 
-  /** A form field as a property shape: the widget follows shui:editor or the spec's inference. */
+  /** A form field as a property shape: the widget is the one the SHACL 1.2 UI scoring system picks. */
   private formField(node: string): M.UiCreateFormField {
     const r = this.r;
-    const explicit = r.node(node, shui("editor"));
-    const editor =
-      explicit ??
-      this.o.inferEditor({
-        datatype: r.node(node, sh("datatype")),
-        hasClass: r.has(node, sh("class")),
-        hasNode: r.has(node, sh("node")),
-        hasIn: r.has(node, sh("in")),
-        nodeKind: r.node(node, sh("nodeKind")),
-        singleLine: (() => {
-          const value = r.literal(node, sh("singleLine"));
-          return typeof value === "boolean" ? value : undefined;
-        })(),
-      });
+    const editor = this.scoredEditors.get(node) ?? shui("TextFieldEditor");
     const inputType = this.o.formFieldType(editor);
     if (inputType === undefined) throw new Error(`${compact(editor)} has no create-form field type in the ontology`);
     let required = Number(r.value(node, sh("minCount")) ?? 0) >= 1;
@@ -369,9 +458,10 @@ class Parse {
       this.retired(node, elody("required"));
       required = r.literal(node, elody("required")) === true;
     }
+    const key = this.keyOf(node);
     return {
-      key: String(r.value(node, sh("name")) ?? ""),
-      label: r.value(node, rdfs("label")),
+      key,
+      label: this.labelOf(node, sh("name"), `ui.${this.type}.${key}`, key),
       order: r.order(node),
       inputType,
       required,
@@ -558,6 +648,18 @@ class Parse {
       this.retired(panel, elody("editable"));
       editable = r.literal(panel, elody("editable")) === true;
     } else editable = r.literal(panel, dash("readOnly")) !== true;
+
+    const alias = String(r.value(panel, elody("alias")) ?? "");
+    if (r.hasType(panel, sh("PropertyGroup")))
+      return {
+        alias,
+        order: r.order(panel),
+        label: this.labelOf(panel, rdfs("label"), `ui.${this.type}.group.${alias}`),
+        panelType: this.enumValue(panel, elody("panelKind"), elody("PanelKind"), elody("panelType")) ?? "metadata",
+        collapsed: r.literal(panel, elody("collapsed")) === true,
+        editable,
+        fields: this.groupFields.get(panel) ?? [],
+      };
 
     const fields = r.quadsOf(panel)
       .filter((quad) => quad.predicate.value === elody("field"))

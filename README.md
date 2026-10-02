@@ -47,11 +47,9 @@ markers in a hand-written file.
 
 ## Compatibility levels (epic #165964)
 
-- **L0** — plain SHACL Core renders. `shapeToForm` uses the spec's own
-  scoring system (`tests/specScoring.test.ts`, `tests/specExamples.test.ts`).
-  The generator's create forms still use a simplified inference
-  (`Ontology.inferEditor`, `tests/editors.test.ts`) that differs from the
-  spec for `sh:class` alone and for `xsd:anyURI`; it moves to the scorer next.
+- **L0** — plain SHACL Core renders. Every widget choice (create forms in the
+  generator, `shapeToForm`) comes from the spec's scoring system on the
+  official scoring graph (`tests/specScoring.test.ts`, `tests/specExamples.test.ts`).
 - **L1** — an explicit `shui:editor` / `shui:viewer` wins, Elody editors
   included (`tests/editors.test.ts`).
 - **L2** — round-trip: not yet (T2).
@@ -95,6 +93,24 @@ Whatever Elody cannot render is listed as a gap on the field.
 
 `tests/specExamples.test.ts` runs every example of the spec (`spec/examples/`);
 `scripts/specReport.ts` writes the per-example verdict.
+
+## Labels, keys and groups (standard terms)
+
+- `sh:name` is the label **text**, one per language. The metadata key is the
+  local name of `sh:path`, or `elody:key` where it differs.
+- `elody:labelKey` is the Elody translation key the label is shown under.
+  Without it the generator mints `ui.<type>.<key>`. `generate` writes the
+  `sh:name` texts into `src/translations/<lang>.json` under that key, only where
+  a value is missing or differs.
+- `sh:group` → `sh:PropertyGroup` is a detail panel: `elody:panel ui:Info` on a
+  window element, the group carries `elody:alias`, `elody:panelKind`,
+  `dash:readOnly`, `elody:collapsed` and its label in `rdfs:label` (text) /
+  `elody:labelKey`. Its fields are the properties in that group, in their own
+  `sh:order`. An `elody:Panel` with an explicit `elody:field` list remains for a
+  panel whose order differs from the properties' order.
+- Old use (`rdfs:label` as a property's translation key, `sh:name` as the key)
+  is read with a warning; `elody-ui migrate --translations src/translations`
+  rewrites it and fills `sh:name` per language from the client's bundles.
 
 ## Detail elements
 

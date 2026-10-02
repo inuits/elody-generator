@@ -773,8 +773,13 @@ elody:searchInput a owl:ObjectProperty ;
   rdfs:label "search input"@en ; rdfs:domain elody:ListElement ; rdfs:range elody:SearchInputKind ;
   rdfs:comment "Which search bar the list shows. Replaces the string elody:searchInputType."@en .
 elody:panel a owl:ObjectProperty ;
-  rdfs:label "panel"@en ; rdfs:domain elody:WindowElement ; rdfs:range elody:Panel ;
-  rdfs:comment "A panel in the window."@en .
+  rdfs:label "panel"@en ; rdfs:domain elody:WindowElement ;
+  rdfs:range [ owl:unionOf ( elody:Panel sh:PropertyGroup ) ] ;
+  rdfs:comment "A panel in the window. Preferably a sh:PropertyGroup: its fields are then the property shapes whose sh:group is that group, in their own sh:order (SHACL 1.2 UI grouping). An elody:Panel with an explicit elody:field list remains for a panel whose order differs from the properties' sh:order."@en .
+
+elody:labelKey a owl:DatatypeProperty ;
+  rdfs:label "label translation key"@en ; rdfs:domain owl:Thing ; rdfs:range xsd:string ;
+  rdfs:comment "The Elody translation key under which the label is shown. The label text itself is sh:name (property shapes) or rdfs:label (property groups), language-tagged; `generate` writes those texts into the client's translation bundles under this key. Without elody:labelKey the generator mints ui.<type>.<key>. No standard term: SHACL carries label texts, not an application's translation keys."@en .
 elody:panelKind a owl:ObjectProperty ;
   rdfs:label "panel kind"@en ; rdfs:domain elody:Panel ; rdfs:range elody:PanelKind ;
   rdfs:comment "Which panel type. Replaces the string elody:panelType."@en .

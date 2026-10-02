@@ -158,7 +158,12 @@ export class Scorer {
     const scored = new Set(new Index(scoring).subjectsOf(RDF_TYPE, `${SHUI}WidgetScore`).flatMap((s) =>
       new Index(scoring).objects(s.value, `${SHUI}widget`).map((w) => w.value),
     ));
+    // a shape: typed as one, has a path, or is the value of sh:property / sh:node
+    const referenced = new Set(
+      shapes.quads.filter((q) => q.predicate.value === `${SH}property` || q.predicate.value === `${SH}node`).map((q) => q.object.value),
+    );
     const isShape = (subject: string) =>
+      referenced.has(subject) ||
       shapes.objects(subject, RDF_TYPE).some((t) => t.value === `${SH}NodeShape` || t.value === `${SH}PropertyShape`) ||
       shapes.objects(subject, `${SH}path`).length > 0;
     for (const [predicate, kind] of [[`${SHUI}editor`, "editor"], [`${SHUI}viewer`, "viewer"]] as const) {

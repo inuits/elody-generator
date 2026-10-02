@@ -33,7 +33,8 @@ export function normaliseIri(iri: string): string {
 }
 
 export const localName = (iri: string): string => {
-  const cut = Math.max(iri.lastIndexOf("#"), iri.lastIndexOf("/"));
+  let cut = Math.max(iri.lastIndexOf("#"), iri.lastIndexOf("/"));
+  if (cut === -1) cut = iri.lastIndexOf(":"); // URNs: urn:ex:title → title
   return cut === -1 ? iri : iri.slice(cut + 1);
 };
 

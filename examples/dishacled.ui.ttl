@@ -17,24 +17,23 @@ ui:AlertUi
     elody:mode elody:ListView ] ;
   sh:property
     [ sh:path em:message ;
-    sh:name "message" ;
-    rdfs:label "metadata.labels.alert.message" ;
+    sh:name "Message"@en , "Bericht"@nl ;
     sh:order 1 ;
+    elody:labelKey "metadata.labels.alert.message" ;
     shui:propertyRole shui:LabelRole ;
     elody:colSpan 2 ] ,
     [ sh:path em:created ;
-    sh:name "created" ;
-    rdfs:label "metadata.labels.alert.created" ;
+    sh:name "Raised at"@en , "Tijdstip"@nl ;
     sh:order 2 ;
+    elody:labelKey "metadata.labels.alert.created" ;
     elody:unit elody:DatetimeDmy24 ;
     elody:defaultSortDirection elody:Descending ;
     elody:sortable true ] ,
     [ sh:path em:subject ;
-    sh:name "subject" ;
-    rdfs:label "metadata.labels.alert.subject" ;
-    sh:order 3 ] ,
+    sh:name "Source"@en , "Bron"@nl ;
+    sh:order 3 ;
+    elody:labelKey "metadata.labels.alert.subject" ] ,
     [ sh:path em:uuid ;
-    sh:name "uuid" ;
     sh:order 4 ;
     elody:teaser false ] ;
   elody:filter
@@ -77,59 +76,61 @@ ui:ComponentUi
     elody:mode elody:PipelineView ] ;
   sh:property
     [ sh:path em:name ;
-    sh:name "name" ;
-    rdfs:label "metadata.labels.name" ;
+    sh:name "Name"@en , "Naam"@nl ;
     sh:order 1 ;
+    elody:labelKey "metadata.labels.name" ;
     shui:propertyRole shui:LabelRole ;
     elody:colSpan 2 ;
     elody:sortable true ] ,
     [ sh:path em:description ;
-    sh:name "description" ;
-    rdfs:label "metadata.labels.description" ;
+    sh:name "Description"@en , "Beschrijving"@nl ;
     sh:order 2 ;
+    elody:labelKey "metadata.labels.description" ;
     dash:propertyRole dash:DescriptionRole ;
     elody:colSpan 3 ] ,
     [ sh:path em:repository ;
-    sh:name "repository" ;
-    rdfs:label "metadata.labels.repository" ;
+    sh:name "Repository"@en , "Repository"@nl ;
     sh:order 3 ;
+    elody:labelKey "metadata.labels.repository" ;
     elody:teaser false ] ,
     [ sh:path em:runtime ;
-    sh:name "runtime" ;
-    rdfs:label "metadata.labels.runtime" ;
+    sh:name "Runtime"@en ;
     sh:order 4 ;
+    elody:labelKey "metadata.labels.runtime" ;
+    sh:group ui:ComponentUi-importConfig ;
     shui:viewer elody:PillViewer ;
     elody:viewerArgument "auto" ;
     elody:teaser false ] ,
     [ sh:path em:url ;
-    sh:name "url" ;
-    rdfs:label "metadata.labels.url" ;
+    sh:name "URL"@en , "URL"@nl ;
     sh:order 5 ;
+    elody:labelKey "metadata.labels.url" ;
     elody:teaser false ] ,
     [ sh:path em:owner ;
-    sh:name "owner" ;
-    rdfs:label "metadata.labels.owner" ;
+    sh:name "Owner"@en ;
     sh:order 6 ;
+    elody:labelKey "metadata.labels.owner" ;
     elody:teaser false ] ,
     [ sh:path em:language ;
-    sh:name "language" ;
-    rdfs:label "metadata.labels.language" ;
+    sh:name "Language"@en ;
     sh:order 7 ;
+    elody:labelKey "metadata.labels.language" ;
     elody:teaser false ] ,
     [ sh:path em:stars ;
-    sh:name "stars" ;
-    rdfs:label "metadata.labels.stars" ;
+    sh:name "Stars"@en ;
     sh:order 8 ;
+    elody:labelKey "metadata.labels.stars" ;
     elody:teaser false ] ,
     [ sh:path em:defaultBranch ;
-    sh:name "defaultBranch" ;
-    rdfs:label "metadata.labels.default-branch" ;
+    sh:name "Default branch"@en ;
     sh:order 9 ;
+    elody:labelKey "metadata.labels.default-branch" ;
     elody:teaser false ] ,
     [ sh:path em:shaclFiles ;
-    sh:name "shaclFiles" ;
-    rdfs:label "metadata.labels.shacl-files" ;
+    sh:name "SHACL files"@en ;
     sh:order 10 ;
+    elody:labelKey "metadata.labels.shacl-files" ;
+    sh:group ui:ComponentUi-shaclInfo ;
     elody:teaser false ] ;
   elody:filter
     [ sh:order 1 ;
@@ -188,13 +189,7 @@ ui:ComponentUi
             em:stars ,
             em:defaultBranch ;
           elody:collapsed false ] ,
-          [ rdfs:label "panel-labels.shacl-files" ;
-          sh:order 2 ;
-          elody:alias "shaclInfo" ;
-          elody:panelKind elody:MetadataPanel ;
-          dash:readOnly true ;
-          elody:field em:shaclFiles ;
-          elody:collapsed false ] ;
+          ui:ComponentUi-shaclInfo ;
         elody:expandButton true ] ] ,
       [ sh:order 2 ;
       elody:size elody:Width30 ;
@@ -202,16 +197,29 @@ ui:ComponentUi
         [ a elody:WindowElement ;
         rdfs:label "window-element-labels.import-config" ;
         sh:order 1 ;
-        elody:panel
-          [ rdfs:label "panel-labels.import-configuration" ;
-          sh:order 1 ;
-          elody:alias "importConfig" ;
-          elody:panelKind elody:MetadataPanel ;
-          dash:readOnly true ;
-          elody:field em:runtime ;
-          elody:collapsed false ] ;
+        elody:panel ui:ComponentUi-importConfig ;
         elody:expandButton true ] ] ] ;
   elody:formSource ui:ProcessorRelationConfig , ui:ProcessorConnectionsConfig .
+
+ui:ComponentUi-shaclInfo
+  a sh:PropertyGroup ;
+  rdfs:label "SHACL files"@en ;
+  sh:order 2 ;
+  elody:alias "shaclInfo" ;
+  elody:labelKey "panel-labels.shacl-files" ;
+  elody:panelKind elody:MetadataPanel ;
+  elody:collapsed false ;
+  dash:readOnly true .
+
+ui:ComponentUi-importConfig
+  a sh:PropertyGroup ;
+  rdfs:label "Import configuration"@en ;
+  sh:order 1 ;
+  elody:alias "importConfig" ;
+  elody:labelKey "panel-labels.import-configuration" ;
+  elody:panelKind elody:MetadataPanel ;
+  elody:collapsed false ;
+  dash:readOnly true .
 
 ui:ProcessorRelationConfig
   elody:queryName "ProcessorRelationConfig" ;
@@ -233,15 +241,17 @@ ui:PipelineUi
     elody:mode elody:GridView ] ;
   sh:property
     [ sh:path em:name ;
-    sh:name "name" ;
-    rdfs:label "metadata.labels.name" ;
+    sh:name "Name"@en , "Naam"@nl ;
     sh:order 1 ;
+    elody:labelKey "metadata.labels.name" ;
+    sh:group ui:PipelineUi-info ;
     shui:propertyRole shui:LabelRole ;
     elody:sortable true ] ,
     [ sh:path em:description ;
-    sh:name "description" ;
-    rdfs:label "metadata.labels.description" ;
+    sh:name "Description"@en , "Beschrijving"@nl ;
     sh:order 2 ;
+    elody:labelKey "metadata.labels.description" ;
+    sh:group ui:PipelineUi-info ;
     elody:teaser false ] ;
   elody:filter
     [ sh:order 1 ;
@@ -280,14 +290,7 @@ ui:PipelineUi
         [ a elody:WindowElement ;
         rdfs:label "window-element-labels.info-window" ;
         sh:order 1 ;
-        elody:panel
-          [ rdfs:label "panel-labels.pipeline-info" ;
-          sh:order 1 ;
-          elody:alias "info" ;
-          elody:panelKind elody:MetadataPanel ;
-          dash:readOnly true ;
-          elody:field em:name , em:description ;
-          elody:collapsed false ] ;
+        elody:panel ui:PipelineUi-info ;
         elody:expandButton true ] ,
         [ a elody:ListElement ;
         rdfs:label "element-labels.processor-element" ;
@@ -310,6 +313,16 @@ ui:PipelineUi
     ui:GetEntityPickerListForRunnersInPipeline ,
     ui:GetEntityPickerListForProcessorsInPipeline .
 
+ui:PipelineUi-info
+  a sh:PropertyGroup ;
+  rdfs:label "Pipeline info"@en , "Pipeline-info"@nl ;
+  sh:order 1 ;
+  elody:alias "info" ;
+  elody:labelKey "panel-labels.pipeline-info" ;
+  elody:panelKind elody:MetadataPanel ;
+  elody:collapsed false ;
+  dash:readOnly true .
+
 ui:GetPipelineConnections
   elody:queryName "GetPipelineConnections" ;
   elody:resolverField "PipelineConnections" .
@@ -325,16 +338,18 @@ ui:GetPipelineCreateForm
   elody:shape
     [ sh:property
       [ sh:path em:name ;
-      sh:name "name" ;
-      rdfs:label "metadata.labels.name" ;
+      sh:name "Name"@en , "Naam"@nl ;
       sh:order 1 ;
+      elody:key "name" ;
       sh:datatype xsd:string ;
-      sh:minCount 1 ] ,
+      sh:minCount 1 ;
+      elody:labelKey "metadata.labels.name" ] ,
       [ sh:path em:description ;
-      sh:name "description" ;
-      rdfs:label "metadata.labels.description" ;
+      sh:name "Description"@en , "Beschrijving"@nl ;
       sh:order 2 ;
-      sh:datatype xsd:string ] ] ;
+      elody:key "description" ;
+      sh:datatype xsd:string ;
+      elody:labelKey "metadata.labels.description" ] ] ;
   elody:submit
     [ rdfs:label "actions.labels.create" ;
     elody:icon "Create" ;

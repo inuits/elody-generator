@@ -2,9 +2,9 @@
  * elody-ui generate [--root DIR] [--declaration FILE]
  * elody-ui check    [--root DIR] [--declaration FILE]   drift + meta-shapes + retired terms
  * elody-ui validate FILE                                 meta-shapes only
- * elody-ui migrate  FILE [--out FILE]                    retired dialect -> 0.1 vocabulary
+ * elody-ui migrate  FILE [--out FILE] [--translations DIR]  retired dialect -> 0.1; label texts from the client bundles
  */
-import { readFileSync, writeFileSync } from "fs";
+import { readdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { findDeclaration, generate } from "./generate.js";
 import { migrateDeclaration } from "./migrate.js";
@@ -14,7 +14,7 @@ const usage = `usage:
   elody-ui generate [--root DIR] [--declaration FILE]
   elody-ui check    [--root DIR] [--declaration FILE]
   elody-ui validate FILE
-  elody-ui migrate  FILE [--out FILE]`;
+  elody-ui migrate  FILE [--out FILE] [--translations DIR]`;
 
 function option(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(name);
@@ -26,7 +26,7 @@ export async function main(argv: string[]): Promise<number> {
   const root = option(rest, "--root") ?? process.cwd();
 
   if (command === "generate") {
-    const result = generate({ root, declaration: option(rest, "--declaration"), log: console.log });
+    const result = await generate({ root, declaration: option(rest, "--declaration"), log: console.log });
     if (!result.declaration) console.log("no src/ui/*.ui.ttl declaration: nothing to generate");
     for (const warning of result.warnings) console.warn(`warning: ${warning.message}`);
     return 0;
@@ -38,7 +38,7 @@ export async function main(argv: string[]): Promise<number> {
       console.log("no src/ui/*.ui.ttl declaration: nothing to check");
       return 0;
     }
-    const result = generate({ root, declaration, check: true, log: console.error });
+    const result = await generate({ root, declaration, check: true, log: console.error });
     let ok = result.clean;
     for (const warning of result.warnings) console.warn(`warning: ${warning.message}`);
     const report = await validateDeclaration(readFileSync(join(root, declaration), "utf-8"));
@@ -64,7 +64,15 @@ export async function main(argv: string[]): Promise<number> {
   if (command === "migrate") {
     const file = rest.find((argument) => !argument.startsWith("--"));
     if (!file) throw new Error(usage);
-    const result = migrateDeclaration(readFileSync(file, "utf-8"));
+    const dir = option(rest, "--translations");
+    const translations = dir
+      ? Object.fromEntries(
+          readdirSync(dir)
+            .filter((name) => name.endsWith(".json"))
+            .map((name) => [name.replace(/\.json$/, ""), JSON.parse(readFileSync(join(dir, name), "utf-8"))]),
+        )
+      : undefined;
+    const result = migrateDeclaration(readFileSync(file, "utf-8"), undefined, { translations });
     const out = option(rest, "--out");
     if (out) writeFileSync(out, result.ttl);
     else process.stdout.write(result.ttl);

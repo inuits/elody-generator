@@ -5,8 +5,8 @@
  * between markers in a hand-written file. A client without a declaration is
  * untouched: nothing to read, nothing written.
  */
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "fs";
-import { join, relative } from "path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
+import { dirname, join, relative } from "path";
 import type { UiEntity } from "./model.js";
 import { Ontology, defaultOntology } from "./ontology.js";
 import { readUiDeclaration } from "./parse.js";
@@ -53,14 +53,32 @@ export function findDeclaration(root: string): string | undefined {
 export const fileTargetFor = (graphqlType: string): string =>
   `src/queries/entities/${lowerFirst(graphqlType)}.queries.ts`;
 
-export function generate(options: GenerateOptions): GenerateResult {
+/** Set `value` at a dotted key inside a nested translation object; true when it changed. */
+function setNested(target: Record<string, unknown>, dotted: string, value: string): boolean {
+  const parts = dotted.split(".");
+  let node = target;
+  for (const part of parts.slice(0, -1)) {
+    const next = node[part];
+    if (next === undefined) node = node[part] = {} as Record<string, unknown>;
+    else if (typeof next === "object" && next !== null) node = next as Record<string, unknown>;
+    else throw new Error(`translation key ${dotted} collides with the text at ${part}`);
+  }
+  const last = parts[parts.length - 1];
+  if (node[last] === value) return false;
+  node[last] = value;
+  return true;
+}
+
+export const TRANSLATIONS_DIR = "src/translations";
+
+export async function generate(options: GenerateOptions): Promise<GenerateResult> {
   const { root, check = false, log = () => {} } = options;
   const ontology = options.ontology ?? defaultOntology();
   const declaration = options.declaration ?? findDeclaration(root);
   if (!declaration) return { entities: [], warnings: [], changed: [], clean: true };
 
   const ttl = readFileSync(join(root, declaration), "utf-8");
-  const { entities, warnings } = readUiDeclaration(ttl, ontology);
+  const { entities, warnings, translations } = await readUiDeclaration(ttl, ontology);
   const changed: string[] = [];
 
   const apply = (file: string, next: string) => {
@@ -70,6 +88,7 @@ export function generate(options: GenerateOptions): GenerateResult {
     changed.push(file);
     if (check) log(`${file} is out of date with ${declaration}`);
     else {
+      mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, next);
       log(`updated ${file}`);
     }
@@ -90,6 +109,17 @@ export function generate(options: GenerateOptions): GenerateResult {
     patched = replaceRegion(patched, `${prefix}-teaser-fields`, renderTeaserFields(entity, 6));
     patched = replaceRegion(patched, `${prefix}-sort-options`, renderSortOptions(entity, 4));
     apply(file, patched);
+  }
+
+  // the label texts of the declaration go into the client's translation bundles
+  for (const [language, entries] of Object.entries(translations)) {
+    const file = join(TRANSLATIONS_DIR, `${language}.json`);
+    const path = join(root, file);
+    const bundle = existsSync(path) ? JSON.parse(readFileSync(path, "utf-8")) : { [language]: {} };
+    bundle[language] ??= {};
+    let changedBundle = false;
+    for (const [key, text] of Object.entries(entries)) changedBundle = setNested(bundle[language], key, text) || changedBundle;
+    if (changedBundle) apply(file, JSON.stringify(bundle, null, 2) + "\n");
   }
 
   return { declaration: relative(root, join(root, declaration)), entities, warnings, changed, clean: changed.length === 0 };

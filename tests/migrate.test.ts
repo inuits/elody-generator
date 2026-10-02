@@ -29,13 +29,13 @@ describe("migrateDeclaration on dishacled", () => {
     expect(report.conforms).toBe(true);
   });
 
-  it("the migrated file reads without retired-term warnings", () => {
-    const { warnings } = readUiDeclaration(migrated.ttl);
+  it("the migrated file reads without retired-term warnings", async () => {
+    const { warnings } = await readUiDeclaration(migrated.ttl);
     expect(warnings.map((warning) => warning.message)).toEqual([]);
   });
 
-  it.each(["alert", "githubProcessor", "pipeline"])("renders %s.queries.ts identically after migration", (name) => {
-    const { entities } = readUiDeclaration(migrated.ttl);
+  it.each(["alert", "githubProcessor", "pipeline"])("renders %s.queries.ts identically after migration", async (name) => {
+    const { entities } = await readUiDeclaration(migrated.ttl);
     const type = name.charAt(0).toUpperCase() + name.slice(1);
     const entity = entities.find((candidate) => candidate.graphqlType === type)!;
     expect(renderEntityFile(entity, "src/ui/dishacled.ui.ttl")).toBe(
@@ -53,5 +53,40 @@ describe("the retired dialect fails validation term by term", () => {
       expect(messages.some((message) => message.startsWith(`${term} is retired`)), term).toBe(true);
     expect(messages.some((message) => message.startsWith("elody:mode takes an elody:ViewMode instance"))).toBe(true);
     expect(messages.some((message) => message.startsWith("elody:filterKind takes an elody:FilterKind instance"))).toBe(true);
+  });
+});
+
+describe("migration to the standard terms (sh:name, sh:path, sh:group)", () => {
+  const translations = { en: { metadata: { labels: { name: "Name", description: "Description" } }, "panel-labels": { "pipeline-info": "Pipeline info" } } };
+  const migrated = migrateDeclaration(legacy, undefined, { translations });
+
+  it("turns panels whose field order follows sh:order into sh:PropertyGroups", () => {
+    expect(migrated.ttl).toMatch(/ui:PipelineUi-info\s+a sh:PropertyGroup/);
+    expect(migrated.ttl).toMatch(/sh:group ui:PipelineUi-info/);
+  });
+
+  it("keeps an explicit field list where the panel's order differs, and says so", () => {
+    expect(migrated.ttl).not.toMatch(/ui:ComponentUi-repoInfo/);
+    expect(migrated.notes.some((note) => note.includes('panel "repoInfo"'))).toBe(true);
+  });
+
+  it("moves translation keys to elody:labelKey and fills sh:name per language from the client's bundle", () => {
+    // on property shapes (filters and overview fields are elody: nodes and keep rdfs:label as their key)
+    expect(migrated.ttl).not.toMatch(/sh:path [^;\]]*;[^\]]*rdfs:label "metadata\.labels/);
+    expect(migrated.ttl).toMatch(/elody:labelKey "metadata\.labels\.name"/);
+    expect(migrated.ttl).toMatch(/sh:name "Name"@en/);
+    expect(migrated.ttl).toMatch(/rdfs:label "Pipeline info"@en/);
+  });
+
+  it("still renders every document identically", async () => {
+    const { entities, warnings } = await readUiDeclaration(migrated.ttl);
+    expect(warnings).toEqual([]);
+    for (const name of ["alert", "githubProcessor", "pipeline"]) {
+      const type = name.charAt(0).toUpperCase() + name.slice(1);
+      expect(renderEntityFile(entities.find((e) => e.graphqlType === type)!, "src/ui/dishacled.ui.ttl"), name).toBe(
+        readFileSync(join(golden, `${name}.queries.ts`), "utf-8"),
+      );
+    }
+    expect((await validateDeclaration(migrated.ttl)).issues.map(formatIssue)).toEqual([]);
   });
 });

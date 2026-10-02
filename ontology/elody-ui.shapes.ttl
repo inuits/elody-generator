@@ -63,9 +63,17 @@ meta:ConfigEntryShape a sh:NodeShape ;
 # ------------------------------------------------------------ property shapes ---
 
 meta:PropertyShapeShape a sh:NodeShape ;
+  sh:or ( [ sh:property [ sh:path sh:path ; sh:minCount 1 ] ] [ sh:property [ sh:path elody:key ; sh:minCount 1 ] ] ) ;
+  sh:message "a property shape has an sh:path (its metadata key is the local name) or an elody:key" ;
   sh:property
-    [ sh:path sh:name ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ;
-      sh:message "every property shape has one sh:name (the Elody metadata key)" ] ,
+    [ sh:path sh:name ; sh:uniqueLang true ;
+      sh:or ( [ sh:datatype xsd:string ] [ sh:datatype rdf:langString ] ) ;
+      sh:message "sh:name is the label text, at most one per language" ] ,
+    [ sh:path sh:group ; sh:maxCount 1 ; sh:class sh:PropertyGroup ;
+      sh:message "a property shape belongs to at most one sh:PropertyGroup" ] ,
+    [ sh:path rdfs:label ; sh:maxCount 0 ;
+      sh:message "rdfs:label on a property shape: use sh:name for the label text, elody:labelKey for an Elody translation key" ] ,
+    [ sh:path elody:labelKey ; sh:maxCount 1 ; sh:datatype xsd:string ] ,
     [ sh:path sh:order ; sh:maxCount 1 ] ,
     [ sh:path shui:viewer ; sh:maxCount 1 ; sh:nodeKind sh:IRI ;
       sh:in ( elody:PillViewer elody:LinkViewer elody:RegexpMatchViewer
@@ -195,7 +203,9 @@ meta:FormFieldsShape a sh:NodeShape ;
 # a form field must be renderable: a datatype, a class, a nested shape, an enumeration or an explicit editor
 meta:FormFieldShape a sh:NodeShape ;
   sh:property
-    [ sh:path sh:name ; sh:minCount 1 ; sh:maxCount 1 ] ,
+    [ sh:path sh:name ; sh:uniqueLang true ] ,
+    [ sh:path rdfs:label ; sh:maxCount 0 ;
+      sh:message "rdfs:label on a form field: use sh:name for the label text, elody:labelKey for an Elody translation key" ] ,
     [ sh:path elody:inputType ; sh:maxCount 0 ; sh:message "elody:inputType is retired: use sh:datatype / sh:class / sh:node / sh:in or shui:editor" ] ,
     [ sh:path elody:required ; sh:maxCount 0 ; sh:message "elody:required is retired: use sh:minCount 1" ] ;
   sh:or (
@@ -392,3 +402,9 @@ meta:CommentsElementShape a sh:NodeShape ; sh:targetClass elody:CommentsElement 
     [ sh:path elody:composer ; sh:minCount 1 ; sh:maxCount 1 ; sh:class elody:WysiwygElement ;
       sh:message "a comments element has one rich text composer" ] ,
     [ sh:path elody:parentFilterKey ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ] .
+
+meta:PropertyGroupShape a sh:NodeShape ; sh:targetClass sh:PropertyGroup ;
+  sh:property
+    [ sh:path rdfs:label ; sh:uniqueLang true ] ,
+    [ sh:path sh:order ; sh:maxCount 1 ] ,
+    [ sh:path elody:labelKey ; sh:maxCount 1 ; sh:datatype xsd:string ] .

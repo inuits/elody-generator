@@ -23,16 +23,16 @@ const client = (withDeclaration: boolean) => {
 };
 
 describe("generate / check", () => {
-  it("leaves a client without a declaration untouched", () => {
+  it("leaves a client without a declaration untouched", async () => {
     const root = client(false);
-    const result = generate({ root });
+    const result = await generate({ root });
     expect(result.declaration).toBeUndefined();
     expect(readdirSync(join(root, "src", "queries", "entities"))).toEqual(["handwritten.queries.ts"]);
   });
 
-  it("writes the documents, then check is clean", () => {
+  it("writes the documents, then check is clean", async () => {
     const root = client(true);
-    const written = generate({ root });
+    const written = await generate({ root });
     expect(written.changed.sort()).toEqual([
       "src/queries/entities/alert.queries.ts",
       "src/queries/entities/githubProcessor.queries.ts",
@@ -42,15 +42,15 @@ describe("generate / check", () => {
       expect(readFileSync(join(root, "src/queries/entities", `${name}.queries.ts`), "utf-8")).toBe(
         readFileSync(join(__dirname, "golden", "dishacled", `${name}.queries.ts`), "utf-8"),
       );
-    expect(generate({ root, check: true }).clean).toBe(true);
+    expect((await generate({ root, check: true })).clean).toBe(true);
   });
 
-  it("check fails on a hand edit of a generated document", () => {
+  it("check fails on a hand edit of a generated document", async () => {
     const root = client(true);
-    generate({ root });
+    await generate({ root });
     const file = join(root, "src/queries/entities/alert.queries.ts");
     writeFileSync(file, readFileSync(file, "utf-8") + "\n# edited\n");
-    const result = generate({ root, check: true });
+    const result = await generate({ root, check: true });
     expect(result.clean).toBe(false);
     expect(result.changed).toEqual(["src/queries/entities/alert.queries.ts"]);
   });
