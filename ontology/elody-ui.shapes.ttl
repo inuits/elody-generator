@@ -252,8 +252,11 @@ meta:ColumnShape a sh:NodeShape ;
 meta:ElementShape a sh:NodeShape ;
   sh:property
     [ sh:path rdf:type ; sh:minCount 1 ;
-      sh:in ( elody:WindowElement elody:ListElement elody:ShaclShapeElement elody:MarkdownElement ) ;
-      sh:message "an element is typed elody:WindowElement, ListElement, ShaclShapeElement or MarkdownElement" ] ,
+      sh:in ( elody:WindowElement elody:ListElement elody:ShaclShapeElement elody:MarkdownElement
+              elody:MediaFileElement elody:SingleMediaFileElement elody:MapElement elody:GraphElement
+              elody:HierarchyListElement elody:ManifestViewerElement elody:EntityViewerElement
+              elody:ActionElement elody:WysiwygElement elody:CommentsElement ) ;
+      sh:message "an element is typed with one of the elody: element classes" ] ,
     [ sh:path elody:panel ; sh:node meta:PanelShape ] ,
     [ sh:path elody:searchInput ; sh:maxCount 1 ; sh:class elody:SearchInputKind ] ,
     [ sh:path elody:customBulkOperations ; sh:maxCount 1 ; sh:nodeKind sh:BlankNodeOrIRI ;
@@ -336,3 +339,56 @@ meta:StringFilterKind a sh:NodeShape ; sh:targetSubjectsOf elody:filterKind ;
 meta:LegacyDashLabelRole a sh:NodeShape ; sh:targetSubjectsOf dash:propertyRole ;
   sh:property [ sh:path dash:propertyRole ; sh:not [ sh:hasValue dash:LabelRole ] ;
     sh:message "the label role is shui:propertyRole shui:LabelRole; dash:propertyRole is for DescriptionRole, IconRole and KeyInfoRole" ] .
+
+# ----------------------------------------------- per element kind (section 9) ---
+
+meta:MediaElementShape a sh:NodeShape ; sh:targetClass elody:MediaFileElement , elody:SingleMediaFileElement ;
+  sh:property [ sh:path elody:mediaKind ; sh:maxCount 1 ; sh:class elody:MediaElementKind ] .
+
+meta:MapElementShape a sh:NodeShape ; sh:targetClass elody:MapElement ;
+  sh:property
+    [ sh:path elody:mapType ; sh:maxCount 1 ; sh:class elody:MapType ;
+      sh:message "a map element's type is an elody:MapType instance" ] ,
+    [ sh:path elody:center ; sh:maxCount 1 ; sh:datatype xsd:string ] .
+
+meta:GraphElementShape a sh:NodeShape ; sh:targetClass elody:GraphElement ;
+  sh:property
+    [ sh:path elody:graphType ; sh:minCount 1 ; sh:maxCount 1 ; sh:class elody:GraphType ;
+      sh:message "a graph element names its chart with one elody:GraphType instance" ] ,
+    [ sh:path elody:datasource ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ;
+      sh:message "a graph element names its data source" ] ,
+    [ sh:path elody:timeUnit ; sh:maxCount 1 ; sh:class elody:TimeUnit ] ,
+    [ sh:path elody:datapoints ; sh:maxCount 1 ; sh:datatype xsd:integer ] .
+
+meta:HierarchyListElementShape a sh:NodeShape ; sh:targetClass elody:HierarchyListElement ;
+  sh:property
+    [ sh:path elody:hierarchyLevel ; sh:minCount 1 ; sh:message "a hierarchy list declares at least one level" ] ,
+    [ sh:path elody:centerCoordinatesKey ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ] .
+
+meta:ManifestViewerElementShape a sh:NodeShape ; sh:targetClass elody:ManifestViewerElement ;
+  sh:property
+    [ sh:path elody:manifestUrlKey ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ;
+      sh:message "a manifest element names the metadata key of the manifest URL" ] ,
+    [ sh:path elody:manifestVersionKey ; sh:maxCount 1 ; sh:datatype xsd:string ] .
+
+meta:EntityViewerElementShape a sh:NodeShape ; sh:targetClass elody:EntityViewerElement ;
+  sh:or ( [ sh:property [ sh:path elody:relationType ; sh:minCount 1 ] ]
+          [ sh:property [ sh:path elody:metadataKey ; sh:minCount 1 ] ] ) ;
+  sh:message "an embedded entity element finds its entity through elody:relationType or elody:metadataKey" .
+
+meta:ActionElementShape a sh:NodeShape ; sh:targetClass elody:ActionElement ;
+  sh:property [ sh:path elody:elementAction ; sh:minCount 1 ; sh:class elody:ElementAction ;
+    sh:message "an action element lists elody:ElementAction instances" ] .
+
+meta:WysiwygElementShape a sh:NodeShape ; sh:targetClass elody:WysiwygElement ;
+  sh:property
+    [ sh:path elody:metadataKey ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ;
+      sh:message "a rich text element names the metadata key it edits" ] ,
+    [ sh:path elody:extension ; sh:class elody:WysiwygExtension ] ,
+    [ sh:path elody:multilingual ; sh:maxCount 1 ; sh:datatype xsd:boolean ] .
+
+meta:CommentsElementShape a sh:NodeShape ; sh:targetClass elody:CommentsElement ;
+  sh:property
+    [ sh:path elody:composer ; sh:minCount 1 ; sh:maxCount 1 ; sh:class elody:WysiwygElement ;
+      sh:message "a comments element has one rich text composer" ] ,
+    [ sh:path elody:parentFilterKey ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ] .

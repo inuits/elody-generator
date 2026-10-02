@@ -27,6 +27,12 @@ export function parseUiDeclaration(ttl: string, ontology: Ontology = defaultOnto
 export const pickerFiltersNameFor = (queryName: string): string =>
   queryName.includes("List") ? queryName.replace("List", "Filters") : `${queryName}Filters`;
 
+/** Element classes the ontology defines but the generator cannot render yet. */
+const UNRENDERED_ELEMENTS = [
+  "MediaFileElement", "SingleMediaFileElement", "MapElement", "GraphElement", "HierarchyListElement",
+  "ManifestViewerElement", "EntityViewerElement", "ActionElement", "WysiwygElement", "CommentsElement",
+].map((name) => elody(name));
+
 class Parse {
   constructor(
     private readonly r: Reading,
@@ -495,6 +501,9 @@ class Parse {
   private element(element: string, pathToKey: Map<string, string>): M.UiElement {
     const r = this.r;
     const types = r.types(element);
+    const unrendered = types.find((type) => UNRENDERED_ELEMENTS.includes(type));
+    if (unrendered)
+      throw new Error(`${compact(unrendered)} is in the ontology but not rendered by the generator yet; keep this element in hand-written GraphQL ("regions" mode)`);
     const kind: M.UiElementKind = types.includes(elody("ShaclShapeElement"))
       ? "shaclShape"
       : types.includes(elody("ListElement"))

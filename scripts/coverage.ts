@@ -103,6 +103,16 @@ const blocks: Record<string, FieldMap> = {
     windowElement: { term: "elody:WindowElement", status: "rendered" },
     entityListElement: { term: "elody:ListElement", status: "rendered" },
     markdownViewerElement: { term: "elody:MarkdownElement", status: "rendered" },
+    mediaFileElement: { term: "elody:MediaFileElement", status: "ontology" },
+    singleMediaFileElement: { term: "elody:SingleMediaFileElement", status: "ontology" },
+    mapElement: { term: "elody:MapElement", status: "ontology" },
+    graphElement: { term: "elody:GraphElement", status: "ontology" },
+    hierarchyListElement: { term: "elody:HierarchyListElement", status: "ontology" },
+    manifestViewerElement: { term: "elody:ManifestViewerElement", status: "ontology" },
+    entityViewerElement: { term: "elody:EntityViewerElement", status: "ontology" },
+    actionElement: { term: "elody:ActionElement", status: "ontology" },
+    wysiwygElement: { term: "elody:WysiwygElement", status: "ontology" },
+    commentsElement: { term: "elody:CommentsElement", status: "ontology" },
   },
   Column: {
     size: { term: "elody:size", status: "rendered" },
@@ -184,15 +194,19 @@ const elementComponent: Record<string, string> = {
   mapElement: "EntityElementMapViewer.vue", hierarchyListElement: "EntityElementHierarchyListViewer.vue", commentsElement: "comments/EntityElementComments.vue",
   shaclShapeElement: "EntityElementShaclShape.vue",
 };
-const elementTerm: Record<string, string> = {
-  windowElement: "elody:WindowElement", entityListElement: "elody:ListElement",
-  markdownViewerElement: "elody:MarkdownElement", shaclShapeElement: "elody:ShaclShapeElement",
-};
+// element class per schema field, read from the ontology (elody:schemaField)
+const elementTerm: Record<string, string> = Object.fromEntries(
+  r.subjects()
+    .filter((subject) => r.value(subject, elody("schemaField")))
+    .map((subject) => [r.value(subject, elody("schemaField"))!, subject.replace(elody(""), "elody:")]),
+);
+const RENDERED_ELEMENTS = ["windowElement", "entityListElement", "markdownViewerElement", "shaclShapeElement"];
 const schemaElements = typeFields("EntityViewElements");
 const elements = [...new Set([...schemaElements, ...Object.keys(elementTerm)])].map((field) => ({
   element: field,
   inSchema: schemaElements.includes(field),
   ontology: elementTerm[field],
+  rendered: RENDERED_ELEMENTS.includes(field),
   component: elementComponent[field],
   componentExists: elementComponent[field] && elementComponent[field] !== "—"
     ? existsSync(join(pwa, "entityElements", elementComponent[field])) : false,

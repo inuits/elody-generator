@@ -80,6 +80,16 @@ Read for one release with a warning; `validate` / `check` fail on them;
 | `dash:propertyRole dash:LabelRole` | `shui:propertyRole shui:LabelRole` |
 | namespace `https://elody.io/ns/ui#` | `https://elody.eu/ns/ui#` |
 
+## Detail elements
+
+All thirteen element kinds of the schema (`EntityViewElements`) have a class,
+linked to their GraphQL field by `elody:schemaField`. The generator renders
+four of them (window, list, markdown, shape); declaring one of the other ten
+(media, single media, map, graph, hierarchy list, IIIF manifest, embedded
+entity, action, rich text, comments) validates, but `generate` refuses it with
+a message until its renderer exists. Keep those in hand-written GraphQL
+(`"regions"` mode) meanwhile.
+
 ## Not implemented (documented)
 
 `shui:RichTextEditor`, `shui:SubClassEditor`, `shui:BlankNodeEditor`,

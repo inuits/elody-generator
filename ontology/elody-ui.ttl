@@ -391,16 +391,21 @@ elody:Width100 a elody:ColumnSize ; elody:enumValue "hundred" .
 elody:Element a owl:Class ;
   rdfs:label "detail element"@en ;
   rdfs:comment "A block on the detail page. Subclasses say which kind."@en .
-elody:WindowElement a owl:Class ; rdfs:subClassOf elody:Element ;
+elody:schemaField a owl:DatatypeProperty , owl:AnnotationProperty ;
+  rdfs:label "schema field"@en ;
+  rdfs:domain owl:Class ; rdfs:range xsd:string ;
+  rdfs:comment "The field of the GraphQL type EntityViewElements this element class is rendered as. Binds the class to the schema the same way elody:enumValue binds an instance."@en .
+
+elody:WindowElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "windowElement" ;
   rdfs:label "window element"@en ;
   rdfs:comment "A window holding metadata/relation panels."@en .
-elody:ListElement a owl:Class ; rdfs:subClassOf elody:Element ;
+elody:ListElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "entityListElement" ;
   rdfs:label "list element"@en ;
   rdfs:comment "An embedded listing of related entities, with its own query, filters, bulk operations and picker."@en .
-elody:ShaclShapeElement a owl:Class ; rdfs:subClassOf elody:Element ;
+elody:ShaclShapeElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "shaclShapeElement" ;
   rdfs:label "shape element"@en ;
   rdfs:comment "A read-only panel whose fields are derived at runtime from a SHACL shape (the entity's shapeFields)."@en .
-elody:MarkdownElement a owl:Class ; rdfs:subClassOf elody:Element ;
+elody:MarkdownElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "markdownViewerElement" ;
   rdfs:label "markdown element"@en ;
   rdfs:comment "Renders one metadata value as Markdown."@en .
 
@@ -530,8 +535,8 @@ elody:mode a owl:ObjectProperty ;
   rdfs:label "mode"@en ; rdfs:domain elody:ViewModeSelection ; rdfs:range elody:ViewMode ;
   rdfs:comment "Which view mode. Range changed in 0.1: an elody:ViewMode instance, no longer the enum string."@en .
 elody:config a owl:ObjectProperty ;
-  rdfs:label "config"@en ; rdfs:domain elody:ViewModeSelection ; rdfs:range elody:ConfigEntry ;
-  rdfs:comment "A configuration entry of the view mode."@en .
+  rdfs:label "config"@en ; rdfs:domain owl:Thing ; rdfs:range elody:ConfigEntry ;
+  rdfs:comment "A configuration entry of a view mode or a map element."@en .
 elody:key a owl:DatatypeProperty ;
   rdfs:label "key"@en ; rdfs:domain owl:Thing ; rdfs:range xsd:string ;
   rdfs:comment "A platform key: a config entry's name, a filter's document key, a step's key, a card field's value key when it differs from sh:name."@en .
@@ -637,7 +642,7 @@ elody:primary a owl:DatatypeProperty ;
   rdfs:label "primary"@en ; rdfs:domain elody:BulkOperation ; rdfs:range xsd:boolean ;
   rdfs:comment "Render as the primary button."@en .
 elody:can a owl:DatatypeProperty ;
-  rdfs:label "required permission"@en ; rdfs:domain elody:BulkOperation ; rdfs:range xsd:string ;
+  rdfs:label "required permission"@en ; rdfs:domain owl:Thing ; rdfs:range xsd:string ;
   rdfs:comment "A fine-grained permission string (\"update:pipeline:has-runner\"). Open string: permissions are client-defined."@en .
 elody:context a owl:ObjectProperty ;
   rdfs:label "context"@en ; rdfs:domain elody:BulkOperation ; rdfs:range elody:BulkOperationContext ;
@@ -753,13 +758,13 @@ elody:fieldsKey a owl:DatatypeProperty ;
   rdfs:label "fields key"@en ; rdfs:domain elody:ShaclShapeElement ; rdfs:range xsd:string ;
   rdfs:comment "The entity field holding the runtime shape-derived fields (default shapeFields)."@en .
 elody:metadataKey a owl:DatatypeProperty ;
-  rdfs:label "metadata key"@en ; rdfs:domain elody:MarkdownElement ; rdfs:range xsd:string ;
-  rdfs:comment "The metadata key whose value the element renders."@en .
+  rdfs:label "metadata key"@en ; rdfs:domain elody:Element ; rdfs:range xsd:string ;
+  rdfs:comment "The metadata key whose value the element renders or edits (markdown, wysiwyg, entity viewer)."@en .
 elody:entityTypes a owl:DatatypeProperty ;
   rdfs:label "entity types"@en ; rdfs:domain elody:ListElement ; rdfs:range xsd:string ;
   rdfs:comment "The entity types the embedded list shows."@en .
 elody:customQuery a owl:DatatypeProperty ;
-  rdfs:label "custom query"@en ; rdfs:domain elody:ListElement ; rdfs:range xsd:string ;
+  rdfs:label "custom query"@en ; rdfs:domain elody:Element ; rdfs:range xsd:string ;
   rdfs:comment "The entities document the list loads (GetEntities or a client document)."@en .
 elody:customQueryFilters a owl:DatatypeProperty ;
   rdfs:label "custom query filters"@en ; rdfs:domain elody:ListElement ; rdfs:range xsd:string ;
@@ -898,3 +903,180 @@ elody:FileUploadEditor       elody:formFieldType "baseFileUploadField" .
 elody:CsvUploadEditor        elody:formFieldType "baseCsvUploadField" .
 elody:XmlUploadEditor        elody:formFieldType "baseXmlUploadField" .
 elody:FileSystemImportEditor elody:formFieldType "baseFileSystemImportField" .
+
+# =============================================================================
+# 9. The other detail elements of the schema (EntityViewElements)
+# =============================================================================
+# Declared so a UI can be described completely; the generator renders them in a
+# later step and refuses them until then (no silent fallback to a window).
+# Nested platform configuration that is not presentation (map feature metadata,
+# tagging configuration, editor styles, transliteration) is left to hand-written
+# GraphQL in "regions" mode for now.
+
+elody:MediaFileElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "mediaFileElement" ;
+  rdfs:label "media element"@en ;
+  rdfs:comment "The entity's mediafiles in the platform viewer (IIIF, video, audio, PDF). No standard term: shui:ImageViewer shows one value, this is a gallery with its own viewer."@en .
+
+elody:SingleMediaFileElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "singleMediaFileElement" ;
+  rdfs:label "single media element"@en ;
+  rdfs:comment "One mediafile (the primary one) in the platform viewer."@en .
+
+elody:MapElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "mapElement" ;
+  rdfs:label "map element"@en ;
+  rdfs:comment "The entity (or its related entities) on a map: points, WKT shapes or a heat map. No standard term: shui has no geographic viewer."@en .
+
+elody:GraphElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "graphElement" ;
+  rdfs:label "graph element"@en ;
+  rdfs:comment "A chart over a time series of the entity (IoT measurements). No standard term."@en .
+
+elody:HierarchyListElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "hierarchyListElement" ;
+  rdfs:label "hierarchy list element"@en ;
+  rdfs:comment "A tree of related entities, one level per relation, with the entity as centre point. No standard term."@en .
+
+elody:ManifestViewerElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "manifestViewerElement" ;
+  rdfs:label "IIIF manifest element"@en ;
+  rdfs:comment "A IIIF viewer on a manifest URL read from the entity's metadata."@en .
+
+elody:EntityViewerElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "entityViewerElement" ;
+  rdfs:label "embedded entity element"@en ;
+  rdfs:comment "Another entity's detail embedded in this page, found through a relation type or a metadata key. Closest standard idea is shui:DetailsViewer, but that shows a nested node of the same graph, not a separate entity."@en .
+
+elody:ActionElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "actionElement" ;
+  rdfs:label "action element"@en ;
+  rdfs:comment "A block of buttons for platform actions on the entity (OCR, download)."@en .
+
+elody:WysiwygElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "wysiwygElement" ;
+  rdfs:label "rich text element"@en ;
+  rdfs:comment "A rich-text editor on one metadata key, with optional entity tagging. Elody's counterpart of shui:RichTextEditor, but as a page block rather than a form field."@en .
+
+elody:CommentsElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "commentsElement" ;
+  rdfs:label "comments element"@en ;
+  rdfs:comment "A comment thread on the entity, written with a rich-text composer."@en .
+
+# -- enumerations used by these elements ------------------------------------------
+
+elody:MediaElementKind a owl:Class ; rdfs:label "media element kind"@en ;
+  rdfs:comment "Enumeration of MediaFileElementTypes."@en .
+elody:MediaKindMedia a elody:MediaElementKind ; elody:enumValue "media" .
+elody:MediaKindMap   a elody:MediaElementKind ; elody:enumValue "map" .
+
+elody:MapType a owl:Class ; rdfs:label "map type"@en ;
+  rdfs:comment "Enumeration of MapTypes."@en .
+elody:PointsMap a elody:MapType ; elody:enumValue "pointsMap" .
+elody:WktMap    a elody:MapType ; elody:enumValue "wktMap" .
+elody:HeatMap   a elody:MapType ; elody:enumValue "heatMap" .
+
+elody:GraphType a owl:Class ; rdfs:label "chart type"@en ;
+  rdfs:comment "Enumeration of GraphType."@en .
+elody:BarGraph       a elody:GraphType ; elody:enumValue "bar" .
+elody:BubbleGraph    a elody:GraphType ; elody:enumValue "bubble" .
+elody:DoughnutGraph  a elody:GraphType ; elody:enumValue "doughnut" .
+elody:LineGraph      a elody:GraphType ; elody:enumValue "line" .
+elody:PieGraph       a elody:GraphType ; elody:enumValue "pie" .
+elody:PolarAreaGraph a elody:GraphType ; elody:enumValue "polarArea" .
+elody:RadarGraph     a elody:GraphType ; elody:enumValue "radar" .
+elody:ScatterGraph   a elody:GraphType ; elody:enumValue "scatter" .
+
+elody:TimeUnit a owl:Class ; rdfs:label "time unit"@en ;
+  rdfs:comment "Enumeration of TimeUnit: how a graph buckets its time series."@en .
+elody:Month     a elody:TimeUnit ; elody:enumValue "month" .
+elody:Hour      a elody:TimeUnit ; elody:enumValue "hour" .
+elody:DayOfYear a elody:TimeUnit ; elody:enumValue "dayOfYear" .
+elody:DayOfWeek a elody:TimeUnit ; elody:enumValue "dayOfWeek" .
+
+elody:ElementAction a owl:Class ; rdfs:label "element action"@en ;
+  rdfs:comment "Enumeration of Actions offered by an action element."@en .
+elody:OcrAction      a elody:ElementAction ; elody:enumValue "ocr" .
+elody:DownloadAction a elody:ElementAction ; elody:enumValue "download" .
+elody:NoActions      a elody:ElementAction ; elody:enumValue "noActions" .
+
+elody:WysiwygExtension a owl:Class ; rdfs:label "rich text extension"@en ;
+  rdfs:comment "Enumeration of WysiwygExtensions: the editor features a rich text element switches on."@en .
+elody:StarterKitExtension a elody:WysiwygExtension ; elody:enumValue "starterKit" .
+elody:DocExtension        a elody:WysiwygExtension ; elody:enumValue "doc" .
+elody:ParagraphExtension  a elody:WysiwygExtension ; elody:enumValue "paragraph" .
+elody:TextExtension       a elody:WysiwygExtension ; elody:enumValue "text" .
+elody:HardBreakExtension  a elody:WysiwygExtension ; elody:enumValue "hardBreak" .
+elody:BoldExtension       a elody:WysiwygExtension ; elody:enumValue "bold" .
+elody:ItalicExtension     a elody:WysiwygExtension ; elody:enumValue "italic" .
+elody:ColorExtension      a elody:WysiwygExtension ; elody:enumValue "color" .
+elody:TextStyleExtension  a elody:WysiwygExtension ; elody:enumValue "textStyle" .
+elody:ListItemExtension   a elody:WysiwygExtension ; elody:enumValue "listItem" .
+elody:TaggingExtension    a elody:WysiwygExtension ; elody:enumValue "elodyTaggingExtension" .
+
+# -- properties of these elements ---------------------------------------------------
+
+elody:mediaKind a owl:ObjectProperty ;
+  rdfs:label "media kind"@en ; rdfs:range elody:MediaElementKind ;
+  rdfs:domain [ owl:unionOf ( elody:MediaFileElement elody:SingleMediaFileElement ) ] ;
+  rdfs:comment "Whether the media element shows the mediafiles or their locations."@en .
+
+elody:mapType a owl:ObjectProperty ;
+  rdfs:label "map type"@en ; rdfs:domain elody:MapElement ; rdfs:range elody:MapType ;
+  rdfs:comment "Points, WKT shapes or heat map."@en .
+elody:center a owl:DatatypeProperty ;
+  rdfs:label "center"@en ; rdfs:domain elody:MapElement ; rdfs:range xsd:string ;
+  rdfs:comment "Initial map centre as \"lat,lon\"."@en .
+
+elody:graphType a owl:ObjectProperty ;
+  rdfs:label "chart type"@en ; rdfs:domain elody:GraphElement ; rdfs:range elody:GraphType ;
+  rdfs:comment "Which chart."@en .
+elody:datasource a owl:DatatypeProperty ;
+  rdfs:label "data source"@en ; rdfs:domain elody:GraphElement ; rdfs:range xsd:string ;
+  rdfs:comment "The time-series source the chart reads."@en .
+elody:datasetLabel a owl:DatatypeProperty ;
+  rdfs:label "dataset label"@en ; rdfs:domain elody:GraphElement ; rdfs:range xsd:string ;
+  rdfs:comment "A series to plot (dataset.labels)."@en .
+elody:datasetFilter a owl:ObjectProperty ;
+  rdfs:label "dataset filter"@en ; rdfs:domain elody:GraphElement ; rdfs:range elody:ConfigEntry ;
+  rdfs:comment "Restricts the series: elody:key and one or more elody:value."@en .
+elody:timeUnit a owl:ObjectProperty ;
+  rdfs:label "time unit"@en ; rdfs:domain elody:GraphElement ; rdfs:range elody:TimeUnit ;
+  rdfs:comment "How the chart buckets time."@en .
+elody:datapoints a owl:DatatypeProperty ;
+  rdfs:label "data points"@en ; rdfs:domain elody:GraphElement ; rdfs:range xsd:integer ;
+  rdfs:comment "How many buckets to show."@en .
+elody:convertTo a owl:DatatypeProperty ;
+  rdfs:label "convert to"@en ; rdfs:domain elody:GraphElement ; rdfs:range xsd:string ;
+  rdfs:comment "Unit the values are converted to before plotting."@en .
+
+elody:hierarchyLevel a owl:ObjectProperty ;
+  rdfs:label "hierarchy level"@en ; rdfs:domain elody:HierarchyListElement ; rdfs:range elody:ConfigEntry ;
+  rdfs:comment "One level of the tree: elody:key is the relation, elody:entityType the type at that level; ordered by sh:order."@en .
+elody:centerEntityType a owl:DatatypeProperty ;
+  rdfs:label "centre entity type"@en ; rdfs:domain elody:HierarchyListElement ; rdfs:range xsd:string ;
+  rdfs:comment "The entity type the tree is centred on."@en .
+elody:centerCoordinatesKey a owl:DatatypeProperty ;
+  rdfs:label "centre coordinates key"@en ; rdfs:domain elody:HierarchyListElement ; rdfs:range xsd:string ;
+  rdfs:comment "The metadata key holding the centre point's coordinates."@en .
+
+elody:manifestUrlKey a owl:DatatypeProperty ;
+  rdfs:label "manifest URL key"@en ; rdfs:domain elody:ManifestViewerElement ; rdfs:range xsd:string ;
+  rdfs:comment "The metadata key holding the IIIF manifest URL."@en .
+elody:manifestVersionKey a owl:DatatypeProperty ;
+  rdfs:label "manifest version key"@en ; rdfs:domain elody:ManifestViewerElement ; rdfs:range xsd:string ;
+  rdfs:comment "The metadata key holding the IIIF Presentation API version."@en .
+
+elody:elementAction a owl:ObjectProperty ;
+  rdfs:label "action"@en ; rdfs:domain elody:ActionElement ; rdfs:range elody:ElementAction ;
+  rdfs:comment "An action button of the element."@en .
+
+elody:extension a owl:ObjectProperty ;
+  rdfs:label "extension"@en ; rdfs:domain elody:WysiwygElement ; rdfs:range elody:WysiwygExtension ;
+  rdfs:comment "An editor feature switched on."@en .
+elody:multilingual a owl:DatatypeProperty ;
+  rdfs:label "multilingual"@en ; rdfs:domain elody:WysiwygElement ; rdfs:range xsd:boolean ;
+  rdfs:comment "One text per language. On form fields this follows from rdf:langString; a page block has no datatype, so it is said here."@en .
+elody:infoTitle a owl:DatatypeProperty ;
+  rdfs:label "info title"@en ; rdfs:domain elody:Element ; rdfs:range xsd:string ;
+  rdfs:comment "Title of the help panel next to the element (translation key)."@en .
+elody:infoContent a owl:DatatypeProperty ;
+  rdfs:label "info content"@en ; rdfs:domain elody:Element ; rdfs:range xsd:string ;
+  rdfs:comment "Content of the help panel (HTML)."@en .
+
+elody:composer a owl:ObjectProperty ;
+  rdfs:label "composer"@en ; rdfs:domain elody:CommentsElement ; rdfs:range elody:WysiwygElement ;
+  rdfs:comment "The rich-text element used to write a comment."@en .
+elody:parentFilterKey a owl:DatatypeProperty ;
+  rdfs:label "parent filter key"@en ; rdfs:domain elody:CommentsElement ; rdfs:range xsd:string ;
+  rdfs:comment "The filter key that ties comments to this entity."@en .
