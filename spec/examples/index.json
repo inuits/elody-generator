@@ -1,0 +1,206 @@
+[
+ {
+  "id": "01-getting-started",
+  "section": "getting-started",
+  "title": "Sample Data Graph",
+  "hasData": true
+ },
+ {
+  "id": "02-getting-started",
+  "section": "getting-started",
+  "title": "Sample Shapes Graph",
+  "hasData": false
+ },
+ {
+  "id": "03-getting-started",
+  "section": "getting-started",
+  "title": "Sample Data Graph with Related Resource",
+  "hasData": true
+ },
+ {
+  "id": "04-global-configuration",
+  "section": "global-configuration",
+  "title": "Sample Instance Data",
+  "hasData": false
+ },
+ {
+  "id": "05-view-predicate-paths",
+  "section": "view-predicate-paths",
+  "title": "Predicate and inverse paths in view mode",
+  "hasData": true
+ },
+ {
+  "id": "06-view-complex-paths",
+  "section": "view-complex-paths",
+  "title": "Complex paths in view mode",
+  "hasData": true
+ },
+ {
+  "id": "07-edit-predicate-paths",
+  "section": "edit-predicate-paths",
+  "title": "Predicate and inverse paths in edit mode",
+  "hasData": true
+ },
+ {
+  "id": "08-edit-alternative-paths",
+  "section": "edit-alternative-paths",
+  "title": "Alternative paths in edit mode",
+  "hasData": true
+ },
+ {
+  "id": "09-edit-other-complex-paths",
+  "section": "edit-other-complex-paths",
+  "title": "Ambiguous complex paths in edit mode",
+  "hasData": true
+ },
+ {
+  "id": "10-lang-resolution",
+  "section": "lang-resolution",
+  "title": "Language selection based on sh:languageIn",
+  "hasData": true
+ },
+ {
+  "id": "11-label-resolution-local-name",
+  "section": "label-resolution-local-name",
+  "title": "Label resolution using sh:name and rdfs:label",
+  "hasData": true
+ },
+ {
+  "id": "12-label-resolution-local-name",
+  "section": "label-resolution-local-name",
+  "title": "Label resolution fallback to local name",
+  "hasData": true
+ },
+ {
+  "id": "13-patterns",
+  "section": "patterns",
+  "title": "Ordering without shui:defaultOrder",
+  "hasData": false
+ },
+ {
+  "id": "14-patterns",
+  "section": "patterns",
+  "title": "Ordering with shui:defaultOrder",
+  "hasData": false
+ },
+ {
+  "id": "15-search-query",
+  "section": "search-query",
+  "title": "Full-text search using shui:searchQuery",
+  "hasData": false
+ },
+ {
+  "id": "16-search-query",
+  "section": "search-query",
+  "title": "Federated full-text search using shui:searchQuery",
+  "hasData": false
+ },
+ {
+  "id": "17-AutoCompleteEditor",
+  "section": "AutoCompleteEditor",
+  "title": "",
+  "hasData": false
+ },
+ {
+  "id": "18-BooleanEditor",
+  "section": "BooleanEditor",
+  "title": "",
+  "hasData": false
+ },
+ {
+  "id": "19-DatePickerEditor",
+  "section": "DatePickerEditor",
+  "title": "",
+  "hasData": false
+ },
+ {
+  "id": "20-DateTimePickerEditor",
+  "section": "DateTimePickerEditor",
+  "title": "",
+  "hasData": false
+ },
+ {
+  "id": "21-DetailsEditor",
+  "section": "DetailsEditor",
+  "title": "",
+  "hasData": false
+ },
+ {
+  "id": "22-EnumSelectEditor",
+  "section": "EnumSelectEditor",
+  "title": "",
+  "hasData": false
+ },
+ {
+  "id": "23-InstancesSelectEditor",
+  "section": "InstancesSelectEditor",
+  "title": "",
+  "hasData": false
+ },
+ {
+  "id": "24-IRIEditor",
+  "section": "IRIEditor",
+  "title": "",
+  "hasData": false
+ },
+ {
+  "id": "25-NumberFieldEditor",
+  "section": "NumberFieldEditor",
+  "title": "",
+  "hasData": false
+ },
+ {
+  "id": "26-RichTextEditor",
+  "section": "RichTextEditor",
+  "title": "",
+  "hasData": false
+ },
+ {
+  "id": "27-SubClassEditor",
+  "section": "SubClassEditor",
+  "title": "",
+  "hasData": false
+ },
+ {
+  "id": "28-TextAreaEditor",
+  "section": "TextAreaEditor",
+  "title": "",
+  "hasData": false
+ },
+ {
+  "id": "29-TextFieldEditor",
+  "section": "TextFieldEditor",
+  "title": "",
+  "hasData": false
+ },
+ {
+  "id": "30-TextFieldWithLangEditor",
+  "section": "TextFieldWithLangEditor",
+  "title": "",
+  "hasData": false
+ },
+ {
+  "id": "31-ValueTableViewer",
+  "section": "ValueTableViewer",
+  "title": "",
+  "hasData": false
+ },
+ {
+  "id": "32-property-roles",
+  "section": "property-roles",
+  "title": "Direct role annotation",
+  "hasData": false
+ },
+ {
+  "id": "33-property-roles",
+  "section": "property-roles",
+  "title": "Qualified role annotation",
+  "hasData": false
+ },
+ {
+  "id": "34-property-roles",
+  "section": "property-roles",
+  "title": "Qualified role annotation using triple annotations",
+  "hasData": false
+ }
+]

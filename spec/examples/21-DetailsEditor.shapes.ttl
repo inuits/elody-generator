@@ -1,0 +1,51 @@
+@prefix ex: <http://example.org/ns#> . @prefix sh: <http://www.w3.org/ns/shacl#> . @prefix shui: <http://www.w3.org/ns/shacl-ui/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> . @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> . @prefix skos: <http://www.w3.org/2004/02/skos/core#> . @prefix dct: <http://purl.org/dc/terms/> . @prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix schema: <http://schema.org/> . @prefix obo: <http://purl.obolibrary.org/obo/> . @prefix owl: <http://www.w3.org/2002/07/owl#> . @prefix geo: <http://www.opengis.net/ont/geosparql#> .
+@prefix sdo: <https://schema.org/> . @prefix dash: <http://datashapes.org/dash#> .
+ex:Product
+	a owl:Class ;
+	a sh:NodeShape ;
+	rdfs:label "Product" ;
+	rdfs:subClassOf owl:Thing ;
+	sh:property ex:Product-weight .
+
+ex:Product-weight
+	a sh:PropertyShape ;
+	sh:path ex:weight ;
+	shui:editor shui:DetailsEditor ;
+	shui:viewer shui:DetailsViewer ;
+	sh:description "A blank node with a numeric field and a unit which is one of the QUDT mass units." ;
+	sh:maxCount 1 ;
+	sh:name "weight" ;
+	sh:node ex:ValueWithWeight ;
+	sh:nodeKind sh:BlankNode .
+
+ex:ValueWithWeight
+	a sh:NodeShape ;
+	rdfs:label "Value with weight" ;
+	sh:property ex:ValueWithWeight-numericValue ;
+	sh:property ex:ValueWithWeight-unit .
+
+ex:ValueWithWeight-numericValue
+	a sh:PropertyShape ;
+	sh:path ex:numericValue ;
+	sh:datatype xsd:decimal ;
+	sh:maxCount 1 ;
+	sh:minCount 1 ;
+	sh:name "numeric value" .
+
+ex:ValueWithWeight-unit
+	a sh:PropertyShape ;
+	sh:path ex:unit ;
+	sh:class <http://qudt.org/schema/qudt/Unit> ;
+	sh:maxCount 1 ;
+	sh:minCount 1 ;
+	sh:name "unit" ;
+	sh:node [
+		rdfs:label "Permissible values must have quantity kind Mass." ;
+		sh:property [
+			sh:path <http://qudt.org/schema/qudt/hasQuantityKind> ;
+			sh:hasValue <http://qudt.org/vocab/quantitykind/Mass> ;
+		] ;
+	] .

@@ -1,0 +1,49 @@
+@prefix ex: <http://example.org/ns#> . @prefix sh: <http://www.w3.org/ns/shacl#> . @prefix shui: <http://www.w3.org/ns/shacl-ui/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> . @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> . @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> . @prefix skos: <http://www.w3.org/2004/02/skos/core#> . @prefix dct: <http://purl.org/dc/terms/> . @prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix schema: <http://schema.org/> . @prefix obo: <http://purl.obolibrary.org/obo/> . @prefix owl: <http://www.w3.org/2002/07/owl#> . @prefix geo: <http://www.opengis.net/ont/geosparql#> .
+@prefix sdo: <https://schema.org/> . @prefix dash: <http://datashapes.org/dash#> .
+skos:Concept
+    sh:property ex:Concept-broader-inverse .
+
+ex:Concept-broader-inverse
+    a sh:PropertyShape ;
+    sh:path [ sh:inversePath skos:broader ] ;
+    sh:group skos:HierarchicalRelationships ;
+    sh:name "narrower (table)" ;
+    shui:viewer shui:ValueTableViewer ;
+    sh:node ex:ConceptTableShape .
+
+ex:ConceptTableShape
+    a sh:NodeShape ;
+    sh:targetClass skos:Concept ;
+    rdfs:comment "A node shape defining the columns for a shui:ValueTableViewer." ;
+    rdfs:label "Concept table shape" ;
+    sh:property ex:ConceptTableShape-self ;
+    sh:property ex:ConceptTableShape-type ;
+    sh:property ex:ConceptTableShape-altLabel .
+
+ex:ConceptTableShape-self
+    a sh:PropertyShape ;
+    sh:path ex:self ;
+    sh:description "This column is used to render the (narrower) concept itself." ;
+    sh:name "narrower concept" ;
+    sh:nodeKind sh:IRI ;
+    sh:order "0"^^xsd:decimal ;
+    sh:values sh:this .
+
+ex:ConceptTableShape-type
+    a sh:PropertyShape ;
+    sh:path rdf:type ;
+    sh:description "The second column shows the type of each value." ;
+    sh:name "type" ;
+    sh:nodeKind sh:IRI ;
+    sh:order "1"^^xsd:decimal .
+
+ex:ConceptTableShape-altLabel
+    a sh:PropertyShape ;
+    sh:path skos:altLabel ;
+    sh:description "The third column shows the alternative labels." ;
+    sh:name "alt labels" ;
+    sh:datatype ( xsd:string rdf:langString ) ;
+    sh:order "2"^^xsd:decimal .

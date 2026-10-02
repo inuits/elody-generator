@@ -47,9 +47,11 @@ markers in a hand-written file.
 
 ## Compatibility levels (epic #165964)
 
-- **L0** — plain SHACL Core renders: the editor is inferred from
-  `sh:datatype` / `sh:class` / `sh:node` / `sh:in` / `sh:nodeKind` /
-  `sh:singleLine`, same outcome as the spec's scoring (`tests/editors.test.ts`).
+- **L0** — plain SHACL Core renders. `shapeToForm` uses the spec's own
+  scoring system (`tests/specScoring.test.ts`, `tests/specExamples.test.ts`).
+  The generator's create forms still use a simplified inference
+  (`Ontology.inferEditor`, `tests/editors.test.ts`) that differs from the
+  spec for `sh:class` alone and for `xsd:anyURI`; it moves to the scorer next.
 - **L1** — an explicit `shui:editor` / `shui:viewer` wins, Elody editors
   included (`tests/editors.test.ts`).
 - **L2** — round-trip: not yet (T2).
@@ -79,6 +81,20 @@ Read for one release with a warning; `validate` / `check` fail on them;
 | `elody:mode "ViewModesList"`, `elody:filterKind "text"` | `elody:mode elody:ListView`, `elody:filterKind elody:TextFilter` |
 | `dash:propertyRole dash:LabelRole` | `shui:propertyRole shui:LabelRole` |
 | namespace `https://elody.io/ns/ui#` | `https://elody.eu/ns/ui#` |
+
+## Plain SHACL-UI shapes (`shapeToForm`)
+
+`shapeToForm` takes any SHACL 1.2 UI shapes graph, with no `elody:` terms,
+and returns the form Elody would render: field order (groups,
+`shui:defaultOrder`, tie-break on label), labels (`sh:languageIn`,
+`shui:languagePreference`, local-name fallback), property roles (direct and
+qualified), nested shapes, the `shui:ValueTableViewer` columns, and per field
+the widget the spec's **scoring system** picks (`src/score.ts`, run on the
+official scoring graph vendored in `spec/widgets/`) mapped to an Elody widget.
+Whatever Elody cannot render is listed as a gap on the field.
+
+`tests/specExamples.test.ts` runs every example of the spec (`spec/examples/`);
+`scripts/specReport.ts` writes the per-example verdict.
 
 ## Detail elements
 
