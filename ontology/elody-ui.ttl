@@ -94,6 +94,8 @@ shui:NumberFieldEditor    elody:inputFieldType "number" .
 shui:BooleanEditor        elody:inputFieldType "checkbox" .
 shui:DatePickerEditor     elody:inputFieldType "date" .
 shui:DateTimePickerEditor elody:inputFieldType "datetime-local" .
+# "datetime-local" is not an InputFieldTypes value: baseGraphql's baseFields
+# passes it as a raw string for baseDateTimeField. Keep in sync until the enum gets it.
 shui:EnumSelectEditor     elody:inputFieldType "dropdown" .
 shui:InstancesSelectEditor elody:inputFieldType "dropdownSingleselectRelations" .
 shui:AutoCompleteEditor   elody:inputFieldType "baseEntityPickerField" .
@@ -187,18 +189,16 @@ elody:LinkViewer a elody:Viewer ;
 
 elody:RegexpMatchViewer a elody:Viewer ;
   rdfs:label "regexp match"@en ; elody:fallbackWidget shui:LiteralViewer ;
-  elody:formatterValue "regexp-match" ;
+  elody:formatterValue "regexpMatch" ;
   rdfs:comment "Shows only the part of the value matching elody:viewerArgument (a regular expression)."@en .
 
 elody:MediafilePreviewViewer a elody:Viewer ;
   rdfs:label "mediafile preview"@en ; elody:fallbackWidget shui:ImageViewer ;
-  elody:formatterValue "mediafile-preview" ;
-  rdfs:comment "Renders the referenced Elody mediafile as a preview (image, audio, video)."@en .
+  rdfs:comment "Renders the referenced Elody mediafile as a preview (image, audio, video). Not implemented as a field formatter yet (no CustomFormatterTypes value): reserved term, rejected by the meta-shapes."@en .
 
 elody:MarkdownViewer a elody:Viewer ;
   rdfs:label "markdown"@en ; elody:fallbackWidget shui:HTMLViewer ;
-  elody:formatterValue "markdown" ;
-  rdfs:comment "Renders the literal as Markdown."@en .
+  rdfs:comment "Renders the literal as Markdown. Elody renders Markdown only as a detail element (elody:MarkdownElement), not as a field formatter: reserved term, rejected by the meta-shapes."@en .
 
 elody:viewerArgument a owl:DatatypeProperty ;
   rdfs:label "viewer argument"@en ;
@@ -233,7 +233,9 @@ elody:GridView     a elody:ViewMode ; rdfs:label "grid"@en ;     elody:enumValue
 elody:MapView      a elody:ViewMode ; rdfs:label "map"@en ;      elody:enumValue "ViewModesMap" .
 elody:MediaView    a elody:ViewMode ; rdfs:label "media"@en ;    elody:enumValue "ViewModesMedia" .
 elody:PipelineView a elody:ViewMode ; rdfs:label "pipeline"@en ; elody:enumValue "ViewModesPipeline" .
-elody:CalendarView a elody:ViewMode ; rdfs:label "calendar"@en ; elody:enumValue "ViewModesCalendar" .
+elody:CalendarView a elody:ViewMode ; rdfs:label "calendar"@en ; elody:enumValue "ViewModesCalendar" ;
+  rdfs:comment "Ahead of master: the enum value lives on branch feat/calendar-view-mode (#166680)."@en .
+elody:TableView    a elody:ViewMode ; rdfs:label "table"@en ;    elody:enumValue "Table" .
 
 elody:ConfigEntry a owl:Class ;
   rdfs:label "configuration entry"@en ;
@@ -306,7 +308,6 @@ elody:SelectionState a owl:Class ; rdfs:label "selection state"@en ;
   rdfs:comment "Enumeration: how many entities are selected."@en .
 elody:NoneSelected a elody:SelectionState ; elody:enumValue "noneSelected" .
 elody:SomeSelected a elody:SelectionState ; elody:enumValue "someSelected" .
-elody:AllSelected  a elody:SelectionState ; elody:enumValue "allSelected" .
 
 elody:BulkOperationModal a owl:Class ;
   rdfs:label "bulk operation modal"@en ;
@@ -445,6 +446,7 @@ elody:Percent a elody:Unit ; elody:enumValue "PERCENT" .
 elody:Pixels  a elody:Unit ; elody:enumValue "PX" .
 elody:Html    a elody:Unit ; elody:enumValue "HTML" .
 elody:Volt    a elody:Unit ; elody:enumValue "VOLT" .
+elody:Image   a elody:Unit ; elody:enumValue "IMAGE" .
 
 elody:ValueSource a owl:Class ; rdfs:label "value source"@en ;
   rdfs:comment "Enumeration of where a card field's value is read from (KeyValueSource)."@en .
@@ -454,7 +456,6 @@ elody:RootSource          a elody:ValueSource ; elody:enumValue "root" .
 elody:TypePillLabelSource a elody:ValueSource ; elody:enumValue "typePillLabel" .
 elody:TechnicalMetadataSource a elody:ValueSource ; elody:enumValue "technicalMetadata" .
 elody:RelationMetadataSource  a elody:ValueSource ; elody:enumValue "relationMetadata" .
-elody:DerivativesSource   a elody:ValueSource ; elody:enumValue "derivatives" .
 
 # =============================================================================
 # 4. Properties — generator directives

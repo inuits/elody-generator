@@ -68,7 +68,7 @@ meta:PropertyShapeShape a sh:NodeShape ;
       sh:message "every property shape has one sh:name (the Elody metadata key)" ] ,
     [ sh:path sh:order ; sh:maxCount 1 ] ,
     [ sh:path shui:viewer ; sh:maxCount 1 ; sh:nodeKind sh:IRI ;
-      sh:in ( elody:PillViewer elody:LinkViewer elody:RegexpMatchViewer elody:MediafilePreviewViewer elody:MarkdownViewer
+      sh:in ( elody:PillViewer elody:LinkViewer elody:RegexpMatchViewer
               shui:LiteralViewer shui:HyperlinkViewer shui:LangStringViewer shui:DetailsViewer ) ;
       sh:message "shui:viewer names a viewer Elody implements" ] ,
     [ sh:path shui:editor ; sh:maxCount 1 ; sh:nodeKind sh:IRI ;
