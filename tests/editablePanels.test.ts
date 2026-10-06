@@ -61,7 +61,8 @@ describe("relation-valued properties on the detail page", () => {
   it("an inverse path with sh:class is edited with the create form's relation dropdown", async () => {
     const { detail } = await detailOf(shapes07);
     expect(fieldBlock(detail, "isMemberFor")).toMatch(/inputField\(type: roundTripIsMemberForField\) \{\s*\.\.\.inputfield/);
-    expect(fieldBlock(detail, "name")).toContain("inputField(type: baseTextField)");
+    // foaf:name has no sh:maxCount in the spec's shapes: several values, a list-of-texts field
+    expect(fieldBlock(detail, "name")).toContain("inputField(type: roundTripNameField)");
   });
 
   it("the dropdown writes the mirrored relation (isMemberFor) on the class's entities", async () => {

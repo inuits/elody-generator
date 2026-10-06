@@ -377,11 +377,13 @@ ui:GetPipelineCreateForm
       sh:order 1 ;
       sh:datatype xsd:string ;
       sh:minCount 1 ;
+      sh:maxCount 1 ;
       elody:labelKey "metadata.labels.name" ] ,
       [ sh:path em:description ;
       sh:name "Description"@en , "Beschrijving"@nl ;
       sh:order 2 ;
       sh:datatype xsd:string ;
+      sh:maxCount 1 ;
       elody:labelKey "metadata.labels.description" ] ] ;
   elody:submit
     [ rdfs:label "actions.labels.create" ;

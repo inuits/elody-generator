@@ -114,7 +114,7 @@ describe("3 · create-form widgets from the scoring system", () => {
   });
 
   it("an xsd:anyURI literal gets the default text field, as the spec scores no editor for it", async () => {
-    const field = await fieldOf("sh:datatype xsd:anyURI");
+    const field = await fieldOf("sh:datatype xsd:anyURI ; sh:maxCount 1");
     expect(field.inputType).toBe("baseTextField");
   });
 

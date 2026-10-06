@@ -423,6 +423,9 @@ class Migration {
         else this.note(`input type "${inputType}" has no editor in the ontology; dropped`);
       }
       if (r.literal(field, elody("required")) === true) this.add(copy, sh("minCount"), this.int(1));
+      // a legacy field type holds one value unless it is a multiselect: say so, or the
+      // field would read as several values (a list-of-texts field)
+      if (!/multi/i.test(inputType)) this.add(copy, sh("maxCount"), this.int(1));
       this.labelAndKey(field, copy, sh("name"), path);
       this.copyRest(field, copy, new Set([elody("inputType"), elody("required"), rdfs("label"), sh("name")]));
       this.add(shape, sh("property"), copy);

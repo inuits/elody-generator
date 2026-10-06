@@ -24,7 +24,8 @@ const fieldOf = async (shape: string) => {
 
 describe("L0 — the widget is inferred from SHACL Core", () => {
   it.each([
-    ["sh:datatype xsd:string", "baseTextField", "TextFieldEditor"],
+    // one value (sh:maxCount 1); several values make a list-of-texts field (multiValueText.test.ts)
+    ["sh:datatype xsd:string ; sh:maxCount 1", "baseTextField", "TextFieldEditor"],
     ["sh:datatype xsd:string ; sh:singleLine false", "baseTextareaField", "TextAreaEditor"],
     ["sh:datatype rdf:langString", "baseTextField", "TextFieldWithLangEditor"],
     ["sh:datatype xsd:integer", "baseNumberField", "NumberFieldEditor"],
@@ -33,7 +34,7 @@ describe("L0 — the widget is inferred from SHACL Core", () => {
     ["sh:datatype xsd:date", "baseDateField", "DatePickerEditor"],
     ["sh:datatype xsd:dateTime", "baseDateTimeField", "DateTimePickerEditor"],
     ["sh:nodeKind sh:IRI", "baseTextField", "IRIEditor"],
-    ["sh:datatype xsd:anyURI", "baseTextField", "TextFieldEditor"],
+    ["sh:datatype xsd:anyURI ; sh:maxCount 1", "baseTextField", "TextFieldEditor"],
   ])("%s → %s", async (shape, fieldType, editor) => {
     const field = await fieldOf(shape);
     expect(field.inputType).toBe(fieldType);

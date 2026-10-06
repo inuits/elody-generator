@@ -183,6 +183,24 @@ class Parse {
     return { label: label ?? localName(iri), value: iri };
   }
 
+  /**
+   * The properties an editable panel shows get the create form's widget
+   * (a relation-valued one its relation dropdown, which needs sh:class); a
+   * read-only property (dash:readOnly) none. Only those: a widget is also a
+   * generated custom input field the client registers.
+   */
+  private withEditWidgets(detail: M.UiDetail | undefined, parsed: { node: string; property: M.UiProperty }[]): M.UiDetail | undefined {
+    if (!detail) return detail;
+    const edited = new Set(
+      detail.columns.flatMap((column) =>
+        column.elements.flatMap((element) => element.panels.filter((panel) => panel.editable).flatMap((panel) => panel.fields)),
+      ),
+    );
+    for (const { node, property } of parsed)
+      if (edited.has(property.key) && !property.readOnly) property.editInputType = this.editWidget(node);
+    return detail;
+  }
+
   /** The create form's widget for a property, to edit it on the detail page; none when Elody cannot write it. */
   private editWidget(node: string): string | undefined {
     try {
@@ -284,7 +302,7 @@ class Parse {
   private customField(node: string, editor: string, key: string): string {
     const r = this.r;
     const single = Number(r.value(node, sh("maxCount")) ?? 0) === 1;
-    const name = `${this.type}${key.charAt(0).toUpperCase()}${key.slice(1)}Field`;
+    const name = this.fieldName(key);
     if (this.isNested(node, editor)) return this.nestedField(node, key);
     if (editor === shui("EnumSelectEditor")) {
       const members = r.listTerms(r.node(node, sh("in")));
@@ -312,6 +330,29 @@ class Parse {
     throw new Error(`${compact(editor)} has no create-form field type in the ontology and no generated custom field`);
   }
 
+  /** The name of a generated custom input field: <type><Key>Field, the key camel-cased (internal_memo → InternalMemo). */
+  private fieldName(key: string): string {
+    const camel = key.replace(/[_-]+([a-zA-Z0-9])/g, (_, c: string) => c.toUpperCase());
+    return `${this.type}${camel.charAt(0).toUpperCase()}${camel.slice(1)}Field`;
+  }
+
+  /** No sh:maxCount 1: the property may hold several values. */
+  private mayHoldSeveral(node: string): boolean {
+    const max = this.r.value(node, sh("maxCount"));
+    return max === undefined || Number(max) > 1;
+  }
+
+  /**
+   * A single-value editor on a property with several values: one field that
+   * holds the list (SHACL UI repeats the editor per value), generated per
+   * property like an sh:in dropdown, with values typed in freely.
+   */
+  private severalValuesField(node: string, key: string, inputFieldType: string): string {
+    const name = this.fieldName(key);
+    this.inputFields[name] = { type: inputFieldType, isMetadataField: true, canCreateEntityFromOption: true, multiple: true };
+    return name;
+  }
+
   /** A nested shape: the DetailsEditor on a property shape with sh:node. */
   private isNested(node: string, editor: string | undefined): boolean {
     return editor === shui("DetailsEditor") && this.r.node(node, sh("node")) !== undefined;
@@ -325,7 +366,7 @@ class Parse {
    */
   private nestedField(node: string, key: string): string {
     const r = this.r;
-    const name = `${this.type}${key.charAt(0).toUpperCase()}${key.slice(1)}Field`;
+    const name = this.fieldName(key);
     if (this.inputFields[name]) return name;
     const shape = r.node(node, sh("node"))!;
     const subs = this.specOrder(r.nodes(shape, sh("property")).map((sub) => ({ node: sub, label: this.keyOf(sub) })));
@@ -512,7 +553,7 @@ class Parse {
       properties,
       filters: r.byOrder(r.nodes(subject, elody("filter"))).map((node) => this.filter(node)),
       contextMenu: this.contextMenu(r.node(subject, elody("contextMenu"))),
-      detail: this.detail(r.node(subject, elody("detail")), pathToKey),
+      detail: this.withEditWidgets(this.detail(r.node(subject, elody("detail")), pathToKey), parsed),
       formSources: r.nodes(subject, elody("formSource")).map((node) => this.formSource(node)),
       bulkOperations: r.byOrder(r.nodes(subject, elody("bulkOperation"))).map((node) => this.bulkOperation(node)),
       customBulkOperations: r.nodes(subject, elody("customBulkOperations")).map((node) => ({
@@ -571,8 +612,8 @@ class Parse {
       inputType: editor && this.isNested(node, editor) ? this.nestedField(node, key) : undefined,
       relationType: editor && this.isNested(node, editor) ? undefined : this.relationTypeOf(node),
       valueLabelKey: this.relationTypeOf(node) ? this.valueLabelKeyOf(node) : undefined,
-      // the create form's widget; a relation-valued property gets its relation dropdown (needs sh:class)
-      editInputType: readOnly ? undefined : this.editWidget(node),
+      // set by entity() for the properties an editable panel shows
+      editInputType: undefined,
       required: Number(r.value(node, sh("minCount")) ?? 0) >= 1,
     };
   }
@@ -762,7 +803,10 @@ class Parse {
     if (this.inversePredicate(node) && !r.node(node, sh("class")))
       throw new Error(`${key0}: an inverse path without sh:class cannot be picked in a create form (Elody needs the related type)`);
     const formFieldType = this.o.formFieldType(editor);
-    if (formFieldType) inputType = formFieldType;
+    const several = this.o.multipleValuesInputFieldType(editor);
+    if (several && this.mayHoldSeveral(node) && !this.o.multilingual(editor) && this.languageInOf(node).length === 0)
+      inputType = this.severalValuesField(node, key0, several);
+    else if (formFieldType) inputType = formFieldType;
     else if (this.relationTypeOf(node) && r.node(node, sh("class")) && !this.isNested(node, editor))
       // a relation-valued field without an Elody form widget is a relation dropdown
       inputType = this.customField(node, [shui("InstancesSelectEditor"), shui("AutoCompleteEditor")].includes(editor) ? editor : shui("InstancesSelectEditor"), key0);

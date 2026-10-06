@@ -907,6 +907,13 @@ elody:multilingual a owl:DatatypeProperty , owl:AnnotationProperty ;
   rdfs:domain shui:Editor ; rdfs:range xsd:boolean ;
   rdfs:comment "The editor edits language-tagged text: Elody renders its field as one multilingual value (isMultilingual), edited and shown per language. Stated on the shui: WithLang editors; the SHACL 1.2 UI scoring system picks those for rdf:langString."@en .
 
+elody:multipleValuesInputFieldType a owl:DatatypeProperty , owl:AnnotationProperty ;
+  rdfs:label "input field type for several values"@en ;
+  rdfs:domain shui:Editor ; rdfs:range xsd:string ;
+  rdfs:comment "The Elody InputFieldTypes value of the field a single-value editor becomes when the property may hold several values (no sh:maxCount 1). SHACL UI repeats such an editor once per value; Elody uses one field holding the list. The generator emits it as a custom input field per property."@en .
+
+shui:TextFieldEditor elody:multipleValuesInputFieldType "dropdownMultiselectMetadata" .
+
 shui:TextFieldWithLangEditor elody:multilingual true .
 shui:TextAreaWithLangEditor  elody:multilingual true .
 

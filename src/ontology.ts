@@ -45,6 +45,11 @@ export class Ontology {
     return this.reading.value(editorIri, elody("formFieldType"));
   }
 
+  /** The Elody field a single-value editor becomes when the property may hold several values. */
+  multipleValuesInputFieldType(editorIri: string): string | undefined {
+    return this.reading.value(editorIri, elody("multipleValuesInputFieldType"));
+  }
+
   /** Whether an editor edits language-tagged text (one multilingual value in Elody). */
   multilingual(editorIri: string | undefined): boolean {
     return editorIri !== undefined && this.reading.literal(editorIri, elody("multilingual")) === true;
