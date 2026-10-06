@@ -113,3 +113,14 @@ describe("spec examples → Elody form", () => {
     expect(rich.fields[0].gaps.some((gap) => gap.level === "unsupported")).toBe(true);
   });
 });
+
+describe("complex paths are left out by choice", () => {
+  it("explains the view/edit symmetry the spec allows", async () => {
+    const { fromShacl } = await import("../src/fromShacl.js");
+    const { readFileSync } = await import("fs");
+    const { join } = await import("path");
+    const shapes = readFileSync(join(__dirname, "..", "spec", "examples", "08-edit-alternative-paths.shapes.ttl"), "utf-8");
+    const { notes } = await fromShacl(shapes, { id: "e08", documentName: "SpecE08" });
+    expect(notes.join("\n")).toMatch(/alternative path, left out: Elody keeps view and edit symmetric/);
+  });
+});

@@ -106,7 +106,9 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   const usable: SpecField[] = [];
   for (const field of form.fields) {
     if (field.path.kind !== "predicate" && field.path.kind !== "inverse") {
-      notes.push(`"${field.label}": ${field.path.kind} path, left out (an Elody field reads one metadata key or one relation)`);
+      // SHACL 1.2 UI recommends complex paths in view mode, but allows leaving them out to keep view and
+      // edit symmetric; editing them is optional (alternative paths) or ambiguous (sequences, *, +, ?)
+      notes.push(`"${field.label}": ${field.path.kind} path, left out: Elody keeps view and edit symmetric (a field it shows, it can edit), as the spec allows; an Elody field reads and writes one metadata key or one relation`);
       continue;
     }
     usable.push(field);
