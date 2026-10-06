@@ -30,6 +30,10 @@ export type UiProperty = {
   languageIn: string[];
   /** a field with its own input field on the detail page (a nested shape: inputFieldWithSubFields) */
   inputType?: string;
+  /** the widget an editable panel edits it with (the create form's); none when read-only or not writable */
+  editInputType?: string;
+  /** sh:minCount 1: required when edited */
+  required: boolean;
   /** a relation-valued property (sh:class, or an inverse path): the Elody relation it reads */
   relationType?: string;
   /** metadata key(s) labelling the related entity (metadataKeyAsLabel) */

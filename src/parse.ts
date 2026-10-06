@@ -117,6 +117,15 @@ class Parse {
     return "";
   }
 
+  /** The create form's widget for a property, to edit it on the detail page; none when Elody cannot write it. */
+  private editWidget(node: string): string | undefined {
+    try {
+      return this.formField(node).inputType;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** sh:languageIn of a property shape, in its order (the spec gives the order a meaning). */
   private languageInOf(node: string): string[] {
     const list = this.r.node(node, sh("languageIn"));
@@ -472,6 +481,9 @@ class Parse {
       inputType: editor && this.isNested(node, editor) ? this.nestedField(node, key) : undefined,
       relationType: editor && this.isNested(node, editor) ? undefined : this.relationTypeOf(node),
       valueLabelKey: r.value(node, elody("valueLabelKey")),
+      // relation-valued properties are read through the relation and edited in the create form
+      editInputType: readOnly || this.relationTypeOf(node) ? undefined : this.editWidget(node),
+      required: Number(r.value(node, sh("minCount")) ?? 0) >= 1,
     };
   }
 

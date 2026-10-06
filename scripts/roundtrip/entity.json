@@ -1,0 +1,14 @@
+{
+  "type": "entity",
+  "metadata": [
+    { "key": "title", "value": "Original title" },
+    { "key": "keywords", "value": ["poetry", "dutch", "1990s"] },
+    { "key": "label", "value": "A book", "lang": "en" },
+    { "key": "label", "value": "Een boek", "lang": "nl" },
+    { "key": "label", "value": "Un livre", "lang": "fr" },
+    { "key": "pages", "value": 212 },
+    { "key": "available", "value": true },
+    { "key": "published", "value": "1990-05-17" },
+    { "key": "note", "value": "not declared in any form, must stay" }
+  ]
+}

@@ -217,7 +217,7 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   }
   for (const group of groups) {
     add(group.term, elody("panelKind"), namedNode(elody("MetadataPanel")));
-    add(group.term, dash("readOnly"), literal("true", namedNode(`${XSD}boolean`)));
+    // editable: the detail page writes values back (dash:readOnly on a property keeps that one read-only)
     add(group.term, elody("collapsed"), literal("false", namedNode(`${XSD}boolean`)));
     if (group.order === Number.MAX_SAFE_INTEGER - 1) {
       const orders = usable.filter((f) => !f.group && f.order !== null).map((f) => f.order!);

@@ -445,9 +445,16 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
       lines.push(`${pad(depth + 4)}key(input: "${key}")`);
       if (property.multilingual) lines.push(`${pad(depth + 4)}isMultilingual(input: true)`);
       if (property.languageIn.length) lines.push(`${pad(depth + 4)}languageIn(input: ${stringList(property.languageIn)})`);
-      if (property.inputType) {
-        lines.push(`${pad(depth + 4)}inputField(type: ${property.inputType}) {`);
+      // an editable panel edits a field with the create form's widget; a nested value always shows its table
+      const inputType = property.inputType ?? (panel.editable ? property.editInputType : undefined);
+      if (inputType) {
+        lines.push(`${pad(depth + 4)}inputField(type: ${inputType}) {`);
         lines.push(`${pad(depth + 6)}...inputfield`);
+        if (property.required && panel.editable) {
+          lines.push(`${pad(depth + 6)}validation(input: { value: required }) {`);
+          lines.push(`${pad(depth + 8)}...validation`);
+          lines.push(`${pad(depth + 6)}}`);
+        }
         lines.push(`${pad(depth + 4)}}`);
       }
       lines.push(`${pad(depth + 2)}}`);

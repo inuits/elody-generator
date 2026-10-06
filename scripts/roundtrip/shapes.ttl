@@ -1,0 +1,24 @@
+# Value preservation (SHACL 1.2 UI feature 30): existing values, including
+# unbounded ones, are rendered and preserved when the form writes back.
+@prefix ex: <http://example.org/ns#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ex:BookShape a sh:NodeShape ;
+  sh:targetClass ex:Book ;
+  sh:property ex:BookShape-title , ex:BookShape-keywords , ex:BookShape-label ,
+    ex:BookShape-pages , ex:BookShape-available , ex:BookShape-published .
+
+ex:BookShape-title a sh:PropertyShape ; sh:path ex:title ; sh:name "title"@en ;
+  sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ; sh:order 0 .
+ex:BookShape-keywords a sh:PropertyShape ; sh:path ex:keywords ; sh:name "keywords"@en ;
+  sh:datatype xsd:string ; sh:order 1 .
+ex:BookShape-label a sh:PropertyShape ; sh:path ex:label ; sh:name "label"@en ;
+  sh:datatype rdf:langString ; sh:order 2 .
+ex:BookShape-pages a sh:PropertyShape ; sh:path ex:pages ; sh:name "pages"@en ;
+  sh:datatype xsd:integer ; sh:maxCount 1 ; sh:order 3 .
+ex:BookShape-available a sh:PropertyShape ; sh:path ex:available ; sh:name "available"@en ;
+  sh:datatype xsd:boolean ; sh:maxCount 1 ; sh:order 4 .
+ex:BookShape-published a sh:PropertyShape ; sh:path ex:published ; sh:name "published"@en ;
+  sh:datatype xsd:date ; sh:maxCount 1 ; sh:order 5 .

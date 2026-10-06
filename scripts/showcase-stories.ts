@@ -61,6 +61,7 @@ import { useRouter } from "vue-router";
 import DynamicForm from "@/components/dynamicForms/DynamicForm.vue";
 import EntityElementWindow from "@/components/entityElements/EntityElementWindow.vue";
 import { useFormHelper } from "@/composables/useFormHelper";
+import { useEditMode } from "@/composables/useEdit";
 import { i18n } from "@/main";
 import { examples } from "./shaclUiShowcase.data";
 
@@ -72,6 +73,8 @@ const Showcase = defineComponent({
     // language-tagged text renders as a multilingual field: a client turns this feature on
     provide("config", { customization: {}, features: { supportsMultilingualMetadataEditing: true } });
     const formId = \`showcase-\${props.example.id}\`;
+    // the page's edit state exists before the window, as the entity page creates it: view mode
+    useEditMode(formId);
     const { getForm, createForm } = useFormHelper();
     if (!getForm(formId)) createForm(formId, { intialValues: props.example.intialValues, relationValues: {} } as any);
     i18n.global.mergeLocaleMessage("en", props.example.messages);
