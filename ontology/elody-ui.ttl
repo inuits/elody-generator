@@ -896,10 +896,19 @@ elody:formFieldType a owl:DatatypeProperty , owl:AnnotationProperty ;
   rdfs:domain shui:Editor ; rdfs:range xsd:string ;
   rdfs:comment "The BaseFieldType value a create form uses for this editor (inputField(type: ...)). Sibling of elody:inputFieldType."@en .
 
+elody:multilingual a owl:DatatypeProperty , owl:AnnotationProperty ;
+  rdfs:label "multilingual"@en ;
+  rdfs:domain shui:Editor ; rdfs:range xsd:boolean ;
+  rdfs:comment "The editor edits language-tagged text: Elody renders its field as one multilingual value (isMultilingual), edited and shown per language. Stated on the shui: WithLang editors; the SHACL 1.2 UI scoring system picks those for rdf:langString."@en .
+
+shui:TextFieldWithLangEditor elody:multilingual true .
+shui:TextAreaWithLangEditor  elody:multilingual true .
+
 shui:TextFieldEditor         elody:formFieldType "baseTextField" .
 shui:TextAreaEditor          elody:formFieldType "baseTextareaField" .
 shui:TextFieldWithLangEditor elody:formFieldType "baseTextField" .
 shui:TextAreaWithLangEditor  elody:formFieldType "baseTextareaField" .
+
 shui:NumberFieldEditor       elody:formFieldType "baseNumberField" .
 shui:BooleanEditor           elody:formFieldType "baseCheckbox" .
 shui:DatePickerEditor        elody:formFieldType "baseDateField" .

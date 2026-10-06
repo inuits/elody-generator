@@ -40,6 +40,9 @@ export type FromShaclResult = {
 
 const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
 
+/** Predicates whose named objects are shapes of their own, copied along with the referring shape. */
+const NESTED = [sh("node"), sh("property")];
+
 export async function fromShacl(shapes: string, options: FromShaclOptions): Promise<FromShaclResult> {
   const ns = options.namespace ?? "https://elody.eu/examples/shacl-ui#";
   const ontology = defaultOntology();
@@ -70,6 +73,8 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
       if (skip(q)) continue;
       const o = q.object;
       const object = o.termType === "BlankNode" ? copy(o.value, blankNode()) : o;
+      // a nested node shape and its property shapes travel with the property that uses them
+      if (o.termType === "NamedNode" && NESTED.includes(q.predicate.value) && bySubject.has(o.value)) copy(o.value, o);
       add(as, q.predicate.value, object);
     }
     return as;
@@ -111,6 +116,8 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
     const editor = emptyEditor.get(field.shape) ?? field.editor?.widget ?? "";
     if (ontology.formFieldType(editor) !== undefined) return true;
     if (editor === `${SHUI}EnumSelectEditor`) return true;
+    // a nested shape: a field with sub-fields (inputFieldWithSubFields)
+    if (editor === `${SHUI}DetailsEditor` && bySubject.get(field.shape)?.some((q) => q.predicate.value === sh("node"))) return true;
     if ([`${SHUI}InstancesSelectEditor`, `${SHUI}AutoCompleteEditor`].includes(editor) && bySubject.get(field.shape)?.some((q) => q.predicate.value === sh("class")))
       return true;
     return false;

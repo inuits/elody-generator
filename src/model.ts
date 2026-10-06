@@ -24,6 +24,10 @@ export type UiProperty = {
   hidden: boolean;
   readOnly: boolean;
   description?: string;
+  /** language-tagged text: one value per language (isMultilingual) */
+  multilingual: boolean;
+  /** a field with its own input field on the detail page (a nested shape: inputFieldWithSubFields) */
+  inputType?: string;
 };
 
 export type UiFilter = {
@@ -84,6 +88,7 @@ export type UiCreateFormField = {
   required: boolean;
   /** the shui editor the input type was derived from (explicit or inferred) */
   editor?: string;
+  multilingual: boolean;
 };
 
 export type UiCreateForm = {

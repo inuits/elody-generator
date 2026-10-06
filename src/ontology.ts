@@ -45,6 +45,11 @@ export class Ontology {
     return this.reading.value(editorIri, elody("formFieldType"));
   }
 
+  /** Whether an editor edits language-tagged text (one multilingual value in Elody). */
+  multilingual(editorIri: string | undefined): boolean {
+    return editorIri !== undefined && this.reading.literal(editorIri, elody("multilingual")) === true;
+  }
+
   /** Editor whose create-form field type is `value`, preferring the shui: one. */
   editorForFormFieldType(value: string): string | undefined {
     const candidates = this.reading.subjectsWith(elody("formFieldType"), value);

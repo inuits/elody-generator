@@ -26,6 +26,7 @@ export function renderTeaserFields(entity: M.UiEntity, indent: number): string {
         `${pad(indent + 2)}label(input: "${property.label ?? property.key}")`,
         `${pad(indent + 2)}key(input: "${property.key}")`,
       ];
+      if (property.multilingual) lines.push(`${pad(indent + 2)}isMultilingual(input: true)`);
       if (property.colSpan !== undefined) lines.push(`${pad(indent + 2)}colSpan(input: "${property.colSpan}")`);
       if (property.unit) lines.push(`${pad(indent + 2)}unit(input: ${property.unit})`);
       lines.push(`${pad(indent)}}`);
@@ -250,6 +251,7 @@ export function renderCreateForm(form: M.UiCreateForm): string {
       `          ${field.key}: metaData {`,
       `            label(input: "${field.label ?? field.key}")`,
       `            key(input: "${field.key}")`,
+      ...(field.multilingual ? ["            isMultilingual(input: true)"] : []),
       `            inputField(type: ${field.inputType}) {`,
       "              ...inputfield",
     ];
@@ -408,6 +410,12 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
       lines.push(`${pad(depth + 2)}${key}: metaData {`);
       lines.push(`${pad(depth + 4)}label(input: "${property.label ?? property.key}")`);
       lines.push(`${pad(depth + 4)}key(input: "${key}")`);
+      if (property.multilingual) lines.push(`${pad(depth + 4)}isMultilingual(input: true)`);
+      if (property.inputType) {
+        lines.push(`${pad(depth + 4)}inputField(type: ${property.inputType}) {`);
+        lines.push(`${pad(depth + 6)}...inputfield`);
+        lines.push(`${pad(depth + 4)}}`);
+      }
       lines.push(`${pad(depth + 2)}}`);
     }
     lines.push(`${pad(depth)}}`);

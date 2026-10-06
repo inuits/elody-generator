@@ -27,7 +27,7 @@ export type ParseResult = {
 
 export async function readUiDeclaration(ttl: string, ontology: Ontology = defaultOntology()): Promise<ParseResult> {
   const reading = Reading.parse(ttl);
-  const editors = await scoreFormEditors(reading);
+  const editors = await scoreEditors(reading);
   const parse = new Parse(reading, ontology, editors);
   const entities = reading.subjectsOfType(elody("EntityUi")).map((subject) => parse.entity(subject));
   return { entities, warnings: reading.warnings, translations: parse.translations, inputFields: parse.inputFields };
@@ -38,16 +38,21 @@ export async function parseUiDeclaration(ttl: string, ontology: Ontology = defau
 }
 
 /**
- * The SHACL 1.2 UI scoring system picks the editor of every create-form field
- * (the property shapes under an elody:Form's elody:shape). Fields without any
- * scored editor get none here; the parser falls back to a text field, which is
- * the renderer's choice the spec leaves open.
+ * The SHACL 1.2 UI scoring system picks the editor of every property shape:
+ * the create-form fields (under an elody:Form's elody:shape), the entity's
+ * properties and the property shapes of nested node shapes. Shapes without
+ * any scored editor get none here; the parser falls back to a text field,
+ * which is the renderer's choice the spec leaves open.
  */
-async function scoreFormEditors(reading: Reading): Promise<Map<string, string>> {
-  const fields = reading
-    .subjectsOfType(elody("Form"))
-    .flatMap((form) => reading.nodes(form, elody("shape")))
-    .flatMap((shape) => reading.nodes(shape, sh("property")));
+async function scoreEditors(reading: Reading): Promise<Map<string, string>> {
+  const fields = [
+    ...new Set(
+      reading
+        .quads()
+        .filter((q) => q.predicate.value === sh("property") && q.object.termType !== "Literal")
+        .map((q) => q.object.value),
+    ),
+  ];
   const editors = new Map<string, string>();
   if (!fields.length) return editors;
   const scorer = await Scorer.create({ shapes: reading.quads() });
@@ -138,6 +143,7 @@ class Parse {
     const r = this.r;
     const single = Number(r.value(node, sh("maxCount")) ?? 0) === 1;
     const name = `${this.type}${key.charAt(0).toUpperCase()}${key.slice(1)}Field`;
+    if (this.isNested(node, editor)) return this.nestedField(node, key);
     if (editor === shui("EnumSelectEditor")) {
       const values = r.list(r.node(node, sh("in")));
       this.inputFields[name] = {
@@ -156,6 +162,64 @@ class Parse {
       return name;
     }
     throw new Error(`${compact(editor)} has no create-form field type in the ontology and no generated custom field`);
+  }
+
+  /** A nested shape: the DetailsEditor on a property shape with sh:node. */
+  private isNested(node: string, editor: string | undefined): boolean {
+    return editor === shui("DetailsEditor") && this.r.node(node, sh("node")) !== undefined;
+  }
+
+  /**
+   * A nested shape becomes an inputFieldWithSubFields custom field: the value
+   * is a list of objects under the metadata key, one sub-field per property
+   * shape of the nested node shape (in the spec's order). The same field
+   * serves the create form and the detail panel.
+   */
+  private nestedField(node: string, key: string): string {
+    const r = this.r;
+    const name = `${this.type}${key.charAt(0).toUpperCase()}${key.slice(1)}Field`;
+    if (this.inputFields[name]) return name;
+    const shape = r.node(node, sh("node"))!;
+    const subs = this.specOrder(r.nodes(shape, sh("property")).map((sub) => ({ node: sub, label: this.keyOf(sub) })));
+    this.inputFields[name] = {
+      type: "inputFieldWithSubFields",
+      isMetadataField: true,
+      subFields: subs.map(({ node: sub }) => {
+        const subKey = this.keyOf(sub);
+        const inputField = this.subInputField(sub, `${key}.${subKey}`);
+        if (Number(r.value(sub, sh("minCount")) ?? 0) >= 1) inputField.validation = { value: ["required"] };
+        return {
+          label: this.labelOf(sub, sh("name"), `ui.${this.type}.${key}.${subKey}`, subKey) ?? subKey,
+          key: subKey,
+          inputField,
+        };
+      }),
+    };
+    return name;
+  }
+
+  /** The input field of one column of a nested value; what a table cell cannot hold is entered as text. */
+  private subInputField(sub: string, path: string): Record<string, unknown> {
+    const r = this.r;
+    const editor = this.scoredEditors.get(sub) ?? shui("TextFieldEditor");
+    if (editor === shui("EnumSelectEditor")) {
+      const values = r.list(r.node(sub, sh("in")));
+      return { type: "dropdownSingleselectMetadata", options: values.map((value) => ({ label: value, value })) };
+    }
+    if (r.node(sub, sh("class"))) {
+      r.warn(sub, `${path}: sh:class inside a nested value has no Elody field; the related resource is entered as its identifier`);
+      return { type: "text" };
+    }
+    if (editor === shui("DetailsEditor")) {
+      r.warn(sub, `${path}: a nested shape inside a nested value is not supported; entered as text`);
+      return { type: "text" };
+    }
+    const type = this.o.inputFieldType(editor);
+    if (!type) {
+      r.warn(sub, `${path}: ${compact(editor)} has no Elody input field; entered as text`);
+      return { type: "text" };
+    }
+    return { type };
   }
 
   /** shui:defaultOrder of the declaration's global configuration, if any. */
@@ -334,6 +398,7 @@ class Parse {
       ? (this.retired(node, elody("editable")), r.literal(node, elody("editable")) === false)
       : r.literal(node, dash("readOnly")) === true;
     const key = this.keyOf(node);
+    const editor = this.scoredEditors.get(node);
     return {
       key,
       path: r.node(node, sh("path")),
@@ -351,6 +416,8 @@ class Parse {
       hidden: this.hidden(node),
       readOnly,
       description: r.value(node, sh("description")),
+      multilingual: this.o.multilingual(editor),
+      inputType: editor && this.isNested(node, editor) ? this.nestedField(node, key) : undefined,
     };
   }
 
@@ -515,6 +582,7 @@ class Parse {
       inputType,
       required,
       editor,
+      multilingual: this.o.multilingual(editor),
     };
   }
 
@@ -530,6 +598,7 @@ class Parse {
       inputType,
       required: r.literal(node, elody("required")) === true,
       editor: this.o.editorForFormFieldType(inputType),
+      multilingual: false,
     };
   }
 
