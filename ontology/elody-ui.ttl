@@ -762,6 +762,9 @@ elody:expandButton a owl:DatatypeProperty ;
 elody:collapsed a owl:DatatypeProperty ;
   rdfs:label "collapsed"@en ; rdfs:domain owl:Thing ; rdfs:range xsd:boolean ;
   rdfs:comment "The element or panel starts collapsed."@en .
+elody:showsUngrouped a owl:DatatypeProperty ;
+  rdfs:label "shows ungrouped properties"@en ; rdfs:domain sh:PropertyGroup ; rdfs:range xsd:boolean ;
+  rdfs:comment "This detail panel also shows the entity's properties that have no sh:group, after its own. Lets a page put ungrouped properties in a panel without giving them a group they do not have: a create form keeps them as plain fields."@en .
 elody:fieldsKey a owl:DatatypeProperty ;
   rdfs:label "fields key"@en ; rdfs:domain elody:ShaclShapeElement ; rdfs:range xsd:string ;
   rdfs:comment "The entity field holding the runtime shape-derived fields (default shapeFields)."@en .

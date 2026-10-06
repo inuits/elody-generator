@@ -96,6 +96,8 @@ export type UiCreateFormField = {
   editor?: string;
   multilingual: boolean;
   languageIn: string[];
+  /** the sh:PropertyGroup the field belongs to: a titled section of the form */
+  section?: { alias: string; label?: string };
 };
 
 export type UiCreateForm = {

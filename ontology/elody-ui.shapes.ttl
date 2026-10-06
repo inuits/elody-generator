@@ -408,4 +408,5 @@ meta:PropertyGroupShape a sh:NodeShape ; sh:targetClass sh:PropertyGroup ;
   sh:property
     [ sh:path rdfs:label ; sh:uniqueLang true ] ,
     [ sh:path sh:order ; sh:maxCount 1 ] ,
-    [ sh:path elody:labelKey ; sh:maxCount 1 ; sh:datatype xsd:string ] .
+    [ sh:path elody:labelKey ; sh:maxCount 1 ; sh:datatype xsd:string ] ,
+    [ sh:path elody:showsUngrouped ; sh:maxCount 1 ; sh:datatype xsd:boolean ] .

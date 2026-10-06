@@ -87,6 +87,8 @@ class Parse {
   readonly translations: Translations = {};
   readonly inputFields: Record<string, InputFieldDefinition> = {};
   private groupFields = new Map<string, string[]>();
+  /** keys of the entity's properties without sh:group, in the spec's order */
+  private ungroupedFields: string[] = [];
   /** lower-cased GraphQL type of the entity being parsed, for minted label keys */
   private type = "";
 
@@ -390,9 +392,11 @@ class Parse {
     const pathToKey = new Map(properties.filter((p) => p.path).map((p) => [p.path!, p.key]));
     // sh:group → the keys of its properties, in the spec's order within the group
     this.groupFields = new Map();
+    this.ungroupedFields = [];
     for (const { node, property } of ordered) {
       const group = r.node(node, sh("group"));
       if (group) (this.groupFields.get(group) ?? this.groupFields.set(group, []).get(group)!).push(property.key);
+      else this.ungroupedFields.push(property.key);
     }
 
     return {
@@ -586,7 +590,7 @@ class Parse {
         return {
           queryName: this.queryNameOf(node, "form"),
           label: r.value(node, rdfs("label")),
-          fields: this.specOrder(r.nodes(shape, sh("property")).map((node) => ({ node, label: this.keyOf(node) }))).map((field) => this.formField(field.node)),
+          fields: this.formFields(r.nodes(shape, sh("property"))),
           submit: this.submit(r.node(node, elody("submit"))),
         };
       });
@@ -600,6 +604,40 @@ class Parse {
       };
     });
     return [...declared, ...legacy];
+  }
+
+  /**
+   * The fields of a create form in the spec's order: its sh:PropertyGroups and
+   * ungrouped properties are one sequence (by the group's and the property's
+   * sh:order); within a group, its properties in order. A grouped field
+   * carries its section (alias and label, as the detail panel's).
+   */
+  private formFields(nodes: string[]): M.UiCreateFormField[] {
+    const r = this.r;
+    const members = new Map<string, string[]>();
+    const units: { node: string; label: string; group: boolean }[] = [];
+    for (const node of nodes) {
+      const group = r.node(node, sh("group"));
+      if (!group) units.push({ node, label: this.keyOf(node), group: false });
+      else if (members.has(group)) members.get(group)!.push(node);
+      else {
+        members.set(group, [node]);
+        units.push({ node: group, label: this.groupAlias(group), group: true });
+      }
+    }
+    return this.specOrder(units).flatMap((unit) => {
+      if (!unit.group) return [this.formField(unit.node)];
+      const alias = this.groupAlias(unit.node);
+      const section = { alias, label: this.labelOf(unit.node, rdfs("label"), `ui.${this.type}.group.${alias}`) };
+      return this.specOrder(members.get(unit.node)!.map((node) => ({ node, label: this.keyOf(node) }))).map((field) => ({
+        ...this.formField(field.node),
+        section,
+      }));
+    });
+  }
+
+  private groupAlias(group: string): string {
+    return String(this.r.value(group, elody("alias")) ?? lowerFirst(localName(group)));
   }
 
   private submit(node: string | undefined): M.UiCreateForm["submit"] {
@@ -836,7 +874,10 @@ class Parse {
         panelType: this.enumValue(panel, elody("panelKind"), elody("PanelKind"), elody("panelType")) ?? "metadata",
         collapsed: r.literal(panel, elody("collapsed")) === true,
         editable,
-        fields: this.groupFields.get(panel) ?? [],
+        fields: [
+          ...(this.groupFields.get(panel) ?? []),
+          ...(r.literal(panel, elody("showsUngrouped")) === true ? this.ungroupedFields : []),
+        ],
       };
 
     const fields = r.quadsOf(panel)

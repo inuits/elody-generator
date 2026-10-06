@@ -252,7 +252,7 @@ export function renderBulkOperationOptions(operations: M.UiBulkOperation[], inde
 }
 
 export function renderCreateForm(form: M.UiCreateForm): string {
-  const fields = form.fields.map((field) => {
+  const fieldBlocks = form.fields.map((field) => {
     const lines = [
       `          ${field.key}: metaData {`,
       `            label(input: "${field.label ?? field.key}")`,
@@ -271,6 +271,32 @@ export function renderCreateForm(form: M.UiCreateForm): string {
     lines.push("          }");
     return lines.join("\n");
   });
+
+  // consecutive fields of one sh:PropertyGroup are wrapped in a form section
+  const fields: string[] = [];
+  for (let index = 0; index < form.fields.length; index++) {
+    const section = form.fields[index].section;
+    if (!section) {
+      fields.push(fieldBlocks[index]);
+      continue;
+    }
+    const inside: string[] = [];
+    while (index < form.fields.length && form.fields[index].section?.alias === section.alias) {
+      inside.push(fieldBlocks[index].split("\n").map((line) => `    ${line}`).join("\n"));
+      index++;
+    }
+    index--;
+    fields.push(
+      [
+        `          ${section.alias}Section: formSection {`,
+        `            label(input: "${section.label ?? ""}")`,
+        "            formFields {",
+        ...inside,
+        "            }",
+        "          }",
+      ].join("\n"),
+    );
+  }
 
   const submit = form.submit
     ? [

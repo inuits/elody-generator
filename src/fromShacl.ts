@@ -199,6 +199,8 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
         groups.push({ term: g, order: field.group.order ?? Number.MAX_SAFE_INTEGER });
       }
     } else {
+      // an ungrouped property stays ungrouped (a plain field in the create form);
+      // the detail page shows it in a "Details" panel that collects ungrouped properties
       g = groupTerm.get("details") ?? ui("details");
       if (!groupTerm.has("details")) {
         groupTerm.set("details", g);
@@ -206,8 +208,10 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
         add(g, rdfs("label"), literal("Details", "en"));
         add(g, rdfs("label"), literal("Details", "nl"));
         add(g, elody("alias"), literal("details"));
+        add(g, elody("showsUngrouped"), literal("true", namedNode(`${XSD}boolean`)));
         groups.push({ term: g, order: Number.MAX_SAFE_INTEGER - 1 });
       }
+      continue;
     }
     add(term, sh("group"), g);
   }

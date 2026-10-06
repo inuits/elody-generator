@@ -232,8 +232,6 @@ export async function shapeToForm(options: ShapeToFormOptions): Promise<SpecForm
     const searchQuery = shapes.objects(shape, `${SHUI}searchQuery`).length > 0;
     if (searchQuery)
       gaps.push({ level: "unsupported", message: "shui:searchQuery is SPARQL; Elody searches its own index (the sparql storage engine is read-only)" });
-    if (groupTerm)
-      gaps.push({ level: "partial", message: "sh:group: the platform does not render groups as sections yet (T5)" });
 
     // nested shapes: DetailsEditor and the ValueTableViewer's columns
     const nodeShape = shapes.object(shape, `${SH}node`)?.value ?? classShape(shapes.object(shape, `${SH}class`)?.value);
