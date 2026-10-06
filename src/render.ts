@@ -7,11 +7,15 @@ import type * as M from "./model.js";
 
 const pad = (depth: number) => " ".repeat(depth);
 export const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
+/** How a related entity is labelled when the declaration does not say (elody:valueLabelKey). */
+export const DEFAULT_VALUE_LABEL_KEY = "title|name|label";
 
 export function renderInitialValues(entity: M.UiEntity, indent: number, withFormatters = true): string {
   return entity.properties
     .map((property) => {
       const formatter = withFormatters && property.formatter ? `, formatter: "${property.formatter}"` : "";
+      if (property.relationType)
+        return `${pad(indent)}${property.key}: keyValue(key: "${property.relationType}", source: relations, metadataKeyAsLabel: "${property.valueLabelKey ?? DEFAULT_VALUE_LABEL_KEY}"${formatter})`;
       return `${pad(indent)}${property.key}: keyValue(key: "${property.key}", source: metadata${formatter})`;
     })
     .join("\n");

@@ -97,6 +97,8 @@ class Parse {
     const r = this.r;
     const explicit = r.value(node, elody("key"));
     if (explicit) return explicit;
+    // an inverse path is keyed by the relation it reads (there is no metadata key of its own)
+    if (this.inversePredicate(node)) return this.relationTypeOf(node)!;
     const path = r.node(node, sh("path"));
     if (path && !path.startsWith("_:") && !path.startsWith("n3-") && /[:/#]/.test(path)) return localName(path);
     const name = r.literals(node, sh("name"))[0];
@@ -105,6 +107,29 @@ class Parse {
       return name;
     }
     return "";
+  }
+
+  /** ex:p of sh:path [ sh:inversePath ex:p ], if the property shape has one. */
+  private inversePredicate(node: string): string | undefined {
+    const path = this.r.node(node, sh("path"));
+    if (!path || !(path.startsWith("_:") || path.startsWith("n3-") || !/[:/#]/.test(path))) return undefined;
+    return this.r.node(path, sh("inversePath"));
+  }
+
+  /**
+   * The Elody relation a relation-valued property reads and writes:
+   * elody:relationType, else has<X> for sh:path ex:x with sh:class, else
+   * is<X>For for sh:path [ sh:inversePath ex:x ] — the mirror collection-api
+   * stores on this entity when the other one gets has<X>.
+   */
+  private relationTypeOf(node: string): string | undefined {
+    const explicit = this.r.value(node, elody("relationType"));
+    if (explicit) return explicit;
+    const cap = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+    const inverse = this.inversePredicate(node);
+    if (inverse) return `is${cap(localName(inverse))}For`;
+    if (this.r.node(node, sh("class"))) return `has${cap(this.keyOf(node))}`;
+    return undefined;
   }
 
   private addTranslation(language: string, key: string, text: string) {
@@ -156,7 +181,7 @@ class Parse {
     if (cls && (editor === shui("InstancesSelectEditor") || editor === shui("AutoCompleteEditor"))) {
       this.inputFields[name] = {
         type: single ? "dropdownSingleselectRelations" : "dropdownMultiselectRelations",
-        relationType: `has${key.charAt(0).toUpperCase()}${key.slice(1)}`,
+        relationType: this.relationTypeOf(node) ?? `has${key.charAt(0).toUpperCase()}${key.slice(1)}`,
         advancedFilterInputForRetrievingOptions: [{ type: "type", value: lowerFirst(localName(cls)) }],
       };
       return name;
@@ -418,6 +443,8 @@ class Parse {
       description: r.value(node, sh("description")),
       multilingual: this.o.multilingual(editor),
       inputType: editor && this.isNested(node, editor) ? this.nestedField(node, key) : undefined,
+      relationType: editor && this.isNested(node, editor) ? undefined : this.relationTypeOf(node),
+      valueLabelKey: r.value(node, elody("valueLabelKey")),
     };
   }
 
@@ -568,7 +595,15 @@ class Parse {
     const r = this.r;
     const editor = this.scoredEditors.get(node) ?? shui("TextFieldEditor");
     const key0 = this.keyOf(node);
-    const inputType = this.o.formFieldType(editor) ?? this.customField(node, editor, key0);
+    let inputType: string;
+    if (this.inversePredicate(node) && !r.node(node, sh("class")))
+      throw new Error(`${key0}: an inverse path without sh:class cannot be picked in a create form (Elody needs the related type)`);
+    const formFieldType = this.o.formFieldType(editor);
+    if (formFieldType) inputType = formFieldType;
+    else if (this.relationTypeOf(node) && r.node(node, sh("class")) && !this.isNested(node, editor))
+      // a relation-valued field without an Elody form widget is a relation dropdown
+      inputType = this.customField(node, [shui("InstancesSelectEditor"), shui("AutoCompleteEditor")].includes(editor) ? editor : shui("InstancesSelectEditor"), key0);
+    else inputType = this.customField(node, editor, key0);
     let required = Number(r.value(node, sh("minCount")) ?? 0) >= 1;
     if (!required && r.has(node, elody("required"))) {
       this.retired(node, elody("required"));

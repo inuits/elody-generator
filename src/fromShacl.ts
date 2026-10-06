@@ -36,9 +36,12 @@ export type FromShaclResult = {
   /** the focus node's values per metadata key, to show a filled-in detail page */
   sample: Record<string, string | string[]>;
   fields: { key: string; label: string; inForm: boolean; inDetail: boolean; editor?: string; viewer?: string }[];
+  /** the focus node's related nodes, as Elody relations on the sample entity */
+  relations: { type: string; key: string; label: string }[];
 };
 
 const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
+const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
 /** Predicates whose named objects are shapes of their own, copied along with the referring shape. */
 const NESTED = [sh("node"), sh("property")];
@@ -104,15 +107,24 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   // -- which properties Elody can carry -----------------------------------------------
   const usable: SpecField[] = [];
   for (const field of form.fields) {
-    if (field.path.kind !== "predicate") {
-      notes.push(`"${field.label}": ${field.path.kind} path, left out (an Elody field reads and writes one metadata key)`);
+    if (field.path.kind !== "predicate" && field.path.kind !== "inverse") {
+      notes.push(`"${field.label}": ${field.path.kind} path, left out (an Elody field reads one metadata key or one relation)`);
       continue;
     }
     usable.push(field);
   }
   if (!usable.length) notes.push("no property Elody can carry: the declaration has no fields");
 
+  const hasClass = (field: SpecField) => (bySubject.get(field.shape) ?? []).some((q) => q.predicate.value === sh("class"));
+  // the Elody key of a field: the path's local name, or for an inverse path the mirrored relation (is<X>For)
+  const keyOf = (field: SpecField) =>
+    field.path.kind === "inverse" ? `is${upperFirst(localName(field.path.iris[0]))}For` : localName(field.path.iris[0]);
+  // relation-valued: an inverse path, or a predicate path whose values are instances of a class
+  const relationTypeOf = (field: SpecField) =>
+    field.path.kind === "inverse" ? keyOf(field) : hasClass(field) ? `has${upperFirst(keyOf(field))}` : undefined;
+
   const formEditable = (field: SpecField) => {
+    if (field.path.kind === "inverse") return hasClass(field);
     const editor = emptyEditor.get(field.shape) ?? field.editor?.widget ?? "";
     if (ontology.formFieldType(editor) !== undefined) return true;
     if (editor === `${SHUI}EnumSelectEditor`) return true;
@@ -136,7 +148,7 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   // -- property shapes: reused, with only what the Elody profile needs changed ------------------------
   const propertyTerm = new Map<string, Term>();
   for (const [index, field] of usable.entries()) {
-    const key = localName(field.path.iris[0]);
+    const key = keyOf(field);
     const named = !field.shape.startsWith("_:") && !/^n3-|^b\d+/.test(field.shape) && /[:/#]/.test(field.shape);
     const term = named ? namedNode(field.shape) : ui(key);
     const editor = (bySubject.get(field.shape) ?? []).find((q) => q.predicate.value === shui("editor"))?.object.value;
@@ -181,6 +193,9 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
       if (!groupTerm.has(field.group.iri)) {
         groupTerm.set(field.group.iri, g);
         copy(field.group.iri, g);
+        // no label in the shapes: the spec's label resolution ends at the local name
+        if (!(bySubject.get(field.group.iri) ?? []).some((q) => q.predicate.value === rdfs("label")))
+          add(g, rdfs("label"), literal(localName(field.group.iri)));
         add(g, rdf("type"), namedNode(sh("PropertyGroup")));
         add(g, elody("alias"), literal(lowerFirst(localName(field.group.iri))));
         groups.push({ term: g, order: field.group.order ?? Number.MAX_SAFE_INTEGER });
@@ -221,7 +236,9 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   // -- create form: the same property shapes ------------------------------------------------------------
   const formFields = usable.filter((field) => {
     const ok = formEditable(field);
-    if (!ok) notes.push(`"${field.label}": ${(emptyEditor.get(field.shape) ?? field.editor?.widget ?? "").replace(SHUI, "shui:")} has no create-form field in Elody; left out of the form`);
+    if (!ok && field.path.kind === "inverse")
+      notes.push(`"${field.label}": inverse path without sh:class; shown on the detail page, left out of the form (picking a value needs the related type)`);
+    else if (!ok) notes.push(`"${field.label}": ${(emptyEditor.get(field.shape) ?? field.editor?.widget ?? "").replace(SHUI, "shui:")} has no create-form field in Elody; left out of the form`);
     return ok;
   });
   if (formFields.length) {
@@ -243,9 +260,15 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
 
   // -- sample values from the spec's data graph -----------------------------------------------------------
   const sample: Record<string, string | string[]> = {};
+  const relations: FromShaclResult["relations"] = [];
   for (const field of usable) {
     if (!field.values.length) continue;
-    const key = localName(field.path.iris[0]);
+    const relationType = relationTypeOf(field);
+    if (relationType) {
+      for (const value of field.values) relations.push({ type: relationType, key: value.value, label: value.label });
+      continue;
+    }
+    const key = keyOf(field);
     // language-tagged values: the one in the preferred language (they are one multilingual value)
     const values = field.values.some((value) => value.language) ? field.values.slice(0, 1) : field.values;
     const labels = values.map((value) => value.label);
@@ -260,8 +283,9 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
     ttl: new TurtleWriter(out, prefixes).write(),
     notes,
     sample,
+    relations,
     fields: usable.map((field) => ({
-      key: localName(field.path.iris[0]),
+      key: keyOf(field),
       label: field.label,
       inForm: formFields.includes(field),
       inDetail: true,

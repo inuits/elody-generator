@@ -30,12 +30,14 @@ describe("spec examples → Elody form", () => {
     expect(given.elody.inputFieldType).toBe("text");
   });
 
-  it("predicate and inverse paths: the inverse path is recognised and flagged", async () => {
+  it("predicate and inverse paths: the inverse path is recognised; only the IRI-as-entity caveat remains", async () => {
     const result = await form("05-view-predicate-paths", { focus: ex("alice") });
     const department = result.fields.find((field) => field.label === "Department")!;
     expect(department.path.kind).toBe("inverse");
     expect(department.values.map((value) => value.label)).toEqual(["Research Department"]);
-    expect(department.gaps.some((gap) => gap.level === "partial")).toBe(true);
+    expect(department.gaps.map((gap) => gap.message)).toEqual([
+      "shui:LabelViewer: Elody shows a linked resource as a relation to an Elody entity, not as an arbitrary IRI",
+    ]);
   });
 
   it("alternative paths are not editable as one Elody field", async () => {

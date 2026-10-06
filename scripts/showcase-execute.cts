@@ -74,16 +74,24 @@ for (const row of examples) {
 }
 
 const entities: Record<string, any> = {};
+// the related nodes of the spec's data graph, as the entities a relation points to
+const related: Record<string, any> = {};
 for (const row of examples) {
   const sample = JSON.parse(fs.readFileSync(path.join(out, row.id, "sample.json"), "utf-8"));
+  const relationsFile = path.join(out, row.id, "relations.json");
+  const relations = fs.existsSync(relationsFile) ? JSON.parse(fs.readFileSync(relationsFile, "utf-8")) : [];
+  for (const relation of relations)
+    related[relation.key] = { _id: relation.key, id: relation.key, type: "BaseEntity", metadata: [{ key: "title", value: relation.label }], relations: [] };
   entities[row.id] = {
     id: row.id,
     _id: row.id,
     type: "BaseEntity",
     metadata: Object.entries(sample).map(([key, value]) => ({ key, value })),
-    relations: [],
+    relations: relations.map((relation: any) => ({ key: relation.key, type: relation.type })),
   };
 }
+// the one collection-api call the relation resolver makes: fetch the related entity for its label
+const dataSources = { CollectionAPI: { getEntity: async (id: string) => related[id] ?? null } };
 
 const showcase = createModule({
   id: "shaclUiShowcase",
@@ -112,8 +120,8 @@ const execute = app.createExecution();
     // the generated documents must be valid against the real schema (all GraphQL rules)
     results.validation = validate(app.schema, document, rules).map((error: any) => error.message);
     if (row.formQuery)
-      results.form = await execute({ schema: app.schema, document, operationName: row.formQuery, contextValue: { dataSources: {} } });
-    results.detail = await execute({ schema: app.schema, document, operationName: `${row.documentName}Detail`, contextValue: { dataSources: {} } });
+      results.form = await execute({ schema: app.schema, document, operationName: row.formQuery, contextValue: { dataSources } });
+    results.detail = await execute({ schema: app.schema, document, operationName: `${row.documentName}Detail`, contextValue: { dataSources } });
     fs.writeFileSync(path.join(out, row.id, "executed.json"), JSON.stringify(results, null, 2));
     const errors = [
       ...(results.validation as string[]).map((message) => `invalid: ${message}`),

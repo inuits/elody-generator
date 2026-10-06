@@ -28,6 +28,10 @@ export type UiProperty = {
   multilingual: boolean;
   /** a field with its own input field on the detail page (a nested shape: inputFieldWithSubFields) */
   inputType?: string;
+  /** a relation-valued property (sh:class, or an inverse path): the Elody relation it reads */
+  relationType?: string;
+  /** metadata key(s) labelling the related entity (metadataKeyAsLabel) */
+  valueLabelKey?: string;
 };
 
 export type UiFilter = {

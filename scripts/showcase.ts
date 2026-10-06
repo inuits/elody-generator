@@ -81,6 +81,7 @@ for (const entry of index) {
   writeFileSync(join(target, "inputFields.json"), JSON.stringify(parsed.inputFields, null, 2));
   writeFileSync(join(target, "translations.json"), JSON.stringify(parsed.translations, null, 2));
   writeFileSync(join(target, "sample.json"), JSON.stringify(converted.sample, null, 2));
+  writeFileSync(join(target, "relations.json"), JSON.stringify(converted.relations, null, 2));
   row.status = "generated";
   row.hasForm = entity.createForms.length > 0;
   row.hasDetail = Boolean(entity.detail);

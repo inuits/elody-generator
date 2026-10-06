@@ -727,7 +727,10 @@ elody:fromStep a owl:DatatypeProperty ;
   rdfs:comment "The key of the step whose result is attached."@en .
 elody:relationType a owl:DatatypeProperty ;
   rdfs:label "relation type"@en ; rdfs:domain owl:Thing ; rdfs:range xsd:string ;
-  rdfs:comment "An Elody relation type name (hasProcessor, isRunnerFor). Open string: client-defined, convention has<X> / is<X>For."@en .
+  rdfs:comment "An Elody relation type name (hasProcessor, isRunnerFor). Open string: client-defined, convention has<X> / is<X>For. On a property shape it names the relation the property reads and writes; without it, sh:path ex:x with sh:class is has<X> and sh:path [ sh:inversePath ex:x ] is is<X>For, the mirror collection-api stores on the other entity."@en .
+elody:valueLabelKey a owl:DatatypeProperty ;
+  rdfs:label "value label key"@en ; rdfs:domain sh:PropertyShape ; rdfs:range xsd:string ;
+  rdfs:comment "The metadata key(s) of a related entity that label it as a value of this property (alternatives separated by |). Elody's counterpart of the spec's label chain for value nodes; default title|name|label."@en .
 
 # -- pickers ---------------------------------------------------------------------
 elody:result a owl:ObjectProperty ;

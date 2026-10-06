@@ -226,8 +226,7 @@ export async function shapeToForm(options: ShapeToFormOptions): Promise<SpecForm
       else gaps.push({ level: "unsupported", message: `Elody has no viewer for ${short(viewer.widget)}` });
     }
 
-    if (path.kind === "inverse")
-      gaps.push({ level: "partial", message: "inverse path: Elody can show it only as a relation from the other entity's side" });
+    // an inverse path is the mirrored Elody relation (is<X>For), stored on this entity by collection-api
     if (path.kind === "alternative" || path.kind === "complex")
       gaps.push({ level: "unsupported", message: `${path.kind} path: an Elody field reads and writes one metadata key` });
     const searchQuery = shapes.objects(shape, `${SHUI}searchQuery`).length > 0;
