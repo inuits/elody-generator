@@ -34,7 +34,7 @@ describe("an inverse path is the mirrored Elody relation", () => {
     expect(department.key).toBe("isMemberFor");
     expect(department.relationType).toBe("isMemberFor");
     expect(renderInitialValues(entities[0], 0)).toContain(
-      'isMemberFor: keyValue(key: "isMemberFor", source: relations, metadataKeyAsLabel: "title|name|label")',
+      'isMemberFor: keyValue(key: "isMemberFor", source: relations, metadataKeyAsLabel: "label|title|name")',
     );
   });
 
@@ -103,7 +103,7 @@ ui:T a elody:EntityUi ; elody:graphqlType "BaseEntity" ; elody:documentName "Spe
     const field = entities[0].properties.find((p) => p.key === "department")!;
     expect(field.relationType).toBe("hasDepartment");
     expect(renderEntityFile(entities[0], "x.ui.ttl")).toContain(
-      'department: keyValue(key: "hasDepartment", source: relations, metadataKeyAsLabel: "title|name|label")',
+      'department: keyValue(key: "hasDepartment", source: relations, metadataKeyAsLabel: "label|title|name")',
     );
   });
 });

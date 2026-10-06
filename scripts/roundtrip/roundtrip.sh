@@ -32,6 +32,7 @@ put "$here/relations.json" relations.json
 docker exec "$api" python3 "$work/store.py" create "$work"
 get stored.json
 get stored-related.json
+cp "$here/relations.json" "$out/relations.json"
 get ids.json
 
 graphql_step() {

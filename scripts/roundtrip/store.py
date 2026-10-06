@@ -43,7 +43,11 @@ if phase == "create":
     relations = load("relations.json")
     ids = {}
     for name in relations["related"]:
-        created = call("POST", "/entities", {"type": "entity", "metadata": [{"key": "title", "value": f"Collection {name}"}]})
+        # a title in two languages: the read step resolves the label in relations.json's readLanguage
+        created = call("POST", "/entities", {"type": "entity", "metadata": [
+            {"key": "title", "value": f"Collection {name}", "lang": "en"},
+            {"key": "title", "value": f"Collectie {name}", "lang": "nl"},
+        ]})
         ids[name] = created["_id"]
     book = call("POST", "/entities", load("entity.json"))
     ids["book"] = book["_id"]

@@ -83,7 +83,10 @@ const json = (name: string) => JSON.parse(fs.readFileSync(path.join(out, name), 
       },
     },
   );
-  const CollectionAPI = { getEntity: async () => null, preferredLanguage: "en" };
+  // collection-api as baseGraphql's data source sees it: the related entities as stored, read in readLanguage
+  const related: Record<string, any> = json("stored-related.json");
+  const byId = Object.fromEntries(Object.values(related).map((e: any) => [e._id, e]));
+  const CollectionAPI = { getEntity: async (id: string) => byId[id] ?? null, preferredLanguage: json("relations.json").readLanguage };
   const result = await app.createExecution()({ schema: app.schema, document, operationName: "RoundTripDetail", contextValue: { dataSources: { CollectionAPI } } });
   if (result.errors) throw new Error(result.errors.map((e: any) => e.message).join("; "));
   fs.writeFileSync(path.join(out, "read.json"), JSON.stringify(result.data.RoundTripEntity, null, 2));

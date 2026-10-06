@@ -4,7 +4,7 @@
  * (strings, name references, elody:hidden & co) with a warning per retired term
  * so `check` can report what to migrate.
  */
-import type { Term } from "n3";
+import type { Quad, Term } from "n3";
 import { Scorer } from "./score.js";
 import * as M from "./model.js";
 import { Ontology, defaultOntology } from "./ontology.js";
@@ -117,6 +117,72 @@ class Parse {
     return "";
   }
 
+  /** shui:labelPreference of the global configuration: the label properties, in order. */
+  private get labelPreference(): string[] {
+    const config = this.r.subjectsOfType(shui("Configuration"))[0];
+    return config ? this.r.list(this.r.node(config, shui("labelPreference"))) : [];
+  }
+
+  /** The predicate of a predicate or inverse path. */
+  private predicateOf(node: string): string | undefined {
+    const path = this.r.node(node, sh("path"));
+    if (path && !path.startsWith("_:") && !path.startsWith("n3-") && /[:/#]/.test(path)) return path;
+    return this.inversePredicate(node);
+  }
+
+  /**
+   * SHACL 1.2 UI property label: the label properties (shui:labelPreference,
+   * default sh:name) on the property shape, then on its predicate (the data and
+   * shapes graphs fromShacl carried into the declaration), then the predicate's
+   * local name. That last step is the key for a predicate path, which the
+   * renderer shows already; an inverse path, keyed by its relation, gets it here.
+   */
+  private propertyLabel(node: string, key: string, minted: string): string | undefined {
+    const predicate = this.predicateOf(node);
+    const label = this.labelOf(node, this.labelPreference.length ? this.labelPreference : [sh("name")], minted, key, predicate ? [predicate] : []);
+    if (label !== undefined) return label;
+    return predicate && localName(predicate) !== key ? localName(predicate) : undefined;
+  }
+
+  /**
+   * SHACL 1.2 UI value-node label of a related entity, as metadata keys in
+   * preference order (metadataKeyAsLabel): the LabelRole property of the
+   * related class's node shape, the label properties (shui:labelPreference,
+   * default rdfs:label), then Elody's own title and name.
+   */
+  private valueLabelKeyOf(node: string): string {
+    const r = this.r;
+    const explicit = r.value(node, elody("valueLabelKey"));
+    if (explicit) return explicit;
+    const cls = r.node(node, sh("class"));
+    let roleKey: string | undefined;
+    for (const shape of cls ? r.subjectsWith(sh("targetClass"), cls) : []) {
+      const roles = r
+        .nodes(shape, sh("property"))
+        .map((property) => {
+          const role = r.node(property, shui("propertyRole"));
+          if (role === shui("LabelRole")) return { property, order: Number.MAX_SAFE_INTEGER };
+          if (role && r.node(role, shui("propertyRole")) === shui("LabelRole")) return { property, order: r.order(role) };
+          return undefined;
+        })
+        .filter((found): found is { property: string; order: number } => found !== undefined)
+        .sort((a, b) => a.order - b.order);
+      if (roles.length) {
+        roleKey = this.keyOf(roles[0].property);
+        break;
+      }
+    }
+    const preferred = (this.labelPreference.length ? this.labelPreference : [rdfs("label")]).map(localName);
+    return [...new Set([roleKey, ...preferred, "title", "name"].filter((key): key is string => Boolean(key)))].join("|");
+  }
+
+  /** An sh:in option that is an IRI, labelled by value-node label resolution from the declaration. */
+  private iriOption(iri: string, key: string): { label: string; value: string } {
+    const preferred = this.labelPreference.length ? this.labelPreference : [rdfs("label")];
+    const label = this.labelOf(iri, preferred, `ui.${this.type}.${key}.${localName(iri)}`);
+    return { label: label ?? localName(iri), value: iri };
+  }
+
   /** The create form's widget for a property, to edit it on the detail page; none when Elody cannot write it. */
   private editWidget(node: string): string | undefined {
     try {
@@ -164,13 +230,31 @@ class Parse {
    * (old use) rdfs:label on a property shape, else a key minted from `minted`
    * when the label text is language-tagged. The tagged texts land in
    * `translations` under that key. An untagged text is the label itself.
+   *
+   * The texts are those of the first label property (in `textPredicates`'
+   * order) that `node` has, else that the `fallbackSubjects` have, in order:
+   * the steps of SHACL 1.2 UI label resolution.
    */
-  private labelOf(node: string, textPredicate: string, minted: string, legacyKey?: string): string | undefined {
+  private labelOf(
+    node: string,
+    textPredicate: string | string[],
+    minted: string,
+    legacyKey?: string,
+    fallbackSubjects: string[] = [],
+  ): string | undefined {
     const r = this.r;
-    const texts = r.quadsOf(node).filter((q) => q.predicate.value === textPredicate && q.object.termType === "Literal");
+    const predicates = Array.isArray(textPredicate) ? textPredicate : [textPredicate];
+    let texts: Quad[] = [];
+    for (const subject of [node, ...fallbackSubjects]) {
+      for (const predicate of predicates) {
+        texts = r.quadsOf(subject).filter((q) => q.predicate.value === predicate && q.object.termType === "Literal");
+        if (texts.length) break;
+      }
+      if (texts.length) break;
+    }
     const tagged = texts.filter((q) => (q.object as Term & { language?: string }).language);
     let key = r.value(node, elody("labelKey"));
-    if (!key && textPredicate === sh("name") && r.has(node, rdfs("label"))) {
+    if (!key && predicates.includes(sh("name")) && r.has(node, rdfs("label"))) {
       r.warn(node, "rdfs:label on a property shape is read as an Elody translation key: use elody:labelKey, and sh:name for the label text");
       key = r.value(node, rdfs("label"));
     }
@@ -203,10 +287,16 @@ class Parse {
     const name = `${this.type}${key.charAt(0).toUpperCase()}${key.slice(1)}Field`;
     if (this.isNested(node, editor)) return this.nestedField(node, key);
     if (editor === shui("EnumSelectEditor")) {
-      const values = r.list(r.node(node, sh("in")));
+      const members = r.listTerms(r.node(node, sh("in")));
+      if (!members) {
+        r.warn(node, `${key}: sh:in is a SHACL 1.2 node expression; Elody does not evaluate it, the field is a text field`);
+        return "baseTextField";
+      }
       this.inputFields[name] = {
         type: single ? "dropdown" : "dropdownMultiselectMetadata",
-        options: values.map((value) => ({ label: value, value })),
+        options: members.map((member) =>
+          member.termType === "Literal" ? { label: member.value, value: member.value } : this.iriOption(member.value, key),
+        ),
       };
       return name;
     }
@@ -247,7 +337,7 @@ class Parse {
         const inputField = this.subInputField(sub, `${key}.${subKey}`);
         if (Number(r.value(sub, sh("minCount")) ?? 0) >= 1) inputField.validation = { value: ["required"] };
         return {
-          label: this.labelOf(sub, sh("name"), `ui.${this.type}.${key}.${subKey}`, subKey) ?? subKey,
+          label: this.propertyLabel(sub, subKey, `ui.${this.type}.${key}.${subKey}`) ?? subKey,
           key: subKey,
           inputField,
         };
@@ -462,7 +552,7 @@ class Parse {
     return {
       key,
       path: r.node(node, sh("path")),
-      label: this.labelOf(node, sh("name"), `ui.${this.type}.${key}`, key),
+      label: this.propertyLabel(node, key, `ui.${this.type}.${key}`),
       order: r.order(node),
       colSpan: typeof colSpan === "number" ? colSpan : undefined,
       unit: this.enumValue(node, elody("unit"), elody("Unit")),
@@ -480,7 +570,7 @@ class Parse {
       languageIn: this.languageInOf(node),
       inputType: editor && this.isNested(node, editor) ? this.nestedField(node, key) : undefined,
       relationType: editor && this.isNested(node, editor) ? undefined : this.relationTypeOf(node),
-      valueLabelKey: r.value(node, elody("valueLabelKey")),
+      valueLabelKey: this.relationTypeOf(node) ? this.valueLabelKeyOf(node) : undefined,
       // the create form's widget; a relation-valued property gets its relation dropdown (needs sh:class)
       editInputType: readOnly ? undefined : this.editWidget(node),
       required: Number(r.value(node, sh("minCount")) ?? 0) >= 1,
@@ -685,7 +775,7 @@ class Parse {
     const key = key0;
     return {
       key,
-      label: this.labelOf(node, sh("name"), `ui.${this.type}.${key}`, key),
+      label: this.propertyLabel(node, key, `ui.${this.type}.${key}`),
       order: r.order(node),
       inputType,
       required,

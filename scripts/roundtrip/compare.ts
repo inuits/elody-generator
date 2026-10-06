@@ -75,6 +75,11 @@ for (const n of related) {
   check(`relations of ${n}`, want, relationsOf(after[n], [ids.book]));
 }
 
+// -- value-node labels of the related entities, as baseGraphql resolved them for the page ----------------
+const readValues = read(join(out, "read.json")).intialValues ?? {};
+const expectedLabels: Record<string, string> = read(join(out, "relations.json")).expectedLabels ?? {};
+for (const [key, label] of Object.entries(expectedLabels)) check(`label of ${key} (read)`, [label], [String(readValues[key])]);
+
 if (problems.length) {
   console.log(`\n${problems.length} not preserved:\n  ${problems.join("\n  ")}`);
   process.exit(1);

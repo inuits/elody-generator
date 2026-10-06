@@ -164,6 +164,24 @@ export class Reading {
     return members;
   }
 
+  /** The members of an RDF list as terms (literal or IRI), or undefined when `head` is not a list. */
+  listTerms(head: string | undefined): Term[] | undefined {
+    if (!head) return undefined;
+    if (head === rdf("nil")) return [];
+    if (!this.has(head, rdf("first"))) return undefined;
+    const members: Term[] = [];
+    let cursor: string | undefined = head;
+    const seen = new Set<string>();
+    while (cursor && cursor !== rdf("nil") && !seen.has(cursor)) {
+      seen.add(cursor);
+      const first = this.term(cursor, rdf("first"));
+      if (!first) break;
+      members.push(first);
+      cursor = this.value(cursor, rdf("rest"));
+    }
+    return members;
+  }
+
   order(subject: string): number {
     return Number(this.value(subject, sh("order")) ?? 0);
   }

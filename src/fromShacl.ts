@@ -180,6 +180,44 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
     propertyTerm.set(field.shape, term);
   }
 
+  // -- what label resolution reads beyond the property shapes ---------------------------------------
+  // the label triples about each predicate and each sh:in IRI (shapes and data graph), and the node
+  // shape of each related class (its LabelRole labels the related entities)
+  const dataQuads = options.data ? new Parser().parse(options.data) : [];
+  const configuration = source.find((q) => q.predicate.value === rdf("type") && q.object.value === shui("Configuration"))?.subject.value;
+  const labelPreference: string[] = [];
+  for (let cursor = configuration ? bySubject.get(configuration)?.find((q) => q.predicate.value === shui("labelPreference"))?.object.value : undefined; cursor && cursor !== rdf("nil"); ) {
+    const first = bySubject.get(cursor)?.find((q) => q.predicate.value === rdf("first"))?.object.value;
+    if (first) labelPreference.push(first);
+    cursor = bySubject.get(cursor)?.find((q) => q.predicate.value === rdf("rest"))?.object.value;
+  }
+  const copyLabels = (iri: string, predicates: string[]) => {
+    for (const q of [...source, ...dataQuads])
+      if (q.subject.value === iri && predicates.includes(q.predicate.value) && q.object.termType === "Literal")
+        add(namedNode(iri), q.predicate.value, q.object);
+  };
+  const listMembers = (head: string | undefined): string[] => {
+    const members: string[] = [];
+    for (let cursor = head; cursor && cursor !== rdf("nil"); ) {
+      const first = bySubject.get(cursor)?.find((q) => q.predicate.value === rdf("first"))?.object;
+      if (!first) break;
+      if (first.termType === "NamedNode") members.push(first.value);
+      cursor = bySubject.get(cursor)?.find((q) => q.predicate.value === rdf("rest"))?.object.value;
+    }
+    return members;
+  };
+  for (const field of usable) {
+    copyLabels(field.path.iris[0], labelPreference.length ? labelPreference : [sh("name")]);
+    const shapeQuads = bySubject.get(field.shape) ?? [];
+    const inList = shapeQuads.find((q) => q.predicate.value === sh("in"))?.object.value;
+    for (const member of listMembers(inList)) copyLabels(member, labelPreference.length ? labelPreference : [rdfs("label")]);
+    const cls = shapeQuads.find((q) => q.predicate.value === sh("class"))?.object.value;
+    if (cls)
+      for (const q of source)
+        if (q.predicate.value === sh("targetClass") && q.object.value === cls && q.subject.value !== form.nodeShape && q.subject.termType === "NamedNode")
+          copy(q.subject.value, q.subject);
+  }
+
   // -- groups → detail panels -------------------------------------------------------------------
   const groups: { term: Term; order: number }[] = [];
   const groupTerm = new Map<string, Term>();
