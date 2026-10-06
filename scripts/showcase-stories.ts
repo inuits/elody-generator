@@ -24,6 +24,21 @@ const nest = (flat: Record<string, string>) => {
   return root;
 };
 
+// Storybook has no collection behind it: a relation dropdown in view mode loads the related
+// entity's label with a GetEntities query, which here returns nothing. The detail pages are
+// shown in view mode, where the app shows that label; baseGraphql already resolved it into
+// the initial values (keyValue source: relations), so the story shows those for relation
+// fields. The generated documents keep the dropdown.
+const withoutRelationInputs = (node: any): any => {
+  if (Array.isArray(node)) return node.map(withoutRelationInputs);
+  if (!node || typeof node !== "object") return node;
+  if (node.__typename === "PanelMetaData" && /Relations$/.test(node.inputField?.type ?? "")) {
+    const { inputField: _relationDropdown, ...field } = node;
+    return field;
+  }
+  return Object.fromEntries(Object.entries(node).map(([key, value]) => [key, withoutRelationInputs(value)]));
+};
+
 const examples: Record<string, unknown> = {};
 const exportsList: string[] = [];
 for (const row of manifest) {
@@ -38,7 +53,7 @@ for (const row of manifest) {
     formQuery: row.formQuery ?? null,
     formLabel: executed.form?.data?.GetDynamicForm?.label ?? null,
     formFields: executed.form?.data?.GetDynamicForm?.name?.formFields ?? null,
-    window: entity?.entityView?.column?.elements?.windowElement ?? null,
+    window: withoutRelationInputs(entity?.entityView?.column?.elements?.windowElement ?? null),
     intialValues: entity?.intialValues ?? {},
     // the generated label texts, plus the platform label of the create button (base translations)
     messages: { ...nest(translations.en ?? {}), actions: { labels: { create: "Create" } } },
