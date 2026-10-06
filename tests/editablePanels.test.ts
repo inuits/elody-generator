@@ -56,10 +56,26 @@ describe("editable detail panels", () => {
 });
 
 describe("relation-valued properties on the detail page", () => {
-  it("stay read-only there: shown through the relation, edited in the create form", async () => {
-    const shapes07 = readFileSync(join(__dirname, "..", "spec", "examples", "07-edit-predicate-paths.shapes.ttl"), "utf-8");
+  const shapes07 = readFileSync(join(__dirname, "..", "spec", "examples", "07-edit-predicate-paths.shapes.ttl"), "utf-8");
+
+  it("an inverse path with sh:class is edited with the create form's relation dropdown", async () => {
     const { detail } = await detailOf(shapes07);
-    expect(fieldBlock(detail, "isMemberFor")).not.toContain("inputField");
+    expect(fieldBlock(detail, "isMemberFor")).toMatch(/inputField\(type: roundTripIsMemberForField\) \{\s*\.\.\.inputfield/);
     expect(fieldBlock(detail, "name")).toContain("inputField(type: baseTextField)");
+  });
+
+  it("the dropdown writes the mirrored relation (isMemberFor) on the class's entities", async () => {
+    const { ttl } = await fromShacl(shapes07, { id: "rt", documentName: "RoundTrip" });
+    const { inputFields } = await readUiDeclaration(ttl);
+    expect(inputFields.roundTripIsMemberForField).toMatchObject({
+      relationType: "isMemberFor",
+      advancedFilterInputForRetrievingOptions: [{ type: "type", value: "department" }],
+    });
+  });
+
+  it("an inverse path without sh:class stays read-only: Elody cannot offer its values", async () => {
+    const shapes05 = readFileSync(join(__dirname, "..", "spec", "examples", "05-view-predicate-paths.shapes.ttl"), "utf-8");
+    const { detail } = await detailOf(shapes05);
+    expect(fieldBlock(detail, "isMemberFor")).not.toContain("inputField");
   });
 });

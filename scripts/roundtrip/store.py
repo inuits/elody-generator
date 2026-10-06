@@ -1,8 +1,11 @@
-"""Value-preservation round trip, steps 1 and 5 (in the collection-api container).
+"""Value-preservation round trip, the collection-api steps (in its container).
 
-  create  — POST entity.json, then GET it back as baseGraphql would: stored.json
-  apply   — PATCH the metadata baseGraphql sends (patch.json), GET: after.json,
-            then delete the test entity
+  create  — create the related entities and the book (entity.json), add the
+            initial relations (relations.json), read the book back: stored.json,
+            and the ids of the related entities: ids.json
+  apply   — apply what baseGraphql sends (patch.json: metadata PATCH, relations
+            PUT or PATCH), read the book and the related entities back:
+            after.json, then delete every test entity
 
 usage: python3 store.py <create|apply> <dir>
 """
@@ -37,16 +40,35 @@ def load(name):
 
 
 if phase == "create":
-    created = call("POST", "/entities", load("entity.json"))
-    save("stored.json", call("GET", f"/entities/{created['_id']}"))
-    print(f"create: entity {created['_id']}")
+    relations = load("relations.json")
+    ids = {}
+    for name in relations["related"]:
+        created = call("POST", "/entities", {"type": "entity", "metadata": [{"key": "title", "value": f"Collection {name}"}]})
+        ids[name] = created["_id"]
+    book = call("POST", "/entities", load("entity.json"))
+    ids["book"] = book["_id"]
+    initial = [{"key": ids[r["to"]], "type": r["type"]} for r in relations["initial"]]
+    call("POST", f"/entities/{book['_id']}/relations", initial)
+    save("ids.json", ids)
+    save("stored.json", call("GET", f"/entities/{book['_id']}"))
+    save("stored-related.json", {name: call("GET", f"/entities/{ids[name]}") for name in relations["related"]})
+    print(f"create: book {book['_id']} with {len(initial)} relations to {len(relations['related'])} entities")
 elif phase == "apply":
-    entity_id = load("stored.json")["_id"]
+    ids = load("ids.json")
     try:
-        metadata = load("patch.json").get("metadata") or []
-        if metadata:
-            call("PATCH", f"/entities/{entity_id}/metadata", metadata)
-        save("after.json", call("GET", f"/entities/{entity_id}"))
-        print(f"apply: patched {len(metadata)} items")
+        patch = load("patch.json")
+        if patch.get("metadata"):
+            call("PATCH", f"/entities/{ids['book']}/metadata", patch["metadata"])
+        if patch.get("relations"):
+            call(patch["relationsMethod"], f"/entities/{ids['book']}/relations", patch["relations"])
+        after = {"book": call("GET", f"/entities/{ids['book']}")}
+        for name in load("relations.json")["related"]:
+            after[name] = call("GET", f"/entities/{ids[name]}")
+        save("after.json", after)
+        print(f"apply: metadata {len(patch.get('metadata') or [])}, relations {patch.get('relationsMethod')} {len(patch.get('relations') or [])}")
     finally:
-        call("DELETE", f"/entities/{entity_id}")
+        for entity_id in ids.values():
+            try:
+                call("DELETE", f"/entities/{entity_id}")
+            except Exception as error:  # keep cleaning up
+                print(f"cleanup {entity_id}: {error}")

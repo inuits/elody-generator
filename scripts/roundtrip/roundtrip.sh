@@ -28,8 +28,11 @@ get() { docker exec "$api" cat "$work/$1" > "$out/$1"; }
 docker exec "$api" sh -c "rm -rf $work && mkdir -p $work"
 put "$here/store.py" store.py
 put "$here/entity.json" entity.json
+put "$here/relations.json" relations.json
 docker exec "$api" python3 "$work/store.py" create "$work"
 get stored.json
+get stored-related.json
+get ids.json
 
 graphql_step() {
   docker exec -w "$mounted/uiDeclarationModule" "$graphql" \

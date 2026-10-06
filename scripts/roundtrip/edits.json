@@ -1,1 +1,4 @@
-{ "title": "Changed title" }
+{
+  "title": "Changed title",
+  "relations": { "isMemberFor": ["C1", "C3"] }
+}

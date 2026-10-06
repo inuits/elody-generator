@@ -17,11 +17,13 @@ const fromBase = (name: string) => require(require.resolve(name, { paths: [baseD
 const { parse, visit, Kind } = fromBase("graphql");
 const { createApplication, createModule } = fromBase("graphql-modules");
 const { baseResolver } = require(path.join(baseDir, "baseModule", "baseResolver"));
+const { resolveRelations } = require(path.join(baseDir, "resolvers", "entityResolver"));
 Object.assign(baseResolver.BaseEntity, {
   id: (parent: any) => parent._id,
   uuid: (parent: any) => parent._id,
   allowedViewModes: (parent: any) => parent,
-  relationValues: () => ({}),
+  // what client entity types do (baseResolver's Entity types): the entity's relations, by type
+  relationValues: (parent: any) => resolveRelations(parent),
   entityView: (parent: any) => parent,
   teaserMetadata: (parent: any) => parent,
 });
@@ -35,14 +37,14 @@ const json = (name: string) => JSON.parse(fs.readFileSync(path.join(out, name), 
     const sent: Record<string, unknown> = {};
     const CollectionAPI = {
       patchMetadata: async (_id: string, metadata: unknown) => (sent.metadata = metadata),
-      patchRelations: async (_id: string, relations: unknown) => (sent.relations = relations),
-      putRelations: async (_id: string, relations: unknown) => (sent.relations = relations),
+      patchRelations: async (_id: string, relations: unknown) => ((sent.relations = relations), (sent.relationsMethod = "PATCH")),
+      putRelations: async (_id: string, relations: unknown) => ((sent.relations = relations), (sent.relationsMethod = "PUT")),
       getEntity: async () => ({}),
     };
     const { formInput } = json("payload.json");
     await baseResolver.Mutation.mutateEntityValues({}, { id: "roundtrip", formInput, collection: "entities" }, { dataSources: { CollectionAPI } });
     fs.writeFileSync(path.join(out, "patch.json"), JSON.stringify(sent, null, 2));
-    console.log(`write: ${(sent.metadata as unknown[] | undefined)?.length ?? 0} metadata items to PATCH`);
+    console.log(`write: ${(sent.metadata as unknown[] | undefined)?.length ?? 0} metadata items to PATCH, relations ${sent.relationsMethod ?? "none"}`);
     return;
   }
 

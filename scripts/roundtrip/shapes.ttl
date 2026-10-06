@@ -9,7 +9,8 @@ ex:BookShape a sh:NodeShape ;
   sh:targetClass ex:Book ;
   sh:property ex:BookShape-title , ex:BookShape-keywords , ex:BookShape-label ,
     ex:BookShape-pages , ex:BookShape-available , ex:BookShape-published ,
-    ex:BookShape-price , ex:BookShape-weight , ex:BookShape-rating , ex:BookShape-updated .
+    ex:BookShape-price , ex:BookShape-weight , ex:BookShape-rating , ex:BookShape-updated ,
+    ex:BookShape-collections , ex:BookShape-featuredIn .
 
 ex:BookShape-title a sh:PropertyShape ; sh:path ex:title ; sh:name "title"@en ;
   sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ; sh:order 0 .
@@ -31,3 +32,9 @@ ex:BookShape-rating a sh:PropertyShape ; sh:path ex:rating ; sh:name "rating"@en
   sh:datatype xsd:float ; sh:maxCount 1 ; sh:order 8 .
 ex:BookShape-updated a sh:PropertyShape ; sh:path ex:updated ; sh:name "updated"@en ;
   sh:datatype xsd:dateTime ; sh:maxCount 1 ; sh:order 9 .
+# relations: an inverse path (the collections that have this book as member)
+# and a predicate path to the same class, so one pair of entities has two relation types
+ex:BookShape-collections a sh:PropertyShape ; sh:path [ sh:inversePath ex:member ] ;
+  sh:name "collections"@en ; sh:class ex:Collection ; sh:order 10 .
+ex:BookShape-featuredIn a sh:PropertyShape ; sh:path ex:featuredIn ; sh:name "featured in"@en ;
+  sh:class ex:Collection ; sh:order 11 .

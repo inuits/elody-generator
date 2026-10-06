@@ -481,8 +481,8 @@ class Parse {
       inputType: editor && this.isNested(node, editor) ? this.nestedField(node, key) : undefined,
       relationType: editor && this.isNested(node, editor) ? undefined : this.relationTypeOf(node),
       valueLabelKey: r.value(node, elody("valueLabelKey")),
-      // relation-valued properties are read through the relation and edited in the create form
-      editInputType: readOnly || this.relationTypeOf(node) ? undefined : this.editWidget(node),
+      // the create form's widget; a relation-valued property gets its relation dropdown (needs sh:class)
+      editInputType: readOnly ? undefined : this.editWidget(node),
       required: Number(r.value(node, sh("minCount")) ?? 0) >= 1,
     };
   }

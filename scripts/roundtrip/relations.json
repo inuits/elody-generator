@@ -1,0 +1,8 @@
+{
+  "related": ["C1", "C2", "C3"],
+  "initial": [
+    { "type": "isMemberFor", "to": "C1" },
+    { "type": "isMemberFor", "to": "C2" },
+    { "type": "hasFeaturedIn", "to": "C1" }
+  ]
+}
