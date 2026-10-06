@@ -9,6 +9,7 @@ const pad = (depth: number) => " ".repeat(depth);
 export const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
 /** How a related entity is labelled when the declaration does not say (elody:valueLabelKey). */
 export const DEFAULT_VALUE_LABEL_KEY = "title|name|label";
+const stringList = (values: string[]) => `[${values.map((value) => `"${value}"`).join(", ")}]`;
 
 export function renderInitialValues(entity: M.UiEntity, indent: number, withFormatters = true): string {
   return entity.properties
@@ -31,6 +32,7 @@ export function renderTeaserFields(entity: M.UiEntity, indent: number): string {
         `${pad(indent + 2)}key(input: "${property.key}")`,
       ];
       if (property.multilingual) lines.push(`${pad(indent + 2)}isMultilingual(input: true)`);
+      if (property.languageIn.length) lines.push(`${pad(indent + 2)}languageIn(input: ${stringList(property.languageIn)})`);
       if (property.colSpan !== undefined) lines.push(`${pad(indent + 2)}colSpan(input: "${property.colSpan}")`);
       if (property.unit) lines.push(`${pad(indent + 2)}unit(input: ${property.unit})`);
       lines.push(`${pad(indent)}}`);
@@ -256,6 +258,7 @@ export function renderCreateForm(form: M.UiCreateForm): string {
       `            label(input: "${field.label ?? field.key}")`,
       `            key(input: "${field.key}")`,
       ...(field.multilingual ? ["            isMultilingual(input: true)"] : []),
+      ...(field.languageIn.length ? [`            languageIn(input: ${stringList(field.languageIn)})`] : []),
       `            inputField(type: ${field.inputType}) {`,
       "              ...inputfield",
     ];
@@ -415,6 +418,7 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
       lines.push(`${pad(depth + 4)}label(input: "${property.label ?? property.key}")`);
       lines.push(`${pad(depth + 4)}key(input: "${key}")`);
       if (property.multilingual) lines.push(`${pad(depth + 4)}isMultilingual(input: true)`);
+      if (property.languageIn.length) lines.push(`${pad(depth + 4)}languageIn(input: ${stringList(property.languageIn)})`);
       if (property.inputType) {
         lines.push(`${pad(depth + 4)}inputField(type: ${property.inputType}) {`);
         lines.push(`${pad(depth + 6)}...inputfield`);

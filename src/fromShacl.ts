@@ -34,7 +34,7 @@ export type FromShaclResult = {
   ttl: string;
   notes: string[];
   /** the focus node's values per metadata key, to show a filled-in detail page */
-  sample: Record<string, string | string[]>;
+  sample: Record<string, string | string[] | { value: string; lang: string }[]>;
   fields: { key: string; label: string; inForm: boolean; inDetail: boolean; editor?: string; viewer?: string }[];
   /** the focus node's related nodes, as Elody relations on the sample entity */
   relations: { type: string; key: string; label: string }[];
@@ -97,8 +97,6 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   add(viewMode, elody("mode"), namedNode(elody("ListView")));
 
   for (const gap of form.gaps) notes.push(gap.message);
-  if (source.some((q) => q.predicate.value === sh("languageIn")))
-    notes.push("sh:languageIn: the label texts per language go to the translation bundles; Elody shows the user's interface language, the shape's language order does not override it");
 
   // the global configuration is part of the shapes graph: it travels with the declaration
   for (const q of source)
@@ -259,7 +257,7 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   }
 
   // -- sample values from the spec's data graph -----------------------------------------------------------
-  const sample: Record<string, string | string[]> = {};
+  const sample: FromShaclResult["sample"] = {};
   const relations: FromShaclResult["relations"] = [];
   for (const field of usable) {
     if (!field.values.length) continue;
@@ -269,9 +267,15 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
       continue;
     }
     const key = keyOf(field);
-    // language-tagged values: the one in the preferred language (they are one multilingual value)
-    const values = field.values.some((value) => value.language) ? field.values.slice(0, 1) : field.values;
-    const labels = values.map((value) => value.label);
+    // language-tagged values are one multilingual value: every language, tagged
+    if (field.values.some((value) => value.language)) {
+      sample[key] = field.values
+        .filter((value) => value.language)
+        .map((value) => ({ value: value.label, lang: value.language! }))
+        .sort((a, b) => a.lang.localeCompare(b.lang));
+      continue;
+    }
+    const labels = field.values.map((value) => value.label);
     sample[key] = labels.length === 1 ? labels[0] : labels;
   }
 

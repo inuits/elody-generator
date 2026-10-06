@@ -77,6 +77,12 @@ const UNRENDERED_ELEMENTS = [
 
 const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
 
+/** Basic filtering (RFC 4647 §3.3.1): en-US matches the preferred language en. */
+const languageMatches = (tag: string, preferred: string) => {
+  const t = tag.toLowerCase(), p = preferred.toLowerCase();
+  return t === p || t.startsWith(`${p}-`);
+};
+
 class Parse {
   readonly translations: Translations = {};
   readonly inputFields: Record<string, InputFieldDefinition> = {};
@@ -107,6 +113,12 @@ class Parse {
       return name;
     }
     return "";
+  }
+
+  /** sh:languageIn of a property shape, in its order (the spec gives the order a meaning). */
+  private languageInOf(node: string): string[] {
+    const list = this.r.node(node, sh("languageIn"));
+    return list ? this.r.list(list) : [];
   }
 
   /** ex:p of sh:path [ sh:inversePath ex:p ], if the property shape has one. */
@@ -152,7 +164,17 @@ class Parse {
       key = r.value(node, rdfs("label"));
     }
     if (!key && tagged.length) key = minted;
-    for (const q of tagged) if (key) this.addTranslation((q.object as Term & { language: string }).language, key, q.object.value);
+    const languageIn = this.languageInOf(node);
+    if (key && languageIn.length && tagged.length) {
+      // SHACL 1.2 UI: the label in the sh:languageIn order first, then the bundle's own language
+      const textIn = (language: string) =>
+        tagged.find((q) => languageMatches((q.object as Term & { language: string }).language, language))?.object.value;
+      const bundles = new Set([...tagged.map((q) => (q.object as Term & { language: string }).language), ...languageIn]);
+      for (const bundle of bundles) {
+        const text = [...languageIn, bundle].map(textIn).find((found) => found !== undefined);
+        if (text !== undefined) this.addTranslation(bundle, key, text);
+      }
+    } else for (const q of tagged) if (key) this.addTranslation((q.object as Term & { language: string }).language, key, q.object.value);
     if (key) return key;
     const plain = texts.find((q) => !(q.object as Term & { language?: string }).language)?.object.value;
     return plain === legacyKey ? undefined : plain;
@@ -441,7 +463,8 @@ class Parse {
       hidden: this.hidden(node),
       readOnly,
       description: r.value(node, sh("description")),
-      multilingual: this.o.multilingual(editor),
+      multilingual: this.o.multilingual(editor) || this.languageInOf(node).length > 0,
+      languageIn: this.languageInOf(node),
       inputType: editor && this.isNested(node, editor) ? this.nestedField(node, key) : undefined,
       relationType: editor && this.isNested(node, editor) ? undefined : this.relationTypeOf(node),
       valueLabelKey: r.value(node, elody("valueLabelKey")),
@@ -617,7 +640,8 @@ class Parse {
       inputType,
       required,
       editor,
-      multilingual: this.o.multilingual(editor),
+      multilingual: this.o.multilingual(editor) || this.languageInOf(node).length > 0,
+      languageIn: this.languageInOf(node),
     };
   }
 
@@ -634,6 +658,7 @@ class Parse {
       required: r.literal(node, elody("required")) === true,
       editor: this.o.editorForFormFieldType(inputType),
       multilingual: false,
+      languageIn: [],
     };
   }
 

@@ -26,6 +26,8 @@ export type UiProperty = {
   description?: string;
   /** language-tagged text: one value per language (isMultilingual) */
   multilingual: boolean;
+  /** sh:languageIn: the order in which its language-tagged values are preferred */
+  languageIn: string[];
   /** a field with its own input field on the detail page (a nested shape: inputFieldWithSubFields) */
   inputType?: string;
   /** a relation-valued property (sh:class, or an inverse path): the Elody relation it reads */
@@ -93,6 +95,7 @@ export type UiCreateFormField = {
   /** the shui editor the input type was derived from (explicit or inferred) */
   editor?: string;
   multilingual: boolean;
+  languageIn: string[];
 };
 
 export type UiCreateForm = {

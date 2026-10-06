@@ -86,7 +86,12 @@ for (const row of examples) {
     id: row.id,
     _id: row.id,
     type: "BaseEntity",
-    metadata: Object.entries(sample).map(([key, value]) => ({ key, value })),
+    // a multilingual value is one metadata item per language, its language as nested metadata (what baseGraphql parses)
+    metadata: Object.entries(sample).flatMap(([key, value]: [string, any]) =>
+      Array.isArray(value) && value.length && typeof value[0] === "object"
+        ? value.map((entry: any) => ({ key, value: entry.value, metadata: [{ key: "lang", value: entry.lang }] }))
+        : [{ key, value }],
+    ),
     relations: relations.map((relation: any) => ({ key: relation.key, type: relation.type })),
   };
 }
