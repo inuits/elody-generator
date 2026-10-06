@@ -8,7 +8,8 @@
 ex:BookShape a sh:NodeShape ;
   sh:targetClass ex:Book ;
   sh:property ex:BookShape-title , ex:BookShape-keywords , ex:BookShape-label ,
-    ex:BookShape-pages , ex:BookShape-available , ex:BookShape-published .
+    ex:BookShape-pages , ex:BookShape-available , ex:BookShape-published ,
+    ex:BookShape-price , ex:BookShape-weight , ex:BookShape-rating , ex:BookShape-updated .
 
 ex:BookShape-title a sh:PropertyShape ; sh:path ex:title ; sh:name "title"@en ;
   sh:datatype xsd:string ; sh:minCount 1 ; sh:maxCount 1 ; sh:order 0 .
@@ -22,3 +23,11 @@ ex:BookShape-available a sh:PropertyShape ; sh:path ex:available ; sh:name "avai
   sh:datatype xsd:boolean ; sh:maxCount 1 ; sh:order 4 .
 ex:BookShape-published a sh:PropertyShape ; sh:path ex:published ; sh:name "published"@en ;
   sh:datatype xsd:date ; sh:maxCount 1 ; sh:order 5 .
+ex:BookShape-price a sh:PropertyShape ; sh:path ex:price ; sh:name "price"@en ;
+  sh:datatype xsd:decimal ; sh:maxCount 1 ; sh:order 6 .
+ex:BookShape-weight a sh:PropertyShape ; sh:path ex:weight ; sh:name "weight"@en ;
+  sh:datatype xsd:double ; sh:maxCount 1 ; sh:order 7 .
+ex:BookShape-rating a sh:PropertyShape ; sh:path ex:rating ; sh:name "rating"@en ;
+  sh:datatype xsd:float ; sh:maxCount 1 ; sh:order 8 .
+ex:BookShape-updated a sh:PropertyShape ; sh:path ex:updated ; sh:name "updated"@en ;
+  sh:datatype xsd:dateTime ; sh:maxCount 1 ; sh:order 9 .

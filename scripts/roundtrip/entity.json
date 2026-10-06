@@ -9,6 +9,10 @@
     { "key": "pages", "value": 212 },
     { "key": "available", "value": true },
     { "key": "published", "value": "1990-05-17" },
+    { "key": "price", "value": 19.95 },
+    { "key": "weight", "value": 0.4125 },
+    { "key": "rating", "value": 4.5 },
+    { "key": "updated", "value": "2026-10-06T09:30:00+00:00" },
     { "key": "note", "value": "not declared in any form, must stay" }
   ]
 }
