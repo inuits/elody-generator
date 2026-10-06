@@ -19,7 +19,13 @@ const fence = (lang: string, body: string) => "````" + lang + "\n" + body.trim()
 const title = (row: any) => row.title || row.section;
 
 const verdict = (row: any) => {
-  if (row.status !== "generated") return { text: "Not rendered", tone: "danger" };
+  if (row.status !== "generated") {
+    // only complex paths, which Elody leaves out to keep view and edit symmetric (the spec allows it)
+    const reasons = (row.notes as string[]).filter((n) => /left out/.test(n));
+    if (reasons.length && reasons.every((n) => /keeps view and edit symmetric/.test(n)))
+      return { text: "Left out by choice", tone: "info" };
+    return { text: "Not rendered", tone: "danger" };
+  }
   const left = (row.notes as string[]).filter((n) => /left out|has no |not override/.test(n));
   if (!row.hasForm || left.length) return { text: "Rendered in part", tone: "warning" };
   return { text: "Rendered", tone: "tip" };
