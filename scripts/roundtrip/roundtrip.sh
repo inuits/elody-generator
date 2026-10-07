@@ -15,7 +15,8 @@ here="$(cd "$(dirname "$0")" && pwd)"
 pwa="$1"
 graphql="${2:-inuits-elody-dishacled-wp3-prototype-elody-dashboard-1}"
 api="${3:-inuits-elody-dishacled-wp3-prototype-elody-collection-api-1}"
-mounted=/app/inuits-dams-graphql-service/modules
+# baseGraphql as the container sees it (the dashboard mounts elody-common/modules)
+basegraphql="${BASEGRAPHQL:-/app/inuits-dams-graphql-service/modules/baseGraphql}"
 out="$here/out"
 
 rm -rf "$out" && mkdir -p "$out"
@@ -35,10 +36,15 @@ get stored-related.json
 cp "$here/relations.json" "$out/relations.json"
 get ids.json
 
+# the GraphQL steps run in the container: the script and the out directory go in, the results come back
+gwork=/tmp/elody-generator-roundtrip
 graphql_step() {
-  docker exec -w "$mounted/uiDeclarationModule" "$graphql" \
-    /app/inuits-dams-graphql-service/node_modules/.bin/tsx scripts/roundtrip/graphql.cts "$1" \
-    "$mounted/uiDeclarationModule/scripts/roundtrip/out" "$mounted/baseGraphql"
+  docker exec "$graphql" sh -c "rm -rf $gwork && mkdir -p $gwork"
+  docker cp "$here/graphql.cts" "$graphql:$gwork/graphql.cts"
+  docker cp "$out" "$graphql:$gwork/out"
+  docker exec -w "$gwork" "$graphql" \
+    /app/inuits-dams-graphql-service/node_modules/.bin/tsx graphql.cts "$1" "$gwork/out" "$basegraphql"
+  docker cp "$graphql:$gwork/out/." "$out/"
 }
 graphql_step read
 

@@ -15,8 +15,8 @@ const moduleRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
  * The UI vocabulary's directory in elody-ontology: ELODY_ONTOLOGY when set, else
- * the installed package, else the checkout at the root of elody-common (this
- * module lives in elody-common/modules/).
+ * the installed package, else the checkout next to this one at the root of
+ * elody-common.
  */
 function vocabularyDir(): string {
   const chosen = process.env.ELODY_ONTOLOGY;
@@ -25,7 +25,7 @@ function vocabularyDir(): string {
     if (!existsSync(join(chosen, "ui", "elody-ui.ttl"))) throw new Error(`ELODY_ONTOLOGY=${chosen} has no ui/elody-ui.ttl`);
     return join(chosen, "ui");
   }
-  const candidates = [join(moduleRoot, "node_modules", "elody-ontology"), join(moduleRoot, "..", "..", "elody-ontology")];
+  const candidates = [join(moduleRoot, "node_modules", "elody-ontology"), join(moduleRoot, "..", "elody-ontology")];
   const found = candidates.find((dir) => existsSync(join(dir, "ui", "elody-ui.ttl")));
   if (!found) throw new Error(`elody-ontology not found (looked in ${candidates.join(", ")}): install it or set ELODY_ONTOLOGY`);
   return join(found, "ui");

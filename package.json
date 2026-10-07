@@ -1,5 +1,5 @@
 {
-  "name": "ui-declaration-module",
+  "name": "elody-generator",
   "version": "0.1.0",
   "description": "TTL UI declarations (SHACL 1.2 UI + DASH + the elody: ontology) -> generated Elody GraphQL query documents. `elody-ui generate | check | validate | migrate`.",
   "license": "MIT",

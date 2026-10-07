@@ -1,12 +1,15 @@
-# ui-declaration-module
+# elody-generator
 
-TTL UI declarations for Elody clients, and the generator that turns them into
-the GraphQL query documents (`*.queries.ts`). Redmine epic #165964, story
+Generates what an Elody client needs from declarations written in the terms
+of [`elody-ontology`](../elody-ontology). Today: UI declarations (`*.ui.ttl`)
+become the GraphQL query documents the PWA renders (`*.queries.ts`), and plain
+SHACL 1.2 UI shapes become UI declarations (`fromShacl`). Next: the backend
+object configuration, from the same ontology. Redmine epic #165964, story
 #165966 (T1 generator, T6 ontology).
 
-A declaration uses the W3C **SHACL 1.2 UI** vocabulary (`shui:`) and **DASH**
-wherever a standard term exists, and the **`elody:` ontology** in this package
-for what only the platform knows.
+A UI declaration uses the W3C **SHACL 1.2 UI** vocabulary (`shui:`) and
+**DASH** wherever a standard term exists, and the **`elody:` vocabulary**
+(elody-ontology, `ui/`) for what only the platform knows.
 
 | Layer   | Says                              | Examples |
 |---------|-----------------------------------|----------|
@@ -18,7 +21,7 @@ for what only the platform knows.
 ## Contents
 
 - The **vocabulary** and its **meta-shapes** live in Elody's ontology
-  repository, [`elody-ontology`](../../elody-ontology) at the root of
+  repository, [`elody-ontology`](../elody-ontology) next to this one at the root of
   elody-common: `ui/elody-ui.ttl` (namespace `https://elody.eu/ns/ui#`, imports
   shui + dash) says what a declaration may say; `ui/elody-ui.shapes.ttl` says
   what a valid declaration looks like. It is a dependency

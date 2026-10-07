@@ -14,13 +14,19 @@ here="$(cd "$(dirname "$0")/.." && pwd)"
 pwa="$1"; shots="$2"; container="${3:-inuits-elody-dishacled-wp3-prototype-elody-dashboard-1}"
 storybook="${STORYBOOK_URL:-http://localhost:6016}"
 chrome="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
-mounted=/app/inuits-dams-graphql-service/modules
+# baseGraphql as the container sees it (the dashboard mounts elody-common/modules)
+basegraphql="${BASEGRAPHQL:-/app/inuits-dams-graphql-service/modules/baseGraphql}"
 
 cd "$here"
 npx tsx scripts/showcase.ts showcase-out
-docker exec -w "$mounted/uiDeclarationModule" "$container" \
-  /app/inuits-dams-graphql-service/node_modules/.bin/tsx scripts/showcase-execute.cts \
-  "$mounted/uiDeclarationModule/showcase-out" "$mounted/baseGraphql"
+# step 2 runs in the container: the script and the documents go in, the results come back
+work=/tmp/elody-generator-showcase
+docker exec "$container" sh -c "rm -rf $work && mkdir -p $work"
+docker cp scripts/showcase-execute.cts "$container:$work/showcase-execute.cts"
+docker cp showcase-out "$container:$work/showcase-out"
+docker exec -w "$work" "$container" \
+  /app/inuits-dams-graphql-service/node_modules/.bin/tsx showcase-execute.cts "$work/showcase-out" "$basegraphql"
+docker cp "$container:$work/showcase-out/." showcase-out/
 npx tsx scripts/showcase-stories.ts showcase-out "$pwa"
 
 mkdir -p "$shots"
