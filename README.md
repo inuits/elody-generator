@@ -17,14 +17,14 @@ for what only the platform knows.
 
 ## Contents
 
-- The **vocabulary** and its **meta-shapes** live in their own repository,
-  [`elody-ui-ontology`](../elody-ui-ontology): `ontology/elody-ui.ttl` (namespace
-  `https://elody.eu/ns/ui#`, imports shui + dash) says what a declaration may
-  say; `ontology/elody-ui.shapes.ttl` says what a valid declaration looks like.
-  The generator finds it through `ELODY_UI_ONTOLOGY` when set, else the
-  installed `elody-ui-ontology` package, else the sibling checkout
-  (`modules/elody-ui-ontology`). Until that repository has a remote, the
-  dependency is not in `package.json`: keep both checkouts side by side.
+- The **vocabulary** and its **meta-shapes** live in Elody's ontology
+  repository, [`elody-ontology`](../../elody-ontology) at the root of
+  elody-common: `ui/elody-ui.ttl` (namespace `https://elody.eu/ns/ui#`, imports
+  shui + dash) says what a declaration may say; `ui/elody-ui.shapes.ttl` says
+  what a valid declaration looks like. The generator finds it through
+  `ELODY_ONTOLOGY` when set, else the installed `elody-ontology` package, else
+  the checkout at the root of elody-common. Until that repository has a remote,
+  the dependency is not in `package.json`: keep the checkout there.
 - `ontology/elody-ui.bindings.ttl` — the **implementation bindings**: how Elody
   implements the vocabulary. The GraphQL literal of each enumeration instance
   (`elody:enumValue`), the widget of each editor and viewer

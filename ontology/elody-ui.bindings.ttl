@@ -1,6 +1,6 @@
 # Elody UI ontology — implementation bindings.
 #
-# How Elody implements the terms of the elody: vocabulary (elody-ui-ontology,
+# How Elody implements the terms of the elody: vocabulary (elody-ontology, ui/,
 # https://elody.eu/ns/ui#): the literal each enumeration individual is in the
 # GraphQL schema, the PWA widget each editor and viewer renders as, the schema
 # field of each detail element. These follow baseGraphql and the PWA and change

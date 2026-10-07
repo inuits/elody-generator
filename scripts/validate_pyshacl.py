@@ -14,8 +14,8 @@ from pyshacl import validate
 from rdflib import Graph
 
 ROOT = Path(__file__).resolve().parent.parent
-# the vocabulary and meta-shapes live in elody-ui-ontology: ELODY_UI_ONTOLOGY, else next to this module
-VOCABULARY_DIR = Path(os.environ.get("ELODY_UI_ONTOLOGY") or ROOT.parent / "elody-ui-ontology") / "ontology"
+# the vocabulary and meta-shapes live in elody-ontology (ui/): ELODY_ONTOLOGY, else the root of elody-common
+VOCABULARY_DIR = Path(os.environ.get("ELODY_ONTOLOGY") or ROOT.parent.parent / "elody-ontology") / "ui"
 ONTOLOGY = VOCABULARY_DIR / "elody-ui.ttl"
 SHAPES = VOCABULARY_DIR / "elody-ui.shapes.ttl"
 

@@ -1,6 +1,6 @@
 /**
  * The elody: ontology as the generator's single source of terms, read from two
- * files: the vocabulary (the elody-ui-ontology package: what a declaration may
+ * files: the vocabulary (elody-ontology, ui/: what a declaration may
  * say, retired terms with their replacements) and the implementation bindings
  * kept here (ontology/elody-ui.bindings.ttl: the GraphQL literal of each
  * enumeration instance, the widget of each editor and viewer, platform forms).
@@ -14,29 +14,26 @@ import { DCTERMS, OWL, SHUI, compact, elody, rdfs } from "./vocab.js";
 const moduleRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
- * The elody-ui-ontology checkout: ELODY_UI_ONTOLOGY when set, else the installed package,
- * else the sibling repository (modules/elody-ui-ontology next to this module).
+ * The UI vocabulary's directory in elody-ontology: ELODY_ONTOLOGY when set, else
+ * the installed package, else the checkout at the root of elody-common (this
+ * module lives in elody-common/modules/).
  */
 function vocabularyDir(): string {
-  const chosen = process.env.ELODY_UI_ONTOLOGY;
+  const chosen = process.env.ELODY_ONTOLOGY;
   if (chosen) {
     // a directory named on purpose is the one meant: no silent fallback
-    if (!existsSync(join(chosen, "ontology", "elody-ui.ttl"))) throw new Error(`ELODY_UI_ONTOLOGY=${chosen} has no ontology/elody-ui.ttl`);
-    return join(chosen, "ontology");
+    if (!existsSync(join(chosen, "ui", "elody-ui.ttl"))) throw new Error(`ELODY_ONTOLOGY=${chosen} has no ui/elody-ui.ttl`);
+    return join(chosen, "ui");
   }
-  const candidates = [
-    join(moduleRoot, "node_modules", "elody-ui-ontology"),
-    join(moduleRoot, "..", "elody-ui-ontology"),
-  ].filter((dir): dir is string => Boolean(dir));
-  const found = candidates.find((dir) => existsSync(join(dir, "ontology", "elody-ui.ttl")));
-  if (!found)
-    throw new Error(`elody-ui-ontology not found (looked in ${candidates.join(", ")}): install it or set ELODY_UI_ONTOLOGY`);
-  return join(found, "ontology");
+  const candidates = [join(moduleRoot, "node_modules", "elody-ontology"), join(moduleRoot, "..", "..", "elody-ontology")];
+  const found = candidates.find((dir) => existsSync(join(dir, "ui", "elody-ui.ttl")));
+  if (!found) throw new Error(`elody-ontology not found (looked in ${candidates.join(", ")}): install it or set ELODY_ONTOLOGY`);
+  return join(found, "ui");
 }
 
-/** The vocabulary: what a declaration may say (elody-ui-ontology). */
+/** The vocabulary: what a declaration may say (elody-ontology, ui/). */
 export const VOCABULARY_PATH = join(vocabularyDir(), "elody-ui.ttl");
-/** The meta-shapes a declaration must conform to (elody-ui-ontology). */
+/** The meta-shapes a declaration must conform to (elody-ontology, ui/). */
 export const META_SHAPES_PATH = join(vocabularyDir(), "elody-ui.shapes.ttl");
 /** How Elody implements the vocabulary: GraphQL literals, widgets, schema fields (this module). */
 export const BINDINGS_PATH = join(moduleRoot, "ontology", "elody-ui.bindings.ttl");
