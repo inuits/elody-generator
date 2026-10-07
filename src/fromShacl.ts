@@ -175,8 +175,17 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
       if (q.predicate.value === shui("viewer") && ontology.formatterValue(q.object.value) === undefined) return true;
       return false;
     });
-    if (field.searchQuery)
-      note("gap", `"${field.label}": shui:searchQuery (SPARQL) left out; the relation dropdown searches Elody's own index`);
+    if (field.searchQuery) {
+      // shui:searchQuery is an extension a renderer MAY evaluate; it signals a live search widget.
+      // Over a class Elody searches that type live in its own index, which is what the query is for;
+      // a query against an external endpoint (SERVICE) names candidates Elody's index does not have.
+      const query = (bySubject.get(field.shape) ?? []).find((q) => q.predicate.value === shui("searchQuery"))?.object.value ?? "";
+      if (/\bSERVICE\b/i.test(query))
+        note("gap", `"${field.label}": shui:searchQuery searches an external SPARQL endpoint (SERVICE); Elody does not query it`);
+      else if (hasClass(field))
+        note("handled", `"${field.label}": shui:searchQuery (SPARQL) left out; the relation dropdown searches Elody's own index of that class live, as the query intends`);
+      else note("gap", `"${field.label}": shui:searchQuery (SPARQL) left out; without sh:class Elody has no type to search`);
+    }
     if (editor && ontology.formFieldType(editor) === undefined && ontology.inputFieldType(editor) === undefined)
       note(editor.startsWith(SHUI) ? "gap" : "handled", `"${field.label}": Elody has no ${editor.replace(SHUI, "shui:").replace(/^.*[#/]/, (m) => (editor.startsWith(SHUI) ? m : ""))}; the declared editor is left out and the spec's scoring picks one`);
     if (viewer && ontology.formatterValue(viewer) === undefined)

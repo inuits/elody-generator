@@ -64,3 +64,20 @@ ex:PersonShape a sh:NodeShape ; sh:targetClass ex:Person ;
     expect(translations.de?.["ui.specPerson.name"]).toBe("Nom");
   });
 });
+
+describe("shui:searchQuery", () => {
+  it("is handled when the field has sh:class: Elody's relation dropdown searches that type live (example 15)", async () => {
+    const findings = await kindsOf("15-search-query");
+    const search = findings.find((f) => /searchQuery/.test(f.message))!;
+    expect(search.kind).toBe("handled");
+    expect(search.message).toMatch(/relation dropdown searches Elody's own index/);
+  });
+
+  it("is a gap when it searches an external SPARQL endpoint (SERVICE) Elody does not query (example 16)", async () => {
+    const findings = await kindsOf("16-search-query");
+    const search = findings.find((f) => /searchQuery/.test(f.message))!;
+    expect(search.kind).toBe("gap");
+    expect(search.message).toMatch(/external SPARQL endpoint/);
+    expect(search.message).not.toMatch(/relation dropdown/);
+  });
+});

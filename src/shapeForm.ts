@@ -234,9 +234,16 @@ export async function shapeToForm(options: ShapeToFormOptions): Promise<SpecForm
     // an inverse path is the mirrored Elody relation (is<X>For), stored on this entity by collection-api
     if (path.kind === "alternative" || path.kind === "complex")
       gaps.push({ level: "unsupported", message: `${path.kind} path: an Elody field reads and writes one metadata key` });
-    const searchQuery = shapes.objects(shape, `${SHUI}searchQuery`).length > 0;
-    if (searchQuery)
-      gaps.push({ level: "unsupported", message: "shui:searchQuery is SPARQL; Elody searches its own index (the sparql storage engine is read-only)" });
+    const searchQueries = shapes.objects(shape, `${SHUI}searchQuery`);
+    const searchQuery = searchQueries.length > 0;
+    if (searchQuery) {
+      // an extension a renderer MAY evaluate: over a class, Elody's live search of that type serves its purpose
+      const external = searchQueries.some((q) => /\bSERVICE\b/i.test(q.value));
+      const hasClass = shapes.objects(shape, `${SH}class`).length > 0;
+      if (external) gaps.push({ level: "unsupported", message: "shui:searchQuery searches an external SPARQL endpoint (SERVICE); Elody does not query it" });
+      else if (hasClass) gaps.push({ level: "handled", message: "shui:searchQuery: Elody searches its own index of the class live, as the query intends" });
+      else gaps.push({ level: "unsupported", message: "shui:searchQuery without sh:class: Elody has no type to search" });
+    }
 
     // nested shapes: DetailsEditor and the ValueTableViewer's columns
     const nodeShape = shapes.object(shape, `${SH}node`)?.value ?? classShape(shapes.object(shape, `${SH}class`)?.value);
