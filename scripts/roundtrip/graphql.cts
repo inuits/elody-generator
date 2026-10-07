@@ -30,6 +30,10 @@ Object.assign(baseResolver.BaseEntity, {
 const { baseModule } = require(path.join(baseDir, "baseModule", "baseModule"));
 const { baseFields } = require(path.join(baseDir, "sources", "forms"));
 const json = (name: string) => JSON.parse(fs.readFileSync(path.join(out, name), "utf-8"));
+// a SHACL UI client reads relation labels in the reader's language: baseGraphql's opt-in feature
+const environment = require(path.join(baseDir, "environment"));
+if (environment.setCurrentEnvironment && environment.relationLabelsInPreferredLanguage)
+  environment.setCurrentEnvironment({ features: { relationLabelsInPreferredLanguage: true } });
 
 (async () => {
   if (phase === "write") {
