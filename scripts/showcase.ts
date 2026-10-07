@@ -62,7 +62,7 @@ for (const entry of index) {
   if (data) writeFileSync(join(target, "data.ttl"), data);
 
   const converted = await fromShacl(shapes, { id: `example${n}`, documentName, title: entry.title || entry.section, data, focus });
-  const row: Record<string, unknown> = { ...entry, documentName, notes: converted.notes, fields: converted.fields, sample: converted.sample };
+  const row: Record<string, unknown> = { ...entry, documentName, notes: converted.notes, findings: converted.findings, fields: converted.fields, sample: converted.sample };
   if (!converted.fields.length) {
     row.status = "no-fields";
     manifest.push(row);

@@ -123,6 +123,12 @@ class Parse {
     return config ? this.r.list(this.r.node(config, shui("labelPreference"))) : [];
   }
 
+  /** shui:languagePreference of the global configuration, without "" (no language tag). */
+  private get languagePreference(): string[] {
+    const config = this.r.subjectsOfType(shui("Configuration"))[0];
+    return config ? this.r.list(this.r.node(config, shui("languagePreference"))).filter((language) => language !== "") : [];
+  }
+
   /** The predicate of a predicate or inverse path. */
   private predicateOf(node: string): string | undefined {
     const path = this.r.node(node, sh("path"));
@@ -278,13 +284,15 @@ class Parse {
     }
     if (!key && tagged.length) key = minted;
     const languageIn = this.languageInOf(node);
-    if (key && languageIn.length && tagged.length) {
-      // SHACL 1.2 UI: the label in the sh:languageIn order first, then the bundle's own language
+    const preferred = this.languagePreference;
+    if (key && (languageIn.length || preferred.length) && tagged.length) {
+      // SHACL 1.2 UI language resolution: the label in the sh:languageIn order first, then the
+      // bundle's own language (the application's), then shui:languagePreference as the fallback
       const textIn = (language: string) =>
         tagged.find((q) => languageMatches((q.object as Term & { language: string }).language, language))?.object.value;
-      const bundles = new Set([...tagged.map((q) => (q.object as Term & { language: string }).language), ...languageIn]);
+      const bundles = new Set([...tagged.map((q) => (q.object as Term & { language: string }).language), ...languageIn, ...preferred]);
       for (const bundle of bundles) {
-        const text = [...languageIn, bundle].map(textIn).find((found) => found !== undefined);
+        const text = [...languageIn, bundle, ...preferred].map(textIn).find((found) => found !== undefined);
         if (text !== undefined) this.addTranslation(bundle, key, text);
       }
     } else for (const q of tagged) if (key) this.addTranslation((q.object as Term & { language: string }).language, key, q.object.value);

@@ -35,7 +35,8 @@ for (const entry of index) {
   }
   const all = flat(form.fields);
   const gaps = [...form.gaps, ...all.flatMap((f) => f.gaps)];
-  const verdict = gaps.some((g) => g.level === "unsupported") ? "no" : gaps.length ? "partial" : all.length || form.labelProperties.length ? "yes" : "n/a";
+  const shortfalls = gaps.filter((g) => g.level === "partial" || g.level === "unsupported");
+  const verdict = shortfalls.some((g) => g.level === "unsupported") ? "no" : shortfalls.length ? "partial" : all.length || form.labelProperties.length ? "yes" : "n/a";
   rows.push({
     ...entry,
     verdict,

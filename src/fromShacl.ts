@@ -30,9 +30,14 @@ export type FromShaclOptions = {
   namespace?: string;
 };
 
+/** gap: a SHACL UI feature Elody does not support; the other kinds are not shortcomings (see tests/findings.test.ts). */
+export type FindingKind = "gap" | "notApplicable" | "handled" | "choice" | "info";
+
 export type FromShaclResult = {
   ttl: string;
+  /** the findings' messages */
   notes: string[];
+  findings: { kind: FindingKind; message: string }[];
   /** the focus node's values per metadata key, to show a filled-in detail page */
   sample: Record<string, string | string[] | { value: string; lang: string }[]>;
   fields: { key: string; label: string; inForm: boolean; inDetail: boolean; editor?: string; viewer?: string }[];
@@ -59,7 +64,8 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
     ? await shapeToForm({ shapes, shapeQuads: asDeclared, nodeShape: options.nodeShape })
     : form;
   const emptyEditor = new Map(empty.fields.map((field) => [field.shape, field.editor?.widget ?? ""]));
-  const notes: string[] = [];
+  const findings: FromShaclResult["findings"] = [];
+  const note = (kind: FindingKind, message: string) => findings.push({ kind, message });
   const out: Quad[] = [];
   const seen = new Set<string>();
   const add = (s: Term, p: string, o: Term) => {
@@ -101,9 +107,10 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   add(entity, elody("viewMode"), viewMode);
   add(viewMode, elody("mode"), namedNode(elody("ListView")));
 
-  for (const gap of form.gaps) notes.push(gap.message);
+  for (const gap of form.gaps)
+    note(gap.level === "notApplicable" ? "notApplicable" : gap.level === "handled" ? "handled" : "gap", gap.message);
   if (source.some((q) => q.predicate.value === shui("languagePreference")))
-    notes.push("shui:languagePreference is not applied: Elody prefers the interface language, after sh:languageIn");
+    note("info", "shui:languagePreference orders the label texts after sh:languageIn; values follow the language chosen in Elody, which the spec allows as the application's language selection");
 
   // the global configuration is part of the shapes graph: it travels with the declaration
   for (const q of source)
@@ -115,12 +122,12 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
     if (field.path.kind !== "predicate" && field.path.kind !== "inverse") {
       // SHACL 1.2 UI recommends complex paths in view mode, but allows leaving them out to keep view and
       // edit symmetric; editing them is optional (alternative paths) or ambiguous (sequences, *, +, ?)
-      notes.push(`"${field.label}": ${field.path.kind} path, left out: Elody keeps view and edit symmetric (a field it shows, it can edit), as the spec allows; an Elody field reads and writes one metadata key or one relation`);
+      note("choice", `"${field.label}": ${field.path.kind} path, left out: Elody keeps view and edit symmetric (a field it shows, it can edit), as the spec allows; an Elody field reads and writes one metadata key or one relation`);
       continue;
     }
     usable.push(field);
   }
-  if (!usable.length) notes.push("no property Elody can carry: the declaration has no fields");
+  if (!usable.length) note("info", "no property Elody can carry: the declaration has no fields");
 
   const hasClass = (field: SpecField) => (bySubject.get(field.shape) ?? []).some((q) => q.predicate.value === sh("class"));
   // the Elody key of a field: the path's local name, or for an inverse path the mirrored relation (is<X>For)
@@ -150,7 +157,7 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   const directLabelRole = (shape: string) =>
     (bySubject.get(shape) ?? []).some((q) => q.predicate.value === shui("propertyRole") && q.object.value === shui("LabelRole"));
   const qualify = usable.filter((field) => directLabelRole(field.shape)).length > 1;
-  if (qualify) notes.push("several shapes carry a LabelRole with RDF 1.2 annotations; written as qualified roles (shui:propertyRole [ shui:propertyRole shui:LabelRole ; sh:order n ])");
+  if (qualify) note("info", "several shapes carry a LabelRole with RDF 1.2 annotations; written as qualified roles (shui:propertyRole [ shui:propertyRole shui:LabelRole ; sh:order n ])");
 
   // -- property shapes: reused, with only what the Elody profile needs changed ------------------------
   const propertyTerm = new Map<string, Term>();
@@ -169,14 +176,14 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
       return false;
     });
     if (field.searchQuery)
-      notes.push(`"${field.label}": shui:searchQuery (SPARQL) left out; the relation dropdown searches Elody's own index`);
+      note("gap", `"${field.label}": shui:searchQuery (SPARQL) left out; the relation dropdown searches Elody's own index`);
     if (editor && ontology.formFieldType(editor) === undefined && ontology.inputFieldType(editor) === undefined)
-      notes.push(`"${field.label}": Elody has no ${editor.replace(SHUI, "shui:").replace(/^.*[#/]/, (m) => (editor.startsWith(SHUI) ? m : ""))}; the declared editor is left out and the spec's scoring picks one`);
+      note(editor.startsWith(SHUI) ? "gap" : "handled", `"${field.label}": Elody has no ${editor.replace(SHUI, "shui:").replace(/^.*[#/]/, (m) => (editor.startsWith(SHUI) ? m : ""))}; the declared editor is left out and the spec's scoring picks one`);
     if (viewer && ontology.formatterValue(viewer) === undefined)
-      notes.push(`"${field.label}": Elody has no ${viewer.replace(SHUI, "shui:")}; shown as plain text`);
+      note(viewer.startsWith(SHUI) ? "gap" : "handled", `"${field.label}": Elody has no ${viewer.replace(SHUI, "shui:")}; shown as plain text`);
     if (!hasLabelRole && index === 0) {
       add(term, shui("propertyRole"), namedNode(shui("LabelRole")));
-      notes.push(`"${field.label}" is used as the card title (the shapes declare no shui:LabelRole)`);
+      note("info", `"${field.label}" is used as the card title (the shapes declare no shui:LabelRole)`);
     }
     if (qualify && directLabelRole(field.shape)) {
       const precedence = form.labelProperties.indexOf(field.path.iris[0]);
@@ -286,8 +293,8 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   const formFields = usable.filter((field) => {
     const ok = formEditable(field);
     if (!ok && field.path.kind === "inverse")
-      notes.push(`"${field.label}": inverse path without sh:class; shown on the detail page, left out of the form (picking a value needs the related type)`);
-    else if (!ok) notes.push(`"${field.label}": ${(emptyEditor.get(field.shape) ?? field.editor?.widget ?? "").replace(SHUI, "shui:")} has no create-form field in Elody; left out of the form`);
+      note("gap", `"${field.label}": inverse path without sh:class; shown on the detail page, left out of the form (picking a value needs the related type)`);
+    else if (!ok) note("gap", `"${field.label}": ${(emptyEditor.get(field.shape) ?? field.editor?.widget ?? "").replace(SHUI, "shui:")} has no create-form field in Elody; left out of the form`);
     return ok;
   });
   if (formFields.length) {
@@ -336,7 +343,8 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
 
   return {
     ttl: new TurtleWriter(out, prefixes).write(),
-    notes,
+    notes: findings.map((f) => f.message),
+    findings,
     sample,
     relations,
     fields: usable.map((field) => ({

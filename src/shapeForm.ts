@@ -16,7 +16,12 @@ const RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 const RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#label";
 const RDF_TYPE = `${RDF}type`;
 
-export type Gap = { level: "partial" | "unsupported"; message: string };
+/**
+ * partial / unsupported: a SHACL UI feature Elody covers in part or not;
+ * notApplicable: a setting for applications that write RDF themselves;
+ * handled: a third-party widget Elody does not know, left to the scoring as the spec intends.
+ */
+export type Gap = { level: "partial" | "unsupported" | "notApplicable" | "handled"; message: string };
 export type SpecValue = { value: string; label: string; language?: string };
 export type SpecPath = { kind: "predicate" | "inverse" | "alternative" | "complex"; iris: string[] };
 
@@ -112,7 +117,7 @@ export async function shapeToForm(options: ShapeToFormOptions): Promise<SpecForm
     ? ["timeZone", "defaultNamespace", "readOnlyGraph"].filter((name) => shapes.object(config.value, `${SHUI}${name}`))
     : [];
   const formGaps: Gap[] = other.map((name) => ({
-    level: "partial",
+    level: "notApplicable",
     message: `shui:${name} has no Elody counterpart (Elody stores documents, not triples) and is ignored`,
   }));
 
@@ -215,7 +220,7 @@ export async function shapeToForm(options: ShapeToFormOptions): Promise<SpecForm
     elody.inputFieldType = ontology.inputFieldType(editor.widget);
     if (/WithLangEditor$/.test(editor.widget)) elody.multilingual = true;
     if (elody.inputFieldType === undefined)
-      gaps.push({ level: "unsupported", message: `Elody has no widget for ${short(editor.widget)}` });
+      gaps.push({ level: editor.widget.startsWith(SHUI) ? "unsupported" : "handled", message: `Elody has no widget for ${short(editor.widget)}` });
     if (viewer) {
       const formatter = ontology.formatterValue(viewer.widget);
       if (formatter !== undefined) elody.formatter = formatter || undefined;
@@ -223,7 +228,7 @@ export async function shapeToForm(options: ShapeToFormOptions): Promise<SpecForm
         gaps.push({ level: "partial", message: "shui:ValueTableViewer: Elody renders a table of related entities (list element, table view), not of nested values" });
       else if ([`${SHUI}LabelViewer`, `${SHUI}IRIViewer`].includes(viewer.widget))
         gaps.push({ level: "partial", message: `${short(viewer.widget)}: Elody shows a linked resource as a relation to an Elody entity, not as an arbitrary IRI` });
-      else gaps.push({ level: "unsupported", message: `Elody has no viewer for ${short(viewer.widget)}` });
+      else gaps.push({ level: viewer.widget.startsWith(SHUI) ? "unsupported" : "handled", message: `Elody has no viewer for ${short(viewer.widget)}` });
     }
 
     // an inverse path is the mirrored Elody relation (is<X>For), stored on this entity by collection-api
