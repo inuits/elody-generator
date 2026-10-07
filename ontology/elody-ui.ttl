@@ -737,6 +737,45 @@ elody:valueLabelKey a owl:DatatypeProperty ;
   rdfs:label "value label key"@en ; rdfs:domain sh:PropertyShape ; rdfs:range xsd:string ;
   rdfs:comment "The metadata key(s) of a related entity that label it as a value of this property (alternatives separated by |). Elody's counterpart of the spec's label chain for value nodes; default title|name|label."@en .
 
+# -- linked-data sources ---------------------------------------------------------
+# A property whose values a SPARQL endpoint holds is a relation to resources of
+# that source. collection-api reads them live (SPARQL_SOURCES, written by
+# `elody-ui generate`); nothing is copied. shui:searchQuery and sh:in [ sh:select ]
+# whose pattern lies in one SERVICE block, and a shui:SubClassEditor with
+# elody:classSource, are spelled out in these terms when a declaration is read.
+
+elody:SparqlSource a owl:Class ;
+  rdfs:label "SPARQL source"@en ;
+  rdfs:comment "A linked-data source read live through collection-api's SPARQL engine: its endpoint, the query naming its resources and the one finding them for a search term."@en .
+
+elody:readsFrom a owl:ObjectProperty ;
+  rdfs:label "reads from"@en ; rdfs:domain elody:EntityUi ; rdfs:range elody:SparqlSource ;
+  rdfs:comment "The source an entity UI's resources come from: its Elody type is a collection on that source, not in the database."@en .
+
+elody:optionsFrom a owl:ObjectProperty ;
+  rdfs:label "options from"@en ; rdfs:domain sh:PropertyShape ; rdfs:range elody:EntityUi ;
+  rdfs:comment "The values of this property are resources of that entity UI's source: a relation, chosen with a dropdown that searches the source for what is typed."@en .
+
+elody:classSource a owl:ObjectProperty ;
+  rdfs:label "class source"@en ; rdfs:domain sh:PropertyShape ;
+  rdfs:comment "The SPARQL endpoint a shui:SubClassEditor reads sh:rootClass and its subclasses from, live and searched by label, instead of the class tree in the graphs the generator is given."@en .
+
+elody:endpoint a owl:ObjectProperty ;
+  rdfs:label "endpoint"@en ; rdfs:domain elody:SparqlSource ;
+  rdfs:comment "The SPARQL endpoint queries are sent to."@en .
+
+elody:selectQuery a owl:DatatypeProperty ;
+  rdfs:label "select query"@en ; rdfs:domain elody:SparqlSource ; rdfs:range xsd:string ;
+  rdfs:comment "A SELECT binding ?value: the source's resources, for a listing."@en .
+
+elody:searchQuery a owl:DatatypeProperty ;
+  rdfs:label "search query"@en ; rdfs:domain elody:SparqlSource ; rdfs:range xsd:string ;
+  rdfs:comment "A SELECT binding ?value for what the user typed: $searchTerm and $uiLanguage are filled in as string literals, as for shui:searchQuery."@en .
+
+elody:identifierEncoding a owl:DatatypeProperty ;
+  rdfs:label "identifier encoding"@en ; rdfs:domain elody:SparqlSource ; rdfs:range xsd:string ;
+  rdfs:comment "\"iri\": a resource's Elody identifier is its IRI, encoded; for sources whose IRIs share no prefix."@en .
+
 # -- pickers ---------------------------------------------------------------------
 elody:result a owl:ObjectProperty ;
   rdfs:label "result"@en ; rdfs:domain elody:Picker ; rdfs:range elody:PickerResult ;

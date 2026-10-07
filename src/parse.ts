@@ -4,7 +4,8 @@
  * (strings, name references, elody:hidden & co) with a warning per retired term
  * so `check` can report what to migrate.
  */
-import type { Quad, Term } from "n3";
+import { Parser, type Quad, type Term } from "n3";
+import { expandExternalSources, type SparqlSourceJson } from "./externalSources.js";
 import { Scorer } from "./score.js";
 import * as M from "./model.js";
 import { Ontology, defaultOntology } from "./ontology.js";
@@ -23,14 +24,24 @@ export type ParseResult = {
   translations: Translations;
   /** generated custom input fields, by BaseFieldType name */
   inputFields: Record<string, InputFieldDefinition>;
+  /** the linked-data sources the declaration reads (collection-api's SPARQL_SOURCES), by Elody type */
+  sources: Record<string, SparqlSourceJson>;
 };
 
 export async function readUiDeclaration(ttl: string, ontology: Ontology = defaultOntology()): Promise<ParseResult> {
-  const reading = Reading.parse(ttl);
+  const quads = new Parser().parse(ttl);
+  // properties whose values a linked-data source holds, spelled out in declaration terms first
+  const reading = new Reading([...quads, ...expandExternalSources(quads)]);
   const editors = await scoreEditors(reading);
   const parse = new Parse(reading, ontology, editors);
   const entities = reading.subjectsOfType(elody("EntityUi")).map((subject) => parse.entity(subject));
-  return { entities, warnings: reading.warnings, translations: parse.translations, inputFields: parse.inputFields };
+  const sources = Object.fromEntries(
+    reading
+      .subjectsOfType(elody("EntityUi"))
+      .filter((subject) => reading.node(subject, elody("readsFrom")))
+      .map((subject) => [parse.typeKeyOf(subject), parse.sourceOf(subject)]),
+  );
+  return { entities, warnings: reading.warnings, translations: parse.translations, inputFields: parse.inputFields, sources };
 }
 
 export async function parseUiDeclaration(ttl: string, ontology: Ontology = defaultOntology()): Promise<M.UiEntity[]> {
@@ -161,6 +172,8 @@ class Parse {
     const r = this.r;
     const explicit = r.value(node, elody("valueLabelKey"));
     if (explicit) return explicit;
+    // a resource of a linked-data source is titled by its label
+    if (r.node(node, elody("optionsFrom"))) return "title";
     const cls = r.node(node, sh("class"));
     let roleKey: string | undefined;
     for (const shape of cls ? r.subjectsWith(sh("targetClass"), cls) : []) {
@@ -245,7 +258,7 @@ class Parse {
     const cap = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
     const inverse = this.inversePredicate(node);
     if (inverse) return `is${cap(localName(inverse))}For`;
-    if (this.r.node(node, sh("class"))) return `has${cap(this.keyOf(node))}`;
+    if (this.r.node(node, sh("class")) || this.r.node(node, elody("optionsFrom"))) return `has${cap(this.keyOf(node))}`;
     return undefined;
   }
 
@@ -385,6 +398,53 @@ class Parse {
         minted = true;
       }
     return minted ? option : { ...option, label: indent + option.label };
+  }
+
+  /** The Elody type of an entity UI: its document name, lower-camel. */
+  typeKeyOf(entity: string): string {
+    return lowerFirst(this.r.value(entity, elody("documentName")) ?? localName(entity));
+  }
+
+  /** The source description collection-api reads for an entity UI that reads from a linked-data source. */
+  sourceOf(entity: string): SparqlSourceJson {
+    const r = this.r;
+    const source = r.node(entity, elody("readsFrom"))!;
+    const value = (predicate: string) => r.value(source, elody(predicate)) || undefined;
+    const fields: Record<string, string> = {};
+    for (const property of r.nodes(entity, sh("property"))) {
+      const key = this.keyOf(property);
+      const path = r.node(property, sh("path"));
+      fields[key] = path && /[:/#]/.test(path) ? path : key === "iri" ? "@iri" : "@id";
+    }
+    const json: SparqlSourceJson = { endpoint: value("endpoint")!, selectQuery: value("selectQuery")!, fields };
+    for (const key of ["searchQuery", "identifierEncoding", "identifierPrefix", "language", "userAgent"] as const) {
+      const found = value(key);
+      if (found) json[key] = found;
+    }
+    return json;
+  }
+
+  /**
+   * A relation to resources of a linked-data source (elody:optionsFrom): a dropdown on the source's
+   * Elody type that searches it for what is typed.
+   */
+  private sourceField(node: string, key: string, entity: string): string {
+    const type = this.typeKeyOf(entity);
+    const name = this.fieldName(key);
+    const single = Number(this.r.value(node, sh("maxCount")) ?? 0) === 1;
+    this.inputFields[name] = {
+      type: single ? "dropdownSingleselectRelations" : "dropdownMultiselectRelations",
+      relationType: this.relationTypeOf(node),
+      advancedFilterInputForRetrievingOptions: [{ type: "type", value: type }],
+      advancedFilterInputForSearchingOptions: {
+        type: "text",
+        key: ["elody:1|metadata.title.value"],
+        value: "*",
+        match_exact: false,
+        item_types: [type],
+      },
+    };
+    return name;
   }
 
   /** The name of a generated custom input field: <type><Key>Field, the key camel-cased (internal_memo → InternalMemo). */
@@ -893,7 +953,9 @@ class Parse {
     const editor = this.scoredEditors.get(node) ?? shui("TextFieldEditor");
     const key0 = this.keyOf(node);
     let inputType: string;
-    if (this.inversePredicate(node) && !r.node(node, sh("class")))
+    const optionsFrom = r.node(node, elody("optionsFrom"));
+    if (optionsFrom) inputType = this.sourceField(node, key0, optionsFrom);
+    else if (this.inversePredicate(node) && !r.node(node, sh("class")))
       // no type to search: the IRI is typed in, as shui:IRIEditor does
       inputType = this.typedRelationField(node, key0);
     else {

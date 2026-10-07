@@ -145,7 +145,12 @@ describe("value-node labels of sh:in options", () => {
   });
 
   it("do not turn a SHACL 1.2 node expression (sh:in [ sh:select … ]) into options", async () => {
-    const shapes = readFileSync(join(__dirname, "..", "spec", "examples", "16-search-query.shapes.ttl"), "utf-8");
+    // a query over the data graph itself, with no SERVICE to run it against (example 16 has one: see externalSources)
+    const shapes = `
+@prefix ex: <http://example.org/ns#> . @prefix sh: <http://www.w3.org/ns/shacl#> . @prefix dct: <http://purl.org/dc/terms/> .
+ex:BookShape a sh:NodeShape ; sh:targetClass ex:Book ;
+  sh:property [ sh:name "Author" ; sh:path dct:creator ; sh:maxCount 1 ;
+    sh:in [ sh:select """SELECT ?value WHERE { ?value a ex:Person }""" ] ] .`;
     const { ttl } = await fromShacl(shapes, { id: "e16", documentName: "SpecE16" });
     const { inputFields, warnings, entities } = await readUiDeclaration(ttl);
     expect(JSON.stringify(inputFields)).not.toMatch(/n3-|_:/);

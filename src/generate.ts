@@ -79,7 +79,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
   if (!declaration) return { entities: [], warnings: [], changed: [], clean: true };
 
   const ttl = readFileSync(join(root, declaration), "utf-8");
-  const { entities, warnings, translations, inputFields } = await readUiDeclaration(ttl, ontology);
+  const { entities, warnings, translations, inputFields, sources } = await readUiDeclaration(ttl, ontology);
   const changed: string[] = [];
 
   const apply = (file: string, next: string) => {
@@ -114,6 +114,10 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
 
   if (Object.keys(inputFields).length)
     apply(join(DECLARATION_DIR, "generatedFields.ts"), renderInputFieldsModule(inputFields, declaration));
+
+  // the linked-data sources the fields read, for collection-api (its SPARQL_SOURCES names this file)
+  if (Object.keys(sources).length)
+    apply(join(DECLARATION_DIR, "sparqlSources.json"), JSON.stringify(sources, null, 2) + "\n");
 
   // the label texts of the declaration go into the client's translation bundles
   for (const [language, entries] of Object.entries(translations)) {

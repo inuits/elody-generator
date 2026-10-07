@@ -74,11 +74,10 @@ describe("shui:searchQuery", () => {
     expect(search.message).toMatch(/relation dropdown searches Elody's own index/);
   });
 
-  it("is a gap when it searches an external SPARQL endpoint (SERVICE) Elody does not query (example 16)", async () => {
+  it("runs against the SPARQL endpoint of its SERVICE block through collection-api (example 16)", async () => {
     const findings = await kindsOf("16-search-query");
     const search = findings.find((f) => /searchQuery/.test(f.message))!;
-    expect(search.kind).toBe("gap");
-    expect(search.message).toMatch(/external SPARQL endpoint/);
-    expect(search.message).not.toMatch(/relation dropdown/);
+    expect(search.kind).toBe("info");
+    expect(search.message).toMatch(/runs against http:\/\/example\.com\/sparql/);
   });
 });

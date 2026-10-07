@@ -5,6 +5,7 @@
  * and the ValueTableViewer's columns. Every place Elody cannot render what the
  * shape asks is recorded as a gap on the field.
  */
+import { unwrapService } from "./externalSources.js";
 import { DataFactory, Parser, type Quad, type Term } from "n3";
 import { Ontology, defaultOntology } from "./ontology.js";
 import { Scorer, type WidgetResult } from "./score.js";
@@ -244,7 +245,10 @@ export async function shapeToForm(options: ShapeToFormOptions): Promise<SpecForm
       // an extension a renderer MAY evaluate: over a class, Elody's live search of that type serves its purpose
       const external = searchQueries.some((q) => /\bSERVICE\b/i.test(q.value));
       const hasClass = shapes.objects(shape, `${SH}class`).length > 0;
-      if (external) gaps.push({ level: "unsupported", message: "shui:searchQuery searches an external SPARQL endpoint (SERVICE); Elody does not query it" });
+      const reachable = searchQueries.map((q) => unwrapService(q.value)).find((u) => u);
+      if (external && reachable)
+        gaps.push({ level: "handled", message: `shui:searchQuery runs against ${reachable.endpoint} through collection-api's SPARQL engine` });
+      else if (external) gaps.push({ level: "unsupported", message: "shui:searchQuery joins an external SPARQL endpoint (SERVICE) with other patterns; Elody sends a query to one endpoint" });
       else if (hasClass) gaps.push({ level: "handled", message: "shui:searchQuery: Elody searches its own index of the class live, as the query intends" });
       else gaps.push({ level: "unsupported", message: "shui:searchQuery without sh:class: Elody has no type to search" });
     }

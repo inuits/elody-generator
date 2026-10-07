@@ -10,6 +10,7 @@
  */
 import { DataFactory, Parser, type Quad, type Term } from "n3";
 import { defaultOntology } from "./ontology.js";
+import { externalSourceOf } from "./externalSources.js";
 import { shapeToForm, type SpecField } from "./shapeForm.js";
 import { TurtleWriter } from "./turtle.js";
 import { DASH, ELODY, RDF, RDFS, SH, SHUI, XSD, dash, elody, localName, rdf, rdfs, sh, shui } from "./vocab.js";
@@ -174,6 +175,12 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   const ownClass = form.nodeShape
     ? [form.nodeShape, ...(bySubject.get(form.nodeShape) ?? []).filter((q) => q.predicate.value === sh("targetClass")).map((q) => q.object.value)]
     : [];
+  // a property whose values a linked-data source holds (see externalSources.ts)
+  const liveSource = (field: SpecField) =>
+    externalSourceOf(
+      (predicate) => (bySubject.get(field.shape) ?? []).filter((q) => q.predicate.value === predicate).map((q) => q.object),
+      (subject) => bySubject.get(subject) ?? [],
+    );
   const teaserOff = new Set<string>();
   const tableColumns = (field: SpecField, viewer: string) => {
     const quads = (s: string) => bySubject.get(s) ?? [];
@@ -219,7 +226,10 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
       // Over a class Elody searches that type live in its own index, which is what the query is for;
       // a query against an external endpoint (SERVICE) names candidates Elody's index does not have.
       const query = (bySubject.get(field.shape) ?? []).find((q) => q.predicate.value === shui("searchQuery"))?.object.value ?? "";
-      if (/\bSERVICE\b/i.test(query))
+      const live = liveSource(field);
+      if (live)
+        note("info", `"${field.label}": shui:searchQuery runs against ${live.endpoint} through collection-api's SPARQL engine (a source in SPARQL_SOURCES); the field is a relation dropdown that searches it`);
+      else if (/\bSERVICE\b/i.test(query))
         note("gap", `"${field.label}": shui:searchQuery searches an external SPARQL endpoint (SERVICE); Elody does not query it`);
       else if (hasClass(field))
         note("handled", `"${field.label}": shui:searchQuery (SPARQL) left out; the relation dropdown searches Elody's own index of that class live, as the query intends`);
@@ -290,6 +300,11 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   for (const field of usable) {
     const root = (bySubject.get(field.shape) ?? []).find((q) => q.predicate.value === sh("rootClass"))?.object.value;
     if (!root) continue;
+    const live = liveSource(field);
+    if (live) {
+      note("info", `"${field.label}": shui:SubClassEditor reads sh:rootClass and its subclasses live from ${live.endpoint} (elody:classSource), searched by label; the value is a relation to the class`);
+      continue;
+    }
     const graph = [...source, ...dataQuads];
     const classes = new Set([root]);
     for (let grown = true; grown; ) {

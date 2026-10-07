@@ -55,4 +55,29 @@ describe("generate / check", () => {
     expect(result.changed).toEqual(["src/queries/entities/alert.queries.ts"]);
   });
 });
+
+describe("generate: linked-data sources", () => {
+  it("writes the sources collection-api reads (SPARQL_SOURCES) next to the declaration", async () => {
+    const { fromShacl } = await import("../src/fromShacl.js");
+    const shapes = `
+@prefix ex: <http://example.org/ns#> . @prefix sh: <http://www.w3.org/ns/shacl#> . @prefix shui: <http://www.w3.org/ns/shacl-ui/> .
+@prefix elody: <https://elody.eu/ns/ui#> . @prefix obo: <http://purl.obolibrary.org/obo/> .
+ex:DrugShape a sh:NodeShape ; sh:targetClass ex:Drug ;
+  sh:property [ sh:path ex:name ; sh:name "Name"@en ; sh:maxCount 1 ] ,
+    [ sh:path ex:impactedCell ; sh:name "Impacted cell"@en ; sh:maxCount 1 ;
+      sh:rootClass obo:CL_0000000 ; shui:editor shui:SubClassEditor ;
+      elody:classSource <https://ubergraph.apps.renci.org/sparql> ] .`;
+    const { ttl } = await fromShacl(shapes, { id: "drug", documentName: "Drug" });
+    const root = mkdtempSync(join(tmpdir(), "elody-ui-"));
+    mkdirSync(join(root, "src", "ui"), { recursive: true });
+    writeFileSync(join(root, "src", "ui", "drug.ui.ttl"), ttl);
+    const result = await generate({ root });
+    expect(result.changed).toContain("src/ui/sparqlSources.json");
+    const sources = JSON.parse(readFileSync(join(root, "src", "ui", "sparqlSources.json"), "utf-8"));
+    expect(Object.keys(sources)).toEqual(["drugImpactedCell"]);
+    expect(sources.drugImpactedCell.endpoint).toBe("https://ubergraph.apps.renci.org/sparql");
+    expect(result.changed).toContain("src/queries/entities/drugImpactedCell.queries.ts");
+    expect((await generate({ root, check: true })).clean).toBe(true);
+  });
+});
 export { cpSync };

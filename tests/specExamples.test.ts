@@ -80,12 +80,13 @@ describe("spec examples → Elody form", () => {
     expect(result.fields.map((field) => field.label)).toEqual(["id", "label", "description"]);
   });
 
-  it("shui:searchQuery over a class is handled by Elody's live search; over an external endpoint it is not supported", async () => {
+  it("shui:searchQuery over a class is handled by Elody's live search; over an external endpoint it runs there", async () => {
     const local = await form("15-search-query");
     expect(local.fields[0].searchQuery).toBe(true);
     expect(local.fields[0].gaps.map((gap) => gap.level)).toEqual(["handled"]);
     const external = await form("16-search-query");
-    expect(external.fields[0].gaps.some((gap) => gap.level === "unsupported" && /SERVICE/.test(gap.message))).toBe(true);
+    expect(external.fields[0].gaps.map((gap) => gap.level)).toEqual(["handled"]);
+    expect(external.fields[0].gaps[0].message).toMatch(/http:\/\/example\.com\/sparql/);
   });
 
   it("DetailsEditor: a nested node shape becomes a nested Elody form", async () => {
