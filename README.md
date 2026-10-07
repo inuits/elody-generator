@@ -21,10 +21,11 @@ for what only the platform knows.
   repository, [`elody-ontology`](../../elody-ontology) at the root of
   elody-common: `ui/elody-ui.ttl` (namespace `https://elody.eu/ns/ui#`, imports
   shui + dash) says what a declaration may say; `ui/elody-ui.shapes.ttl` says
-  what a valid declaration looks like. The generator finds it through
-  `ELODY_ONTOLOGY` when set, else the installed `elody-ontology` package, else
-  the checkout at the root of elody-common. Until that repository has a remote,
-  the dependency is not in `package.json`: keep the checkout there.
+  what a valid declaration looks like. It is a dependency
+  (`github:inuits/elody-ontology#v0.2.0`, pinned to the tag). The generator
+  reads it through `ELODY_ONTOLOGY` when set (to try an unreleased change in a
+  checkout), else the installed `elody-ontology` package, else the checkout at
+  the root of elody-common.
 - `ontology/elody-ui.bindings.ttl` — the **implementation bindings**: how Elody
   implements the vocabulary. The GraphQL literal of each enumeration instance
   (`elody:enumValue`), the widget of each editor and viewer

@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@zazuko/env": "^3.0.1",
+    "elody-ontology": "github:inuits/elody-ontology#v0.2.0",
     "n3": "^1.17.4",
     "rdf-validate-shacl": "^0.6.5"
   },
