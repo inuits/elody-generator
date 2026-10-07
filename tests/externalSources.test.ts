@@ -60,6 +60,28 @@ describe("shui:searchQuery against a SPARQL endpoint (example 16)", () => {
       match_exact: false,
       item_types: ["specE16Creator"],
     });
+    // shown and edited: only the resources this entity's relation points to
+    expect(input.relationFilter).toEqual({
+      type: "selection",
+      key: ["elody:1|identifiers"],
+      value: "$relationValues.hasCreator.key",
+      match_exact: true,
+      item_types: ["specE16Creator"],
+    });
+  });
+
+  it("a relation dropdown on sh:class is limited to the entity's own relations too", async () => {
+    const shapes = `
+@prefix ex: <http://example.org/ns#> . @prefix sh: <http://www.w3.org/ns/shacl#> .
+ex:S a sh:NodeShape ; sh:targetClass ex:Book ; sh:property [ sh:path ex:author ; sh:name "Author" ; sh:class ex:Person ; sh:maxCount 1 ] .`;
+    const declaration = await convert(shapes, "SpecBook");
+    expect(formField(declaration, "author").relationFilter).toEqual({
+      type: "selection",
+      key: ["elody:1|identifiers"],
+      value: "$relationValues.hasAuthor.key",
+      match_exact: true,
+      item_types: ["person"],
+    });
   });
 
   it("gives the source's type an entity UI titled by the resource's label", async () => {

@@ -354,10 +354,13 @@ class Parse {
     }
     const cls = r.node(node, sh("class"));
     if (cls && (editor === shui("InstancesSelectEditor") || editor === shui("AutoCompleteEditor"))) {
+      const relationType = this.relationTypeOf(node) ?? `has${key.charAt(0).toUpperCase()}${key.slice(1)}`;
+      const type = lowerFirst(localName(cls));
       this.inputFields[name] = {
         type: single ? "dropdownSingleselectRelations" : "dropdownMultiselectRelations",
-        relationType: this.relationTypeOf(node) ?? `has${key.charAt(0).toUpperCase()}${key.slice(1)}`,
-        advancedFilterInputForRetrievingOptions: [{ type: "type", value: lowerFirst(localName(cls)) }],
+        relationType,
+        advancedFilterInputForRetrievingOptions: [{ type: "type", value: type }],
+        relationFilter: this.relationFilter(relationType, type),
       };
       return name;
     }
@@ -432,10 +435,12 @@ class Parse {
     const type = this.typeKeyOf(entity);
     const name = this.fieldName(key);
     const single = Number(this.r.value(node, sh("maxCount")) ?? 0) === 1;
+    const relationType = this.relationTypeOf(node)!;
     this.inputFields[name] = {
       type: single ? "dropdownSingleselectRelations" : "dropdownMultiselectRelations",
-      relationType: this.relationTypeOf(node),
+      relationType,
       advancedFilterInputForRetrievingOptions: [{ type: "type", value: type }],
+      relationFilter: this.relationFilter(relationType, type),
       advancedFilterInputForSearchingOptions: {
         type: "text",
         key: ["elody:1|metadata.title.value"],
@@ -445,6 +450,17 @@ class Parse {
       },
     };
     return name;
+  }
+
+  /** What a relation dropdown shows as chosen: the entities this entity's relation points to. */
+  private relationFilter(relationType: string, type: string) {
+    return {
+      type: "selection",
+      key: ["elody:1|identifiers"],
+      value: `$relationValues.${relationType}.key`,
+      match_exact: true,
+      item_types: [type],
+    };
   }
 
   /** The name of a generated custom input field: <type><Key>Field, the key camel-cased (internal_memo → InternalMemo). */
