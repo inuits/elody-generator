@@ -38,6 +38,11 @@ export type UiProperty = {
   relationType?: string;
   /** metadata key(s) labelling the related entity (metadataKeyAsLabel) */
   valueLabelKey?: string;
+  /**
+   * An element in the detail panel in place of a metadata field (elody:panelElement):
+   * the rich-text editor on the metadata key, or the list of the entities its relation points to.
+   */
+  panelElement?: { kind: "wysiwyg" } | { kind: "list"; entityType: string; relationType: string };
 };
 
 export type UiFilter = {

@@ -39,7 +39,7 @@ export type SpecField = {
   editorFallback: boolean;
   viewer?: WidgetResult;
   /** what Elody renders: its field type, formatter, and the multilingual wrapper for language-tagged text */
-  elody: { inputFieldType?: string; formatter?: string; multilingual?: boolean };
+  elody: { inputFieldType?: string; formatter?: string; multilingual?: boolean; panelElement?: "wysiwyg" | "list" };
   searchQuery: boolean;
   values: SpecValue[];
   nested?: SpecField[];
@@ -219,13 +219,17 @@ export async function shapeToForm(options: ShapeToFormOptions): Promise<SpecForm
     const elody: SpecField["elody"] = {};
     elody.inputFieldType = ontology.inputFieldType(editor.widget);
     if (/WithLangEditor$/.test(editor.widget)) elody.multilingual = true;
-    if (elody.inputFieldType === undefined)
+    // a widget Elody implements as an element in the detail panel (rich text, a list of related entities)
+    const panelElement = ontology.panelElement(editor.widget) ?? (viewer ? ontology.panelElement(viewer.widget) : undefined);
+    if (panelElement) elody.panelElement = panelElement;
+    if (elody.inputFieldType === undefined && !ontology.panelElement(editor.widget))
       gaps.push({ level: editor.widget.startsWith(SHUI) ? "unsupported" : "handled", message: `Elody has no widget for ${short(editor.widget)}` });
     if (viewer) {
       const formatter = ontology.formatterValue(viewer.widget);
       if (formatter !== undefined) elody.formatter = formatter || undefined;
-      else if (viewer.widget === `${SHUI}ValueTableViewer`)
-        gaps.push({ level: "partial", message: "shui:ValueTableViewer: Elody renders a table of related entities (list element, table view), not of nested values" });
+      else if (ontology.panelElement(viewer.widget)) {
+        // an element in the detail panel, see elody:panelElement
+      }
       else if ([`${SHUI}LabelViewer`, `${SHUI}IRIViewer`].includes(viewer.widget))
         gaps.push({ level: "partial", message: `${short(viewer.widget)}: Elody shows a linked resource as a relation to an Elody entity, not as an arbitrary IRI` });
       else gaps.push({ level: viewer.widget.startsWith(SHUI) ? "unsupported" : "handled", message: `Elody has no viewer for ${short(viewer.widget)}` });

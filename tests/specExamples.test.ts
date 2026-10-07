@@ -110,9 +110,16 @@ describe("spec examples → Elody form", () => {
   });
 
   it("a widget Elody does not have is reported, not silently replaced", async () => {
+    const subClass = await form("27-SubClassEditor");
+    expect(subClass.fields[0].editor!.widget).toBe("http://www.w3.org/ns/shacl-ui/SubClassEditor");
+    expect(subClass.fields[0].gaps.some((gap) => gap.level === "unsupported")).toBe(true);
+  });
+
+  it("a widget Elody implements as an element in the detail panel is not a gap", async () => {
     const rich = await form("26-RichTextEditor");
     expect(rich.fields[0].editor!.widget).toBe("http://www.w3.org/ns/shacl-ui/RichTextEditor");
-    expect(rich.fields[0].gaps.some((gap) => gap.level === "unsupported")).toBe(true);
+    expect(rich.fields[0].elody.panelElement).toBe("wysiwyg");
+    expect(rich.fields[0].gaps).toEqual([]);
   });
 });
 

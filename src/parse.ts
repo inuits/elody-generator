@@ -76,6 +76,7 @@ const UNRENDERED_ELEMENTS = [
 ].map((name) => elody(name));
 
 const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
+const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
 /** Basic filtering (RFC 4647 §3.3.1): en-US matches the preferred language en. */
 const languageMatches = (tag: string, preferred: string) => {
@@ -203,7 +204,7 @@ class Parse {
       ),
     );
     for (const { node, property } of parsed)
-      if (edited.has(property.key) && !property.readOnly) property.editInputType = this.editWidget(node);
+      if (edited.has(property.key) && !property.readOnly && !property.panelElement) property.editInputType = this.editWidget(node);
     return detail;
   }
 
@@ -618,6 +619,7 @@ class Parse {
       : r.literal(node, dash("readOnly")) === true;
     const key = this.keyOf(node);
     const editor = this.scoredEditors.get(node);
+    const panelElement = this.panelElementOf(node, editor);
     return {
       key,
       path: r.node(node, sh("path")),
@@ -625,7 +627,7 @@ class Parse {
       order: r.order(node),
       colSpan: typeof colSpan === "number" ? colSpan : undefined,
       unit: this.enumValue(node, elody("unit"), elody("Unit")),
-      formatter: this.formatter(node),
+      formatter: panelElement ? undefined : this.formatter(node),
       role,
       teaser: r.literal(node, elody("teaser")) !== false,
       sortable: r.literal(node, elody("sortable")) === true,
@@ -643,7 +645,25 @@ class Parse {
       // set by entity() for the properties an editable panel shows
       editInputType: undefined,
       required: Number(r.value(node, sh("minCount")) ?? 0) >= 1,
+      panelElement,
     };
+  }
+
+  /**
+   * A widget Elody implements as an element in the detail panel (elody:panelElement): the declared
+   * viewer's, else the scored editor's. A list needs the relation and the related type: sh:class,
+   * else the sh:targetClass of the sh:node shape that gives its columns.
+   */
+  private panelElementOf(node: string, editor: string | undefined): M.UiProperty["panelElement"] {
+    const r = this.r;
+    const kind = this.o.panelElement(r.node(node, shui("viewer"))) ?? this.o.panelElement(editor);
+    if (kind === "wysiwyg") return { kind };
+    if (kind !== "list") return undefined;
+    const shape = r.node(node, sh("node"));
+    const type = r.node(node, sh("class")) ?? (shape ? r.node(shape, sh("targetClass")) : undefined);
+    const relationType = this.relationTypeOf(node) ?? (type ? `has${upperFirst(this.keyOf(node))}` : undefined);
+    if (!type || !relationType) throw new Error(`${compact(node)}: a list of related entities needs sh:class or an sh:node shape with sh:targetClass`);
+    return { kind, entityType: lowerFirst(localName(type)), relationType };
   }
 
   private formatter(node: string): string | undefined {

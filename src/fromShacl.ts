@@ -58,7 +58,9 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   const form = await shapeToForm({ shapes, shapeQuads: source, data: options.data, focus: options.focus, nodeShape: options.nodeShape });
   // a create form starts empty: its widgets are scored without a value, and on the shapes as the
   // declaration gets them, without the editors Elody leaves out — as the generator scores them
-  const knownEditor = (editor: string) => ontology.formFieldType(editor) !== undefined || ontology.inputFieldType(editor) !== undefined;
+  const knownEditor = (editor: string) =>
+    ontology.formFieldType(editor) !== undefined || ontology.inputFieldType(editor) !== undefined || ontology.panelElement(editor) !== undefined;
+  const knownViewer = (viewer: string) => ontology.formatterValue(viewer) !== undefined || ontology.panelElement(viewer) !== undefined;
   const asDeclared = source.filter((q) => !(q.predicate.value === shui("editor") && !knownEditor(q.object.value)));
   const empty = options.focus || asDeclared.length !== source.length
     ? await shapeToForm({ shapes, shapeQuads: asDeclared, nodeShape: options.nodeShape })
@@ -165,6 +167,33 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
     field.path.kind === "predicate" && !hasClass(field) && !(bySubject.get(field.shape) ?? []).some((q) => q.predicate.value === sh("node"));
   const cardTitle = usable.find(isText) ?? usable[0];
 
+  // shui:ValueTableViewer: Elody lists the related entities in the panel. Of the sh:node shape's
+  // columns, the value itself (sh:values sh:this) is the list item; the others are the related type's
+  // teaser (rdf:type: the entity's own type field). When the related type is this one, they are its properties.
+  const ownClass = form.nodeShape
+    ? [form.nodeShape, ...(bySubject.get(form.nodeShape) ?? []).filter((q) => q.predicate.value === sh("targetClass")).map((q) => q.object.value)]
+    : [];
+  const tableColumns = (field: SpecField, viewer: string) => {
+    const quads = (s: string) => bySubject.get(s) ?? [];
+    const shape = quads(field.shape).find((q) => q.predicate.value === sh("node"))?.object.value;
+    if (!shape) return;
+    const target = quads(shape).find((q) => q.predicate.value === sh("targetClass"))?.object.value;
+    const own = target !== undefined && ownClass.includes(target);
+    const roles: string[] = [];
+    for (const column of quads(shape).filter((q) => q.predicate.value === sh("property")).map((q) => q.object.value)) {
+      const name = quads(column).find((q) => q.predicate.value === sh("name"))?.object.value ?? localName(column);
+      const path = quads(column).find((q) => q.predicate.value === sh("path"))?.object.value;
+      if (quads(column).some((q) => q.predicate.value === sh("values") && q.object.value === sh("this"))) roles.push(`"${name}" is the list item`);
+      else if (own) {
+        const term = copied.get(column) ?? namedNode(column);
+        add(entity, sh("property"), term);
+        if (path === rdf("type")) add(term, elody("source"), namedNode(elody("RootSource")));
+        roles.push(`"${name}" its teaser${path === rdf("type") ? " (the entity's type)" : ""}`);
+      } else roles.push(`"${name}" comes from the related type's own teaser`);
+    }
+    note("info", `"${field.label}": ${viewer.replace(SHUI, "shui:")} is Elody's list of the related entities in the panel; columns: ${roles.join(", ")}`);
+  };
+
   // -- property shapes: reused, with only what the Elody profile needs changed ------------------------
   const propertyTerm = new Map<string, Term>();
   for (const field of usable) {
@@ -177,8 +206,8 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
       if (q.predicate.value === rdfs("label")) return true; // the profile reads label texts from sh:name
       if (q.predicate.value === sh("group")) return true; // re-added below (groups are copied as panels)
       if (qualify && q.predicate.value === shui("propertyRole") && q.object.value === shui("LabelRole")) return true;
-      if (q.predicate.value === shui("editor") && ontology.formFieldType(q.object.value) === undefined && ontology.inputFieldType(q.object.value) === undefined) return true;
-      if (q.predicate.value === shui("viewer") && ontology.formatterValue(q.object.value) === undefined) return true;
+      if (q.predicate.value === shui("editor") && !knownEditor(q.object.value)) return true;
+      if (q.predicate.value === shui("viewer") && !knownViewer(q.object.value)) return true;
       return false;
     });
     if (field.searchQuery) {
@@ -192,9 +221,10 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
         note("handled", `"${field.label}": shui:searchQuery (SPARQL) left out; the relation dropdown searches Elody's own index of that class live, as the query intends`);
       else note("gap", `"${field.label}": shui:searchQuery (SPARQL) left out; without sh:class Elody has no type to search`);
     }
-    if (editor && ontology.formFieldType(editor) === undefined && ontology.inputFieldType(editor) === undefined)
+    if (editor && !knownEditor(editor))
       note(editor.startsWith(SHUI) ? "gap" : "handled", `"${field.label}": Elody has no ${editor.replace(SHUI, "shui:").replace(/^.*[#/]/, (m) => (editor.startsWith(SHUI) ? m : ""))}; the declared editor is left out and the spec's scoring picks one`);
-    if (viewer && ontology.formatterValue(viewer) === undefined)
+    if (viewer && ontology.panelElement(viewer) === "list") tableColumns(field, viewer);
+    if (viewer && !knownViewer(viewer))
       note(viewer.startsWith(SHUI) ? "gap" : "handled", `"${field.label}": Elody has no ${viewer.replace(SHUI, "shui:")}; shown as plain text`);
     if (!hasLabelRole && field === cardTitle) {
       add(term, shui("propertyRole"), namedNode(shui("LabelRole")));
@@ -309,7 +339,10 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
     const ok = formEditable(field);
     if (field.path.kind === "inverse" && !hasClass(field))
       note("info", `"${field.label}": inverse path without sh:class: the IRI is typed in (as shui:IRIEditor) and stored as the relation's key`);
-    if (!ok) note("gap", `"${field.label}": ${(emptyEditor.get(field.shape) ?? field.editor?.widget ?? "").replace(SHUI, "shui:")} has no create-form field in Elody; left out of the form`);
+    const widget = emptyEditor.get(field.shape) ?? field.editor?.widget ?? "";
+    if (!ok && ontology.panelElement(widget) === "wysiwyg")
+      note("info", `"${field.label}": ${widget.replace(SHUI, "shui:")} is Elody's rich-text editor in the detail panel, edited there; the create form has no rich-text field, so it is left out of the form`);
+    else if (!ok) note("gap", `"${field.label}": ${widget.replace(SHUI, "shui:")} has no create-form field in Elody; left out of the form`);
     return ok;
   });
   if (formFields.length) {

@@ -98,6 +98,21 @@ for (const row of examples) {
 // the one collection-api call the relation resolver makes: fetch the related entity for its label
 const dataSources = { CollectionAPI: { getEntity: async (id: string) => related[id] ?? null } };
 
+// the entity types the documents name (entityTypes of a panel list): a client declares its own types
+// in the Entitytyping enum; the showcase declares the examples' types the same way
+const knownTypes = new Set(
+  (createApplication({ modules: [baseModule] }).schema.getType("Entitytyping")?.getValues() ?? []).map((v: any) => v.name),
+);
+const exampleTypes = [
+  ...new Set(
+    examples.flatMap((row: any) =>
+      [...fs.readFileSync(path.join(out, row.id, "documents.graphql"), "utf-8").matchAll(/entityTypes\(input: \[([^\]]*)\]\)/g)].flatMap(
+        (match: RegExpMatchArray) => match[1].split(",").map((name) => name.trim()).filter(Boolean),
+      ),
+    ),
+  ),
+].filter((name) => !knownTypes.has(name));
+
 const showcase = createModule({
   id: "shaclUiShowcase",
   typeDefs: [
@@ -105,6 +120,7 @@ const showcase = createModule({
       [
         "extend type Query { SpecExampleEntity(id: String!): BaseEntity }",
         customNames.length ? `extend enum BaseFieldType { ${customNames.join(" ")} }` : "",
+        exampleTypes.length ? `extend enum Entitytyping { ${exampleTypes.join(" ")} }` : "",
       ].join("\n"),
     ),
   ],

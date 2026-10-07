@@ -101,7 +101,8 @@ shui:InstancesSelectEditor elody:inputFieldType "dropdownSingleselectRelations" 
 shui:AutoCompleteEditor   elody:inputFieldType "baseEntityPickerField" .
 shui:IRIEditor            elody:inputFieldType "text" .
 shui:DetailsEditor        elody:inputFieldType "inputFieldWithSubFields" .
-# not implemented (documented, no mapping): shui:RichTextEditor, shui:SubClassEditor, shui:BlankNodeEditor
+# shui:RichTextEditor: elody:panelElement below (no create-form field)
+# not implemented (documented, no mapping): shui:SubClassEditor, shui:BlankNodeEditor
 
 # -- Elody editors -------------------------------------------------------------
 elody:EntityPickerEditor a elody:Editor ;
@@ -174,7 +175,8 @@ shui:LiteralViewer   elody:formatterValue "" .
 shui:HyperlinkViewer elody:formatterValue "link" .
 shui:LangStringViewer elody:formatterValue "" .
 shui:DetailsViewer   elody:formatterValue "" .
-# not implemented: shui:HTMLViewer, shui:ImageViewer (only for Elody mediafiles, see elody:MediafilePreviewViewer)
+# shui:HTMLViewer, shui:ValueTableViewer: elody:panelElement below
+# not implemented: shui:ImageViewer (only for Elody mediafiles, see elody:MediafilePreviewViewer)
 
 # -- Elody viewers -------------------------------------------------------------
 elody:PillViewer a elody:Viewer ;
@@ -913,6 +915,15 @@ elody:multipleValuesInputFieldType a owl:DatatypeProperty , owl:AnnotationProper
   rdfs:comment "The Elody InputFieldTypes value of the field a single-value editor becomes when the property may hold several values (no sh:maxCount 1). SHACL UI repeats such an editor once per value; Elody uses one field holding the list. The generator emits it as a custom input field per property."@en .
 
 shui:TextFieldEditor elody:multipleValuesInputFieldType "dropdownMultiselectMetadata" .
+
+elody:panelElement a owl:ObjectProperty , owl:AnnotationProperty ;
+  rdfs:label "panel element"@en ;
+  rdfs:range elody:Element ;
+  rdfs:comment "The Elody element that implements a widget inside a detail panel, in place of a metadata field. A panel lists metadata fields, rich-text elements and entity lists side by side, so the property keeps its place among the others. elody:WysiwygElement: the rich-text editor on the property's metadata key, read in view mode and edited in edit mode. elody:ListElement: the entities the property's relation points to, filtered on that relation, with the sh:node shape's properties as their teaser."@en .
+
+shui:HTMLViewer       elody:panelElement elody:WysiwygElement .
+shui:RichTextEditor   elody:panelElement elody:WysiwygElement .
+shui:ValueTableViewer elody:panelElement elody:ListElement .
 
 shui:TextFieldWithLangEditor elody:multilingual true .
 shui:TextAreaWithLangEditor  elody:multilingual true .

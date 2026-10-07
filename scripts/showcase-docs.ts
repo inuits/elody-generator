@@ -27,7 +27,9 @@ const verdict = (row: any) => {
     if (kinds.has("choice") && !kinds.has("gap")) return { text: "Left out by choice", tone: "info" };
     return { text: "Not rendered", tone: "danger" };
   }
-  if (!row.hasForm || findings.some((f) => f.kind === "gap")) return { text: "Rendered in part", tone: "warning" };
+  // without a create form the values must still be editable somewhere: on the detail page, in edit mode
+  const editable = row.hasForm || (row.hasDetail && (row.fields ?? []).some((f: { inDetail: boolean }) => f.inDetail));
+  if (!editable || findings.some((f) => f.kind === "gap")) return { text: "Rendered in part", tone: "warning" };
   return { text: "Rendered", tone: "tip" };
 };
 

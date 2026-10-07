@@ -7,6 +7,7 @@ import type * as M from "./model.js";
 
 const pad = (depth: number) => " ".repeat(depth);
 export const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
+const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 /** How a related entity is labelled when the declaration does not say (elody:valueLabelKey). */
 export const DEFAULT_VALUE_LABEL_KEY = "title|name|label";
 const stringList = (values: string[]) => `[${values.map((value) => `"${value}"`).join(", ")}]`;
@@ -440,6 +441,10 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
     for (const key of panel.fields) {
       const property = propertyByKey.get(key);
       if (!property) throw new Error(`panel "${panel.alias}" references undeclared property "${key}"`);
+      if (property.panelElement) {
+        lines.push(renderPanelElement(entity, property, depth + 2));
+        continue;
+      }
       lines.push(`${pad(depth + 2)}${key}: metaData {`);
       lines.push(`${pad(depth + 4)}label(input: "${property.label ?? property.key}")`);
       lines.push(`${pad(depth + 4)}key(input: "${key}")`);
@@ -528,6 +533,69 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
 }
 
 // -- whole-file emission -----------------------------------------------------
+
+/** The name of the filters document of a panel list (elody:panelElement elody:ListElement). */
+export const panelListFiltersName = (entity: M.UiEntity, property: M.UiProperty) =>
+  `${entity.documentName ?? entity.graphqlType}${upperFirst(property.key)}ListFilters`;
+
+/**
+ * A property shown as an element inside a panel: the rich-text editor on its metadata key, or the
+ * entities its relation points to, listed with Elody's own entity query and a generated filter.
+ */
+function renderPanelElement(entity: M.UiEntity, property: M.UiProperty, depth: number): string {
+  const element = property.panelElement!;
+  const label = property.label ?? property.key;
+  if (element.kind === "wysiwyg") {
+    const lines = [
+      `${pad(depth)}${property.key}: wysiwygElement {`,
+      `${pad(depth + 2)}label(input: "${label}")`,
+      `${pad(depth + 2)}metadataKey(input: "${property.key}")`,
+      `${pad(depth + 2)}extensions(input: [starterKit])`,
+      // the PWA reads the configuration unguarded (virtualKeyboardLayouts, showLineNumbers)
+      `${pad(depth + 2)}wysiwygElementConfiguration {`,
+      `${pad(depth + 4)}showLineNumbers(input: false)`,
+      `${pad(depth + 2)}}`,
+    ];
+    if (property.multilingual) lines.push(`${pad(depth + 2)}isMultilingual(input: true)`);
+    lines.push(`${pad(depth)}}`);
+    return lines.join("\n");
+  }
+  return [
+    `${pad(depth)}${property.key}: entityListElement {`,
+    `${pad(depth + 2)}label(input: "${label}")`,
+    `${pad(depth + 2)}isCollapsed(input: false)`,
+    `${pad(depth + 2)}entityTypes(input: [${element.entityType}])`,
+    `${pad(depth + 2)}relationType: label(input: "${element.relationType}")`,
+    `${pad(depth + 2)}viewMode(input: Library)`,
+    `${pad(depth + 2)}customQuery(input: "GetEntities")`,
+    `${pad(depth + 2)}customQueryFilters(input: "${panelListFiltersName(entity, property)}")`,
+    `${pad(depth)}}`,
+  ].join("\n");
+}
+
+/** The filters of a panel list: the related type, and the entities the relation on this entity points to. */
+function renderPanelListFilters(entity: M.UiEntity, property: M.UiProperty): string {
+  const element = property.panelElement as { entityType: string; relationType: string };
+  return [
+    `  query ${panelListFiltersName(entity, property)}($entityType: String!) {`,
+    "    EntityTypeFilters(type: $entityType) {",
+    "      advancedFilters {",
+    "        type: advancedFilter(type: type) {",
+    "          type",
+    `          defaultValue(value: ["${element.entityType}"])`,
+    "          hidden(value: true)",
+    "        }",
+    '        relation: advancedFilter(type: selection, key: ["elody:1|identifiers"]) {',
+    "          type",
+    "          key",
+    `          defaultValue(value: "$entity.relationValues.${element.relationType}.key")`,
+    "          hidden(value: true)",
+    "        }",
+    "      }",
+    "    }",
+    "  }",
+  ].join("\n");
+}
 
 export function renderEntityFile(entity: M.UiEntity, declaration: string): string {
   const onType = entity.graphqlType;
@@ -666,6 +734,9 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   for (const form of entity.repetitiveForms) documents.push(renderRepetitiveForm(form));
 
   for (const picker of entity.pickers) documents.push(renderPicker(picker));
+
+  for (const property of entity.properties)
+    if (property.panelElement?.kind === "list") documents.push(renderPanelListFilters(entity, property));
 
   for (const source of entity.formSources) {
     const params = source.withParent ? "($id: String!, $parentEntityId: String)" : "($id: String!)";

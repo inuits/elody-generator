@@ -50,6 +50,12 @@ export class Ontology {
     return this.reading.value(editorIri, elody("multipleValuesInputFieldType"));
   }
 
+  /** The element a widget is inside a detail panel (rich text, a list of related entities), if any. */
+  panelElement(widgetIri: string | undefined): "wysiwyg" | "list" | undefined {
+    const element = widgetIri ? this.reading.value(widgetIri, elody("panelElement")) : undefined;
+    return element === elody("WysiwygElement") ? "wysiwyg" : element === elody("ListElement") ? "list" : undefined;
+  }
+
   /** Whether an editor edits language-tagged text (one multilingual value in Elody). */
   multilingual(editorIri: string | undefined): boolean {
     return editorIri !== undefined && this.reading.literal(editorIri, elody("multilingual")) === true;

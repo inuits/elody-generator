@@ -57,6 +57,8 @@ for (const row of manifest) {
     intialValues: entity?.intialValues ?? {},
     // the generated label texts, plus the platform label of the create button (base translations)
     messages: { ...nest(translations.en ?? {}), actions: { labels: { create: "Create" } } },
+    // an entity list in a panel (shui:ValueTableViewer) queries the collection for the related entities
+    entityLists: JSON.stringify(entity?.entityView ?? {}).includes('"EntityListElement"'),
     relationFields: Object.values(executed.form?.data?.GetDynamicForm?.name?.formFields ?? {}).some((f: any) => /Relations$/.test(f?.inputField?.type ?? "")),
   };
   const name = `Example${row.id.replace(/-(\w)/g, (_: string, c: string) => c.toUpperCase()).replace(/^(\d+)/, "$1_")}`;
@@ -112,6 +114,7 @@ const Showcase = defineComponent({
       <section>
         <h3 class="text-sm uppercase tracking-wide text-text-light mb-3">Detail page</h3>
         <EntityElementWindow v-if="example.window" :element="example.window" :identifiers="[formId]" :form-id="formId" />
+        <p v-if="example.entityLists" class="text-xs text-text-light mt-3">The list of related entities queries the collection; Storybook has none behind it.</p>
       </section>
     </div>\`,
 });

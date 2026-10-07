@@ -34,8 +34,8 @@ describe("findings by kind", () => {
   });
 
   it("a SHACL UI widget Elody does not implement is a gap", async () => {
-    const findings = await kindsOf("26-RichTextEditor");
-    expect(findings.some((f) => f.kind === "gap" && /RichTextEditor/.test(f.message))).toBe(true);
+    const findings = await kindsOf("27-SubClassEditor");
+    expect(findings.some((f) => f.kind === "gap" && /SubClassEditor/.test(f.message))).toBe(true);
   });
 
   it("a complex path is left out by choice", async () => {
