@@ -51,8 +51,13 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   const ontology = defaultOntology();
   const source = new Parser().parse(shapes);
   const form = await shapeToForm({ shapes, shapeQuads: source, data: options.data, focus: options.focus, nodeShape: options.nodeShape });
-  // a create form starts empty: its widgets are scored without a value, as the generator does
-  const empty = options.focus ? await shapeToForm({ shapes, shapeQuads: source, nodeShape: options.nodeShape }) : form;
+  // a create form starts empty: its widgets are scored without a value, and on the shapes as the
+  // declaration gets them, without the editors Elody leaves out — as the generator scores them
+  const knownEditor = (editor: string) => ontology.formFieldType(editor) !== undefined || ontology.inputFieldType(editor) !== undefined;
+  const asDeclared = source.filter((q) => !(q.predicate.value === shui("editor") && !knownEditor(q.object.value)));
+  const empty = options.focus || asDeclared.length !== source.length
+    ? await shapeToForm({ shapes, shapeQuads: asDeclared, nodeShape: options.nodeShape })
+    : form;
   const emptyEditor = new Map(empty.fields.map((field) => [field.shape, field.editor?.widget ?? ""]));
   const notes: string[] = [];
   const out: Quad[] = [];
@@ -97,6 +102,8 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   add(viewMode, elody("mode"), namedNode(elody("ListView")));
 
   for (const gap of form.gaps) notes.push(gap.message);
+  if (source.some((q) => q.predicate.value === shui("languagePreference")))
+    notes.push("shui:languagePreference is not applied: Elody prefers the interface language, after sh:languageIn");
 
   // the global configuration is part of the shapes graph: it travels with the declaration
   for (const q of source)

@@ -124,3 +124,26 @@ describe("complex paths are left out by choice", () => {
     expect(notes.join("\n")).toMatch(/alternative path, left out: Elody keeps view and edit symmetric/);
   });
 });
+
+describe("example 04: a configuration and a third-party editor", () => {
+  const convert04 = async () => {
+    const { fromShacl } = await import("../src/fromShacl.js");
+    const { readFileSync } = await import("fs");
+    const { join } = await import("path");
+    const shapes = readFileSync(join(__dirname, "..", "spec", "examples", "04-global-configuration.shapes.ttl"), "utf-8");
+    return fromShacl(shapes, { id: "e04", documentName: "SpecE04" });
+  };
+
+  it("keeps the field in the create form: the unknown editor is left out, the scoring picks another", async () => {
+    const { readUiDeclaration } = await import("../src/parse.js");
+    const { ttl, notes } = await convert04();
+    expect(notes.join("\n")).not.toMatch(/left out of the form/);
+    const { entities } = await readUiDeclaration(ttl);
+    expect(entities[0].createForms[0]?.fields.map((f) => f.key)).toEqual(["name"]);
+  });
+
+  it("notes that shui:languagePreference is not applied", async () => {
+    const { notes } = await convert04();
+    expect(notes.join("\n")).toMatch(/shui:languagePreference/);
+  });
+});

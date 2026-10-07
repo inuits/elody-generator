@@ -1707,6 +1707,14 @@ export type EntityFormInput = {
   updateOnlyRelations?: InputMaybe<Scalars['Boolean']['input']>;
 };
 
+export type EntityHistoryVersion = {
+  __typename?: 'EntityHistoryVersion';
+  documentVersion?: Maybe<Scalars['Int']['output']>;
+  editedBy?: Maybe<Scalars['String']['output']>;
+  timestamp?: Maybe<Scalars['String']['output']>;
+  versionId: Scalars['String']['output'];
+};
+
 export type EntityInput = {
   id?: InputMaybe<Scalars['String']['input']>;
   identifiers?: InputMaybe<Array<InputMaybe<Scalars['String']['input']>>>;
@@ -1738,6 +1746,7 @@ export type EntityListElement = {
   entityTypes?: Maybe<Array<Maybe<Entitytyping>>>;
   fetchDeepRelations?: Maybe<FetchDeepRelations>;
   filtersNeedContext?: Maybe<Array<Maybe<EntitySubelement>>>;
+  hideInHistory?: Maybe<Scalars['Boolean']['output']>;
   isCollapsed: Scalars['Boolean']['output'];
   label?: Maybe<Scalars['String']['output']>;
   relationType?: Maybe<Scalars['String']['output']>;
@@ -1824,6 +1833,11 @@ export type EntityListElementEntityTypesArgs = {
 
 export type EntityListElementFiltersNeedContextArgs = {
   input?: InputMaybe<Array<InputMaybe<EntitySubelement>>>;
+};
+
+
+export type EntityListElementHideInHistoryArgs = {
+  input?: InputMaybe<Scalars['Boolean']['input']>;
 };
 
 
@@ -2216,22 +2230,8 @@ export type FormActionShowsFormErrorsArgs = {
 export type FormFields = {
   __typename?: 'FormFields';
   action?: Maybe<FormAction>;
-  formSection?: Maybe<FormSection>;
   metaData: PanelMetaData;
   uploadContainer?: Maybe<UploadContainer>;
-};
-
-/** A titled section of a form around its own form fields (a SHACL UI sh:PropertyGroup) */
-export type FormSection = {
-  __typename?: 'FormSection';
-  formFields: FormFields;
-  label: Scalars['String']['output'];
-};
-
-
-/** A titled section of a form around its own form fields (a SHACL UI sh:PropertyGroup) */
-export type FormSectionLabelArgs = {
-  input?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type FormTab = {
@@ -2530,6 +2530,31 @@ export type HierarchyRelationList = {
 export type HierarchyRelationListInput = {
   entityType: Entitytyping;
   key: Scalars['String']['input'];
+};
+
+export type HistoryVersion = Entity & {
+  __typename?: 'HistoryVersion';
+  advancedFilters?: Maybe<AdvancedFilters>;
+  allowedViewModes?: Maybe<AllowedViewModes>;
+  bulkOperationOptions?: Maybe<BulkOperationOptions>;
+  deleteQueryOptions?: Maybe<DeleteQueryOptions>;
+  entityView: ColumnList;
+  id: Scalars['String']['output'];
+  intialValues: IntialValues;
+  mapElement?: Maybe<MapElement>;
+  previewComponent?: Maybe<PreviewComponent>;
+  relationValues?: Maybe<Scalars['JSON']['output']>;
+  sortOptions?: Maybe<SortOptions>;
+  teaserMetadata?: Maybe<TeaserMetadata>;
+  type: Scalars['String']['output'];
+  uuid: Scalars['String']['output'];
+};
+
+export type HistoryVersionResults = {
+  __typename?: 'HistoryVersionResults';
+  count: Scalars['Int']['output'];
+  limit?: Maybe<Scalars['Int']['output']>;
+  results: Array<HistoryVersion>;
 };
 
 export type Home = Entity & {
@@ -3923,8 +3948,6 @@ export type PanelMetaData = {
   isMultilingual?: Maybe<Scalars['Boolean']['output']>;
   key: Scalars['String']['output'];
   label?: Maybe<Scalars['String']['output']>;
-  /** SHACL UI sh:languageIn: the order in which language-tagged values are preferred */
-  languageIn?: Maybe<Array<Scalars['String']['output']>>;
   lineClamp: Scalars['String']['output'];
   linkText?: Maybe<Scalars['String']['output']>;
   lockedTooltip?: Maybe<Scalars['String']['output']>;
@@ -4011,11 +4034,6 @@ export type PanelMetaDataKeyArgs = {
 
 export type PanelMetaDataLabelArgs = {
   input?: InputMaybe<Scalars['String']['input']>;
-};
-
-
-export type PanelMetaDataLanguageInArgs = {
-  input?: InputMaybe<Array<Scalars['String']['input']>>;
 };
 
 
@@ -4502,6 +4520,9 @@ export type Query = {
   EntitiesByAdvancedSearch: EntitiesResults;
   EntitiesHistory?: Maybe<EntitiesResults>;
   Entity?: Maybe<Entity>;
+  EntityHistoryVersionDetail?: Maybe<Entity>;
+  EntityHistoryVersionList: HistoryVersionResults;
+  EntityHistoryVersions: Array<EntityHistoryVersion>;
   EntityTypeFilters: Entity;
   EntityTypeSortOptions: Entity;
   FetchMediafilesOfEntity: Array<Maybe<MediaFileEntity>>;
@@ -4524,11 +4545,11 @@ export type Query = {
   PermissionMappingPerEntityType: Scalars['Boolean']['output'];
   PreviewComponents?: Maybe<Entity>;
   PreviewElement?: Maybe<ColumnList>;
+  RelationLabelsForIds: Array<KeyAndValue>;
   Tenants?: Maybe<EntitiesResults>;
   User?: Maybe<User>;
   UserPermissions?: Maybe<UserPermissions>;
   WemOverview?: Maybe<Array<Maybe<Entity>>>;
-  WemiPipeline?: Maybe<EntitiesResults>;
   getElodyUser?: Maybe<Entity>;
   getMediafile?: Maybe<MediaFile>;
   jobStatusForEntity: JobPollResult;
@@ -4627,6 +4648,29 @@ export type QueryEntityArgs = {
 };
 
 
+export type QueryEntityHistoryVersionDetailArgs = {
+  id: Scalars['String']['input'];
+  type: Scalars['String']['input'];
+  versionId: Scalars['String']['input'];
+};
+
+
+export type QueryEntityHistoryVersionListArgs = {
+  advancedFilterInputs: Array<AdvancedFilterInput>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  skip?: InputMaybe<Scalars['Int']['input']>;
+  type?: InputMaybe<Entitytyping>;
+};
+
+
+export type QueryEntityHistoryVersionsArgs = {
+  id: Scalars['String']['input'];
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  skip?: InputMaybe<Scalars['Int']['input']>;
+  type: Scalars['String']['input'];
+};
+
+
 export type QueryEntityTypeFiltersArgs = {
   type: Scalars['String']['input'];
 };
@@ -4716,19 +4760,17 @@ export type QueryPreviewComponentsArgs = {
 };
 
 
-export type QueryWemOverviewArgs = {
-  id: Scalars['String']['input'];
+export type QueryRelationLabelsForIdsArgs = {
+  historyKeys?: InputMaybe<Array<Scalars['String']['input']>>;
+  ids: Array<Scalars['String']['input']>;
+  metadataKeyAsLabel?: InputMaybe<Scalars['String']['input']>;
+  rootKeyAsLabel?: InputMaybe<Scalars['String']['input']>;
+  types: Array<Scalars['String']['input']>;
 };
 
 
-export type QueryWemiPipelineArgs = {
-  advancedFilterInputs: Array<AdvancedFilterInput>;
-  advancedSearchValue?: InputMaybe<Array<InputMaybe<FilterInput>>>;
-  limit?: InputMaybe<Scalars['Int']['input']>;
-  searchInputType?: InputMaybe<SearchInputType>;
-  searchValue: SearchFilter;
-  skip?: InputMaybe<Scalars['Int']['input']>;
-  type: Entitytyping;
+export type QueryWemOverviewArgs = {
+  id: Scalars['String']['input'];
 };
 
 
@@ -5915,6 +5957,7 @@ export type WindowElement = {
   contextMenuActions?: Maybe<ContextMenuActions>;
   editMetadataButton?: Maybe<EditMetadataButton>;
   expandButtonOptions?: Maybe<ExpandButtonOptions>;
+  hideInHistory?: Maybe<Scalars['Boolean']['output']>;
   label: Scalars['String']['output'];
   layout?: Maybe<WindowElementLayout>;
   lineClamp: Scalars['String']['output'];
@@ -5925,6 +5968,11 @@ export type WindowElement = {
 
 export type WindowElementEditMetadataButtonArgs = {
   input: EditMetadataButtonInput;
+};
+
+
+export type WindowElementHideInHistoryArgs = {
+  input?: InputMaybe<Scalars['Boolean']['input']>;
 };
 
 
@@ -6541,6 +6589,7 @@ export type ResolversInterfaceTypes<_RefType extends Record<string, unknown>> = 
     | ( Omit<Expression, 'entityView'> & { entityView: _RefType['ColumnList'] } )
     | ( Omit<Genre, 'entityView'> & { entityView: _RefType['ColumnList'] } )
     | ( Omit<Group, 'entityView'> & { entityView: _RefType['ColumnList'] } )
+    | ( Omit<HistoryVersion, 'entityView'> & { entityView: _RefType['ColumnList'] } )
     | ( Omit<Home, 'entityView'> & { entityView: _RefType['ColumnList'] } )
     | ( Omit<Job, 'entityView' | 'sub_jobs'> & { entityView: _RefType['ColumnList'], sub_jobs?: Maybe<_RefType['SubJobResults']> } )
     | ( Omit<Language, 'entityView'> & { entityView: _RefType['ColumnList'] } )
@@ -6701,6 +6750,7 @@ export type ResolversTypes = {
   EntityButtonConfig: ResolverTypeWrapper<EntityButtonConfig>;
   EntityButtonStyle: ResolverTypeWrapper<EntityButtonStyle>;
   EntityFormInput: EntityFormInput;
+  EntityHistoryVersion: ResolverTypeWrapper<EntityHistoryVersion>;
   EntityInput: EntityInput;
   EntityListElement: ResolverTypeWrapper<Omit<EntityListElement, 'actionsOnResult' | 'entityList' | 'entityListElement'> & { actionsOnResult?: Maybe<ResolversTypes['ActionsOnResult']>, entityList?: Maybe<Array<Maybe<ResolversTypes['Entity']>>>, entityListElement?: Maybe<ResolversTypes['EntityListElement']> }>;
   EntityListViewMode: EntityListViewMode;
@@ -6729,7 +6779,6 @@ export type ResolversTypes = {
   Form: ResolverTypeWrapper<Form>;
   FormAction: ResolverTypeWrapper<FormAction>;
   FormFields: ResolverTypeWrapper<FormFields>;
-  FormSection: ResolverTypeWrapper<FormSection>;
   FormTab: ResolverTypeWrapper<FormTab>;
   Formatters: ResolverTypeWrapper<ResolversUnionTypes<ResolversTypes>['Formatters']>;
   FrontendEntitytyping: FrontendEntitytyping;
@@ -6749,6 +6798,8 @@ export type ResolversTypes = {
   HierarchyListElement: ResolverTypeWrapper<HierarchyListElement>;
   HierarchyRelationList: ResolverTypeWrapper<HierarchyRelationList>;
   HierarchyRelationListInput: HierarchyRelationListInput;
+  HistoryVersion: ResolverTypeWrapper<Omit<HistoryVersion, 'entityView'> & { entityView: ResolversTypes['ColumnList'] }>;
+  HistoryVersionResults: ResolverTypeWrapper<Omit<HistoryVersionResults, 'results'> & { results: Array<ResolversTypes['HistoryVersion']> }>;
   Home: ResolverTypeWrapper<Omit<Home, 'entityView'> & { entityView: ResolversTypes['ColumnList'] }>;
   ImportReturn: ResolverTypeWrapper<ImportReturn>;
   InfoPanel: ResolverTypeWrapper<InfoPanel>;
@@ -7078,6 +7129,7 @@ export type ResolversParentTypes = {
   EntityButtonConfig: EntityButtonConfig;
   EntityButtonStyle: EntityButtonStyle;
   EntityFormInput: EntityFormInput;
+  EntityHistoryVersion: EntityHistoryVersion;
   EntityInput: EntityInput;
   EntityListElement: Omit<EntityListElement, 'actionsOnResult' | 'entityList' | 'entityListElement'> & { actionsOnResult?: Maybe<ResolversParentTypes['ActionsOnResult']>, entityList?: Maybe<Array<Maybe<ResolversParentTypes['Entity']>>>, entityListElement?: Maybe<ResolversParentTypes['EntityListElement']> };
   EntityPickerSearchConfig: EntityPickerSearchConfig;
@@ -7099,7 +7151,6 @@ export type ResolversParentTypes = {
   Form: Form;
   FormAction: FormAction;
   FormFields: FormFields;
-  FormSection: FormSection;
   FormTab: FormTab;
   Formatters: ResolversUnionTypes<ResolversParentTypes>['Formatters'];
   Genre: Omit<Genre, 'entityView'> & { entityView: ResolversParentTypes['ColumnList'] };
@@ -7117,6 +7168,8 @@ export type ResolversParentTypes = {
   HierarchyListElement: HierarchyListElement;
   HierarchyRelationList: HierarchyRelationList;
   HierarchyRelationListInput: HierarchyRelationListInput;
+  HistoryVersion: Omit<HistoryVersion, 'entityView'> & { entityView: ResolversParentTypes['ColumnList'] };
+  HistoryVersionResults: Omit<HistoryVersionResults, 'results'> & { results: Array<ResolversParentTypes['HistoryVersion']> };
   Home: Omit<Home, 'entityView'> & { entityView: ResolversParentTypes['ColumnList'] };
   ImportReturn: ImportReturn;
   InfoPanel: InfoPanel;
@@ -7847,7 +7900,7 @@ export type EntitiesResultsResolvers<ContextType = any, ParentType extends Resol
 };
 
 export type EntityResolvers<ContextType = any, ParentType extends ResolversParentTypes['Entity'] = ResolversParentTypes['Entity']> = {
-  __resolveType: TypeResolveFn<'Award' | 'BaseEntity' | 'Boekenbank' | 'Cantook' | 'CodeWording' | 'Comment' | 'Context' | 'Corporation' | 'Download' | 'EasyReading' | 'Expression' | 'Genre' | 'Group' | 'Home' | 'Job' | 'Language' | 'Listening' | 'Manifestation' | 'ManifestationComputerFile' | 'ManifestationFootage' | 'ManifestationMap' | 'ManifestationMixedMaterial' | 'ManifestationMusic' | 'ManifestationSerial' | 'ManifestationWord' | 'Media' | 'MediaFileEntity' | 'Muziekweb' | 'Nomen' | 'Omnibus' | 'Orienting' | 'Partner' | 'Person' | 'Place' | 'Playing' | 'Publisher' | 'Reading' | 'SavedSearch' | 'ShareLink' | 'Siso' | 'TargetAudience' | 'Tenant' | 'Time' | 'Title' | 'Token' | 'User' | 'Watching' | 'Work' | 'WorkComputerFile' | 'WorkFootage' | 'WorkMap' | 'WorkMixedMaterial' | 'WorkMusic' | 'WorkSerial' | 'WorkWord' | 'Zizo' | 'ZizoDeelrubriek' | 'ZizoDomein' | 'ZizoGroeirubriek' | 'ZizoHoofdrubriek' | 'ZizoKast' | 'ZizoPlank' | 'ZizoRug', ParentType, ContextType>;
+  __resolveType: TypeResolveFn<'Award' | 'BaseEntity' | 'Boekenbank' | 'Cantook' | 'CodeWording' | 'Comment' | 'Context' | 'Corporation' | 'Download' | 'EasyReading' | 'Expression' | 'Genre' | 'Group' | 'HistoryVersion' | 'Home' | 'Job' | 'Language' | 'Listening' | 'Manifestation' | 'ManifestationComputerFile' | 'ManifestationFootage' | 'ManifestationMap' | 'ManifestationMixedMaterial' | 'ManifestationMusic' | 'ManifestationSerial' | 'ManifestationWord' | 'Media' | 'MediaFileEntity' | 'Muziekweb' | 'Nomen' | 'Omnibus' | 'Orienting' | 'Partner' | 'Person' | 'Place' | 'Playing' | 'Publisher' | 'Reading' | 'SavedSearch' | 'ShareLink' | 'Siso' | 'TargetAudience' | 'Tenant' | 'Time' | 'Title' | 'Token' | 'User' | 'Watching' | 'Work' | 'WorkComputerFile' | 'WorkFootage' | 'WorkMap' | 'WorkMixedMaterial' | 'WorkMusic' | 'WorkSerial' | 'WorkWord' | 'Zizo' | 'ZizoDeelrubriek' | 'ZizoDomein' | 'ZizoGroeirubriek' | 'ZizoHoofdrubriek' | 'ZizoKast' | 'ZizoPlank' | 'ZizoRug', ParentType, ContextType>;
 };
 
 export type EntityButtonConfigResolvers<ContextType = any, ParentType extends ResolversParentTypes['EntityButtonConfig'] = ResolversParentTypes['EntityButtonConfig']> = {
@@ -7860,6 +7913,13 @@ export type EntityButtonConfigResolvers<ContextType = any, ParentType extends Re
 export type EntityButtonStyleResolvers<ContextType = any, ParentType extends ResolversParentTypes['EntityButtonStyle'] = ResolversParentTypes['EntityButtonStyle']> = {
   background?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   text?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+};
+
+export type EntityHistoryVersionResolvers<ContextType = any, ParentType extends ResolversParentTypes['EntityHistoryVersion'] = ResolversParentTypes['EntityHistoryVersion']> = {
+  documentVersion?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  editedBy?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  timestamp?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  versionId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
 };
 
 export type EntityListElementResolvers<ContextType = any, ParentType extends ResolversParentTypes['EntityListElement'] = ResolversParentTypes['EntityListElement']> = {
@@ -7883,6 +7943,7 @@ export type EntityListElementResolvers<ContextType = any, ParentType extends Res
   entityTypes?: Resolver<Maybe<Array<Maybe<ResolversTypes['Entitytyping']>>>, ParentType, ContextType, Partial<EntityListElementEntityTypesArgs>>;
   fetchDeepRelations?: Resolver<Maybe<ResolversTypes['FetchDeepRelations']>, ParentType, ContextType>;
   filtersNeedContext?: Resolver<Maybe<Array<Maybe<ResolversTypes['EntitySubelement']>>>, ParentType, ContextType, Partial<EntityListElementFiltersNeedContextArgs>>;
+  hideInHistory?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, Partial<EntityListElementHideInHistoryArgs>>;
   isCollapsed?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<EntityListElementIsCollapsedArgs, 'input'>>;
   label?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType, Partial<EntityListElementLabelArgs>>;
   relationType?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType, Partial<EntityListElementRelationTypeArgs>>;
@@ -7998,14 +8059,8 @@ export type FormActionResolvers<ContextType = any, ParentType extends ResolversP
 
 export type FormFieldsResolvers<ContextType = any, ParentType extends ResolversParentTypes['FormFields'] = ResolversParentTypes['FormFields']> = {
   action?: Resolver<Maybe<ResolversTypes['FormAction']>, ParentType, ContextType>;
-  formSection?: Resolver<Maybe<ResolversTypes['FormSection']>, ParentType, ContextType>;
   metaData?: Resolver<ResolversTypes['PanelMetaData'], ParentType, ContextType>;
   uploadContainer?: Resolver<Maybe<ResolversTypes['UploadContainer']>, ParentType, ContextType>;
-};
-
-export type FormSectionResolvers<ContextType = any, ParentType extends ResolversParentTypes['FormSection'] = ResolversParentTypes['FormSection']> = {
-  formFields?: Resolver<ResolversTypes['FormFields'], ParentType, ContextType>;
-  label?: Resolver<ResolversTypes['String'], ParentType, ContextType, Partial<FormSectionLabelArgs>>;
 };
 
 export type FormTabResolvers<ContextType = any, ParentType extends ResolversParentTypes['FormTab'] = ResolversParentTypes['FormTab']> = {
@@ -8102,6 +8157,30 @@ export type HierarchyListElementResolvers<ContextType = any, ParentType extends 
 export type HierarchyRelationListResolvers<ContextType = any, ParentType extends ResolversParentTypes['HierarchyRelationList'] = ResolversParentTypes['HierarchyRelationList']> = {
   entityType?: Resolver<ResolversTypes['Entitytyping'], ParentType, ContextType>;
   key?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type HistoryVersionResolvers<ContextType = any, ParentType extends ResolversParentTypes['HistoryVersion'] = ResolversParentTypes['HistoryVersion']> = {
+  advancedFilters?: Resolver<Maybe<ResolversTypes['AdvancedFilters']>, ParentType, ContextType>;
+  allowedViewModes?: Resolver<Maybe<ResolversTypes['AllowedViewModes']>, ParentType, ContextType>;
+  bulkOperationOptions?: Resolver<Maybe<ResolversTypes['BulkOperationOptions']>, ParentType, ContextType>;
+  deleteQueryOptions?: Resolver<Maybe<ResolversTypes['DeleteQueryOptions']>, ParentType, ContextType>;
+  entityView?: Resolver<ResolversTypes['ColumnList'], ParentType, ContextType>;
+  id?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  intialValues?: Resolver<ResolversTypes['IntialValues'], ParentType, ContextType>;
+  mapElement?: Resolver<Maybe<ResolversTypes['MapElement']>, ParentType, ContextType>;
+  previewComponent?: Resolver<Maybe<ResolversTypes['PreviewComponent']>, ParentType, ContextType>;
+  relationValues?: Resolver<Maybe<ResolversTypes['JSON']>, ParentType, ContextType>;
+  sortOptions?: Resolver<Maybe<ResolversTypes['SortOptions']>, ParentType, ContextType>;
+  teaserMetadata?: Resolver<Maybe<ResolversTypes['teaserMetadata']>, ParentType, ContextType>;
+  type?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  uuid?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  __isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type HistoryVersionResultsResolvers<ContextType = any, ParentType extends ResolversParentTypes['HistoryVersionResults'] = ResolversParentTypes['HistoryVersionResults']> = {
+  count?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+  limit?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
+  results?: Resolver<Array<ResolversTypes['HistoryVersion']>, ParentType, ContextType>;
 };
 
 export type HomeResolvers<ContextType = any, ParentType extends ResolversParentTypes['Home'] = ResolversParentTypes['Home']> = {
@@ -8793,7 +8872,6 @@ export type PanelMetaDataResolvers<ContextType = any, ParentType extends Resolve
   isMultilingual?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, Partial<PanelMetaDataIsMultilingualArgs>>;
   key?: Resolver<ResolversTypes['String'], ParentType, ContextType, RequireFields<PanelMetaDataKeyArgs, 'input'>>;
   label?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType, Partial<PanelMetaDataLabelArgs>>;
-  languageIn?: Resolver<Maybe<Array<ResolversTypes['String']>>, ParentType, ContextType, Partial<PanelMetaDataLanguageInArgs>>;
   lineClamp?: Resolver<ResolversTypes['String'], ParentType, ContextType, Partial<PanelMetaDataLineClampArgs>>;
   linkText?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType, RequireFields<PanelMetaDataLinkTextArgs, 'input'>>;
   lockedTooltip?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType, Partial<PanelMetaDataLockedTooltipArgs>>;
@@ -8998,6 +9076,9 @@ export type QueryResolvers<ContextType = any, ParentType extends ResolversParent
   EntitiesByAdvancedSearch?: Resolver<ResolversTypes['EntitiesResults'], ParentType, ContextType, RequireFields<QueryEntitiesByAdvancedSearchArgs, 'facet_by' | 'filter_by' | 'limit' | 'per_page' | 'q' | 'query_by_weights' | 'sort_by'>>;
   EntitiesHistory?: Resolver<Maybe<ResolversTypes['EntitiesResults']>, ParentType, ContextType, RequireFields<QueryEntitiesHistoryArgs, 'advancedFilterInputs' | 'searchValue'>>;
   Entity?: Resolver<Maybe<ResolversTypes['Entity']>, ParentType, ContextType, RequireFields<QueryEntityArgs, 'id' | 'type'>>;
+  EntityHistoryVersionDetail?: Resolver<Maybe<ResolversTypes['Entity']>, ParentType, ContextType, RequireFields<QueryEntityHistoryVersionDetailArgs, 'id' | 'type' | 'versionId'>>;
+  EntityHistoryVersionList?: Resolver<ResolversTypes['HistoryVersionResults'], ParentType, ContextType, RequireFields<QueryEntityHistoryVersionListArgs, 'advancedFilterInputs'>>;
+  EntityHistoryVersions?: Resolver<Array<ResolversTypes['EntityHistoryVersion']>, ParentType, ContextType, RequireFields<QueryEntityHistoryVersionsArgs, 'id' | 'type'>>;
   EntityTypeFilters?: Resolver<ResolversTypes['Entity'], ParentType, ContextType, RequireFields<QueryEntityTypeFiltersArgs, 'type'>>;
   EntityTypeSortOptions?: Resolver<ResolversTypes['Entity'], ParentType, ContextType, RequireFields<QueryEntityTypeSortOptionsArgs, 'entityType'>>;
   FetchMediafilesOfEntity?: Resolver<Array<Maybe<ResolversTypes['MediaFileEntity']>>, ParentType, ContextType, RequireFields<QueryFetchMediafilesOfEntityArgs, 'entityIds'>>;
@@ -9020,11 +9101,11 @@ export type QueryResolvers<ContextType = any, ParentType extends ResolversParent
   PermissionMappingPerEntityType?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<QueryPermissionMappingPerEntityTypeArgs, 'type'>>;
   PreviewComponents?: Resolver<Maybe<ResolversTypes['Entity']>, ParentType, ContextType, RequireFields<QueryPreviewComponentsArgs, 'entityType'>>;
   PreviewElement?: Resolver<Maybe<ResolversTypes['ColumnList']>, ParentType, ContextType>;
+  RelationLabelsForIds?: Resolver<Array<ResolversTypes['KeyAndValue']>, ParentType, ContextType, RequireFields<QueryRelationLabelsForIdsArgs, 'ids' | 'types'>>;
   Tenants?: Resolver<Maybe<ResolversTypes['EntitiesResults']>, ParentType, ContextType>;
   User?: Resolver<Maybe<ResolversTypes['User']>, ParentType, ContextType>;
   UserPermissions?: Resolver<Maybe<ResolversTypes['userPermissions']>, ParentType, ContextType>;
   WemOverview?: Resolver<Maybe<Array<Maybe<ResolversTypes['Entity']>>>, ParentType, ContextType, RequireFields<QueryWemOverviewArgs, 'id'>>;
-  WemiPipeline?: Resolver<Maybe<ResolversTypes['EntitiesResults']>, ParentType, ContextType, RequireFields<QueryWemiPipelineArgs, 'advancedFilterInputs' | 'searchValue' | 'type'>>;
   getElodyUser?: Resolver<Maybe<ResolversTypes['Entity']>, ParentType, ContextType>;
   getMediafile?: Resolver<Maybe<ResolversTypes['MediaFile']>, ParentType, ContextType, Partial<QueryGetMediafileArgs>>;
   jobStatusForEntity?: Resolver<ResolversTypes['JobPollResult'], ParentType, ContextType, RequireFields<QueryJobStatusForEntityArgs, 'id' | 'type'>>;
@@ -9479,6 +9560,7 @@ export type WindowElementResolvers<ContextType = any, ParentType extends Resolve
   contextMenuActions?: Resolver<Maybe<ResolversTypes['ContextMenuActions']>, ParentType, ContextType>;
   editMetadataButton?: Resolver<Maybe<ResolversTypes['EditMetadataButton']>, ParentType, ContextType, RequireFields<WindowElementEditMetadataButtonArgs, 'input'>>;
   expandButtonOptions?: Resolver<Maybe<ResolversTypes['ExpandButtonOptions']>, ParentType, ContextType>;
+  hideInHistory?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, Partial<WindowElementHideInHistoryArgs>>;
   label?: Resolver<ResolversTypes['String'], ParentType, ContextType, Partial<WindowElementLabelArgs>>;
   layout?: Resolver<Maybe<ResolversTypes['WindowElementLayout']>, ParentType, ContextType, Partial<WindowElementLayoutArgs>>;
   lineClamp?: Resolver<ResolversTypes['String'], ParentType, ContextType, Partial<WindowElementLineClampArgs>>;
@@ -9880,6 +9962,7 @@ export type Resolvers<ContextType = any> = {
   Entity?: EntityResolvers<ContextType>;
   EntityButtonConfig?: EntityButtonConfigResolvers<ContextType>;
   EntityButtonStyle?: EntityButtonStyleResolvers<ContextType>;
+  EntityHistoryVersion?: EntityHistoryVersionResolvers<ContextType>;
   EntityListElement?: EntityListElementResolvers<ContextType>;
   EntityPickerSearchConfig?: EntityPickerSearchConfigResolvers<ContextType>;
   EntityViewElements?: EntityViewElementsResolvers<ContextType>;
@@ -9895,7 +9978,6 @@ export type Resolvers<ContextType = any> = {
   Form?: FormResolvers<ContextType>;
   FormAction?: FormActionResolvers<ContextType>;
   FormFields?: FormFieldsResolvers<ContextType>;
-  FormSection?: FormSectionResolvers<ContextType>;
   FormTab?: FormTabResolvers<ContextType>;
   Formatters?: FormattersResolvers<ContextType>;
   Genre?: GenreResolvers<ContextType>;
@@ -9907,6 +9989,8 @@ export type Resolvers<ContextType = any> = {
   HiddenField?: HiddenFieldResolvers<ContextType>;
   HierarchyListElement?: HierarchyListElementResolvers<ContextType>;
   HierarchyRelationList?: HierarchyRelationListResolvers<ContextType>;
+  HistoryVersion?: HistoryVersionResolvers<ContextType>;
+  HistoryVersionResults?: HistoryVersionResultsResolvers<ContextType>;
   Home?: HomeResolvers<ContextType>;
   ImportReturn?: ImportReturnResolvers<ContextType>;
   InfoPanel?: InfoPanelResolvers<ContextType>;
