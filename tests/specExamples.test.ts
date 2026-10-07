@@ -110,9 +110,10 @@ describe("spec examples → Elody form", () => {
   });
 
   it("a widget Elody does not have is reported, not silently replaced", async () => {
-    const subClass = await form("27-SubClassEditor");
-    expect(subClass.fields[0].editor!.widget).toBe("http://www.w3.org/ns/shacl-ui/SubClassEditor");
-    expect(subClass.fields[0].gaps.some((gap) => gap.level === "unsupported")).toBe(true);
+    const blank = await shapeToForm({ shapes: `@prefix ex: <http://example.org/ns#> . @prefix sh: <http://www.w3.org/ns/shacl#> . @prefix shui: <http://www.w3.org/ns/shacl-ui/> .
+ex:S a sh:NodeShape ; sh:targetClass ex:T ; sh:property [ sh:path ex:part ; sh:nodeKind sh:BlankNode ; shui:editor shui:BlankNodeEditor ] .` });
+    expect(blank.fields[0].editor!.widget).toBe("http://www.w3.org/ns/shacl-ui/BlankNodeEditor");
+    expect(blank.fields[0].gaps.some((gap) => gap.level === "unsupported")).toBe(true);
   });
 
   it("a widget Elody implements as an element in the detail panel is not a gap", async () => {

@@ -330,6 +330,15 @@ class Parse {
       };
       return name;
     }
+    if (editor === shui("SubClassEditor")) {
+      const root = r.node(node, sh("rootClass"));
+      if (!root) throw new Error(`${key}: shui:SubClassEditor needs sh:rootClass`);
+      this.inputFields[name] = {
+        type: single ? "dropdown" : "dropdownMultiselectMetadata",
+        options: this.classTree(root).map(({ iri, depth }) => this.classOption(iri, key, depth)),
+      };
+      return name;
+    }
     const cls = r.node(node, sh("class"));
     if (cls && (editor === shui("InstancesSelectEditor") || editor === shui("AutoCompleteEditor"))) {
       this.inputFields[name] = {
@@ -340,6 +349,42 @@ class Parse {
       return name;
     }
     throw new Error(`${compact(editor)} has no create-form field type in the ontology and no generated custom field`);
+  }
+
+  /**
+   * A class and its subclasses (rdfs:subClassOf*) in the declaration's graph, in tree order:
+   * each class followed by its subclasses, siblings by label, every class once.
+   */
+  private classTree(root: string): { iri: string; depth: number }[] {
+    const subclasses = new Map<string, string[]>();
+    for (const q of this.r.quads())
+      if (q.predicate.value === rdfs("subClassOf") && q.object.termType === "NamedNode" && q.subject.termType === "NamedNode")
+        (subclasses.get(q.object.value) ?? subclasses.set(q.object.value, []).get(q.object.value)!).push(q.subject.value);
+    const name = (iri: string) => (this.r.value(iri, rdfs("label")) ?? localName(iri)).toLowerCase();
+    const tree: { iri: string; depth: number }[] = [];
+    const seen = new Set<string>();
+    const visit = (iri: string, depth: number) => {
+      if (seen.has(iri)) return;
+      seen.add(iri);
+      tree.push({ iri, depth });
+      for (const sub of [...(subclasses.get(iri) ?? [])].sort((a, b) => name(a).localeCompare(name(b)))) visit(sub, depth + 1);
+    };
+    visit(root, 0);
+    return tree;
+  }
+
+  /** A class as a dropdown option, its depth in the tree shown as indentation in every language. */
+  private classOption(iri: string, key: string, depth: number): { label: string; value: string } {
+    const option = this.iriOption(iri, key);
+    if (depth === 0) return option;
+    const indent = `${"\u00a0\u00a0\u00a0".repeat(depth - 1)}\u2514\u00a0`;
+    let minted = false;
+    for (const bundle of Object.values(this.translations))
+      if (bundle[option.label] !== undefined && !bundle[option.label].startsWith(indent)) {
+        bundle[option.label] = indent + bundle[option.label];
+        minted = true;
+      }
+    return minted ? option : { ...option, label: indent + option.label };
   }
 
   /** The name of a generated custom input field: <type><Key>Field, the key camel-cased (internal_memo → InternalMemo). */

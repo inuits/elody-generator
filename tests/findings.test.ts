@@ -34,8 +34,9 @@ describe("findings by kind", () => {
   });
 
   it("a SHACL UI widget Elody does not implement is a gap", async () => {
-    const findings = await kindsOf("27-SubClassEditor");
-    expect(findings.some((f) => f.kind === "gap" && /SubClassEditor/.test(f.message))).toBe(true);
+    const { findings } = await fromShacl(`@prefix ex: <http://example.org/ns#> . @prefix sh: <http://www.w3.org/ns/shacl#> . @prefix shui: <http://www.w3.org/ns/shacl-ui/> .
+ex:S a sh:NodeShape ; sh:targetClass ex:T ; sh:property [ sh:path ex:part ; sh:nodeKind sh:BlankNode ; shui:editor shui:BlankNodeEditor ] .`, { id: "e", documentName: "SpecE" });
+    expect(findings.some((f) => f.kind === "gap" && /BlankNodeEditor/.test(f.message))).toBe(true);
   });
 
   it("a complex path is left out by choice", async () => {

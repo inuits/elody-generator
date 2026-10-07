@@ -145,6 +145,7 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
     const editor = emptyEditor.get(field.shape) ?? field.editor?.widget ?? "";
     if (ontology.formFieldType(editor) !== undefined) return true;
     if (editor === `${SHUI}EnumSelectEditor`) return true;
+    if (editor === `${SHUI}SubClassEditor` && bySubject.get(field.shape)?.some((q) => q.predicate.value === sh("rootClass"))) return true;
     // a nested shape: a field with sub-fields (inputFieldWithSubFields)
     if (editor === `${SHUI}DetailsEditor` && bySubject.get(field.shape)?.some((q) => q.predicate.value === sh("node"))) return true;
     if ([`${SHUI}InstancesSelectEditor`, `${SHUI}AutoCompleteEditor`].includes(editor) && bySubject.get(field.shape)?.some((q) => q.predicate.value === sh("class")))
@@ -282,6 +283,26 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
       for (const q of source)
         if (q.predicate.value === sh("targetClass") && q.object.value === cls && q.subject.value !== form.nodeShape && q.subject.termType === "NamedNode")
           copy(q.subject.value, q.subject);
+  }
+
+  // shui:SubClassEditor offers sh:rootClass and its subclasses in the graphs it is given: the
+  // generator reads them as it reads sh:in, so the class hierarchy below the root travels along
+  for (const field of usable) {
+    const root = (bySubject.get(field.shape) ?? []).find((q) => q.predicate.value === sh("rootClass"))?.object.value;
+    if (!root) continue;
+    const graph = [...source, ...dataQuads];
+    const classes = new Set([root]);
+    for (let grown = true; grown; ) {
+      grown = false;
+      for (const q of graph)
+        if (q.predicate.value === rdfs("subClassOf") && classes.has(q.object.value) && !classes.has(q.subject.value)) {
+          classes.add(q.subject.value);
+          add(q.subject, rdfs("subClassOf"), q.object);
+          grown = true;
+        }
+    }
+    for (const cls of classes) copyLabels(cls, labelPreference.length ? labelPreference : [rdfs("label")]);
+    note("info", `"${field.label}": shui:SubClassEditor offers sh:rootClass and its ${classes.size - 1} subclasses found in the shapes and data graph, read when generating (as sh:in): a dropdown in tree order, the value the class IRI`);
   }
 
   // -- groups → detail panels -------------------------------------------------------------------

@@ -101,8 +101,11 @@ shui:InstancesSelectEditor elody:inputFieldType "dropdownSingleselectRelations" 
 shui:AutoCompleteEditor   elody:inputFieldType "baseEntityPickerField" .
 shui:IRIEditor            elody:inputFieldType "text" .
 shui:DetailsEditor        elody:inputFieldType "inputFieldWithSubFields" .
+# sh:rootClass and its subclasses (rdfs:subClassOf*) in the graphs the generator reads, as a
+# dropdown in tree order (like sh:in, fixed when generating); the value is the class IRI
+shui:SubClassEditor       elody:inputFieldType "dropdown" .
 # shui:RichTextEditor: elody:panelElement below (no create-form field)
-# not implemented (documented, no mapping): shui:SubClassEditor, shui:BlankNodeEditor
+# not implemented (documented, no mapping): shui:BlankNodeEditor
 
 # -- Elody editors -------------------------------------------------------------
 elody:EntityPickerEditor a elody:Editor ;

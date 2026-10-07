@@ -92,7 +92,7 @@ meta:PropertyShapeShape a sh:NodeShape ;
       sh:in ( shui:TextFieldEditor shui:TextAreaEditor shui:TextFieldWithLangEditor shui:TextAreaWithLangEditor
               shui:NumberFieldEditor shui:BooleanEditor shui:DatePickerEditor shui:DateTimePickerEditor
               shui:EnumSelectEditor shui:InstancesSelectEditor shui:AutoCompleteEditor shui:IRIEditor shui:DetailsEditor
-              shui:RichTextEditor
+              shui:RichTextEditor shui:SubClassEditor
               elody:EntityPickerEditor elody:RelationSelectEditor elody:RelationMultiSelectEditor
               elody:MetadataSelectEditor elody:MetadataMultiSelectEditor elody:RadioEditor elody:RangeEditor
               elody:ColorEditor elody:ResizableTextAreaEditor elody:FileUploadEditor elody:CsvUploadEditor
