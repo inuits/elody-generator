@@ -209,6 +209,9 @@ class Parse {
 
   /** The create form's widget for a property, to edit it on the detail page; none when Elody cannot write it. */
   private editWidget(node: string): string | undefined {
+    // a typed-in IRI is a table of relations, which the detail page would show
+    // instead of the related entity's label: it is entered in the create form only
+    if (this.inversePredicate(node) && !this.r.node(node, sh("class"))) return undefined;
     try {
       return this.formField(node).inputType;
     } catch {
@@ -342,6 +345,23 @@ class Parse {
   private fieldName(key: string): string {
     const camel = key.replace(/[_-]+([a-zA-Z0-9])/g, (_, c: string) => c.toUpperCase());
     return `${this.type}${camel.charAt(0).toUpperCase()}${camel.slice(1)}Field`;
+  }
+
+  /**
+   * A relation whose key is typed in (Elody's counterpart of shui:IRIEditor):
+   * a table of relations, one row per value, the IRI in the key column
+   * (inputFieldWithSubFields with a relationType; the column that is not a
+   * metadata field is the relation's key).
+   */
+  private typedRelationField(node: string, key: string): string {
+    const name = this.fieldName(key);
+    this.inputFields[name] = {
+      type: "inputFieldWithSubFields",
+      isMetadataField: false,
+      relationType: this.relationTypeOf(node),
+      subFields: [{ label: "IRI", key: "key", inputField: { type: "text", isMetadataField: false } }],
+    };
+    return name;
   }
 
   /** No sh:maxCount 1: the property may hold several values. */
@@ -809,16 +829,19 @@ class Parse {
     const key0 = this.keyOf(node);
     let inputType: string;
     if (this.inversePredicate(node) && !r.node(node, sh("class")))
-      throw new Error(`${key0}: an inverse path without sh:class cannot be picked in a create form (Elody needs the related type)`);
-    const formFieldType = this.o.formFieldType(editor);
-    const several = this.o.multipleValuesInputFieldType(editor);
-    if (several && this.mayHoldSeveral(node) && !this.o.multilingual(editor) && this.languageInOf(node).length === 0)
-      inputType = this.severalValuesField(node, key0, several);
-    else if (formFieldType) inputType = formFieldType;
-    else if (this.relationTypeOf(node) && r.node(node, sh("class")) && !this.isNested(node, editor))
-      // a relation-valued field without an Elody form widget is a relation dropdown
-      inputType = this.customField(node, [shui("InstancesSelectEditor"), shui("AutoCompleteEditor")].includes(editor) ? editor : shui("InstancesSelectEditor"), key0);
-    else inputType = this.customField(node, editor, key0);
+      // no type to search: the IRI is typed in, as shui:IRIEditor does
+      inputType = this.typedRelationField(node, key0);
+    else {
+      const formFieldType = this.o.formFieldType(editor);
+      const several = this.o.multipleValuesInputFieldType(editor);
+      if (several && this.mayHoldSeveral(node) && !this.o.multilingual(editor) && this.languageInOf(node).length === 0)
+        inputType = this.severalValuesField(node, key0, several);
+      else if (formFieldType) inputType = formFieldType;
+      else if (this.relationTypeOf(node) && r.node(node, sh("class")) && !this.isNested(node, editor))
+        // a relation-valued field without an Elody form widget is a relation dropdown
+        inputType = this.customField(node, [shui("InstancesSelectEditor"), shui("AutoCompleteEditor")].includes(editor) ? editor : shui("InstancesSelectEditor"), key0);
+      else inputType = this.customField(node, editor, key0);
+    }
     let required = Number(r.value(node, sh("minCount")) ?? 0) >= 1;
     if (!required && r.has(node, elody("required"))) {
       this.retired(node, elody("required"));

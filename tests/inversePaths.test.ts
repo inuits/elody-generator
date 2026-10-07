@@ -48,17 +48,32 @@ describe("an inverse path is the mirrored Elody relation", () => {
     });
   });
 
-  it("without sh:class it is shown on the detail page but cannot be picked in the create form", async () => {
-    const { ttl, notes } = await fromShacl(example("05-view-predicate-paths", "shapes"), {
+  it("without sh:class the IRI is typed in, as shui:IRIEditor does: a relation whose key is the typed IRI", async () => {
+    const { ttl, findings } = await fromShacl(example("05-view-predicate-paths", "shapes"), {
       id: "e05",
       documentName: "SpecE05",
       data: example("05-view-predicate-paths", "data"),
       focus: `${EX}alice`,
     });
+    const { entities, inputFields } = await readUiDeclaration(ttl);
+    const field = entities[0].createForms[0].fields.find((f) => f.key === "isMemberFor")!;
+    expect(field.inputType).toBe("specE05IsMemberForField");
+    expect(inputFields.specE05IsMemberForField).toEqual({
+      type: "inputFieldWithSubFields",
+      isMetadataField: false,
+      relationType: "isMemberFor",
+      subFields: [{ label: "IRI", key: "key", inputField: { type: "text", isMetadataField: false } }],
+    });
+    // no longer a gap: the field is in the form, typed in rather than picked
+    expect(findings.filter((f) => f.kind === "gap" && /Department/.test(f.message))).toEqual([]);
+    expect(findings.find((f) => /Department/.test(f.message) && /IRI/.test(f.message))?.kind).toBe("info");
+  });
+
+  it("uses a text field, not a relation, as the card title when no shui:LabelRole is declared", async () => {
+    const { ttl } = await fromShacl(example("05-view-predicate-paths", "shapes"), { id: "e05", documentName: "SpecE05" });
     const { entities } = await readUiDeclaration(ttl);
-    expect(entities[0].properties.map((p) => p.key)).toContain("isMemberFor");
-    expect(entities[0].createForms[0].fields.map((f) => f.key)).not.toContain("isMemberFor");
-    expect(notes.join("\n")).toMatch(/Department.*sh:class/);
+    const title = entities[0].properties.find((p) => p.role);
+    expect(title?.key).toBe("name");
   });
 
   it("carries the spec data's related nodes as sample relations", async () => {

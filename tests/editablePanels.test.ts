@@ -74,9 +74,9 @@ describe("relation-valued properties on the detail page", () => {
     });
   });
 
-  it("an inverse path without sh:class stays read-only: Elody cannot offer its values", async () => {
+  it("an inverse path without sh:class shows the related entity's label: its IRI is typed in the create form only", async () => {
     const shapes05 = readFileSync(join(__dirname, "..", "spec", "examples", "05-view-predicate-paths.shapes.ttl"), "utf-8");
     const { detail } = await detailOf(shapes05);
-    expect(fieldBlock(detail, "isMemberFor")).not.toContain("inputField");
+    expect(fieldBlock(detail, "isMemberFor")).not.toContain("inputField(");
   });
 });

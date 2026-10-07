@@ -138,7 +138,8 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
     field.path.kind === "inverse" ? keyOf(field) : hasClass(field) ? `has${upperFirst(keyOf(field))}` : undefined;
 
   const formEditable = (field: SpecField) => {
-    if (field.path.kind === "inverse") return hasClass(field);
+    // without sh:class the IRI is typed in (Elody's counterpart of shui:IRIEditor)
+    if (field.path.kind === "inverse") return true;
     const editor = emptyEditor.get(field.shape) ?? field.editor?.widget ?? "";
     if (ontology.formFieldType(editor) !== undefined) return true;
     if (editor === `${SHUI}EnumSelectEditor`) return true;
@@ -159,9 +160,14 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   const qualify = usable.filter((field) => directLabelRole(field.shape)).length > 1;
   if (qualify) note("info", "several shapes carry a LabelRole with RDF 1.2 annotations; written as qualified roles (shui:propertyRole [ shui:propertyRole shui:LabelRole ; sh:order n ])");
 
+  // without a declared LabelRole the card title is the first text: a predicate path to a literal
+  const isText = (field: SpecField) =>
+    field.path.kind === "predicate" && !hasClass(field) && !(bySubject.get(field.shape) ?? []).some((q) => q.predicate.value === sh("node"));
+  const cardTitle = usable.find(isText) ?? usable[0];
+
   // -- property shapes: reused, with only what the Elody profile needs changed ------------------------
   const propertyTerm = new Map<string, Term>();
-  for (const [index, field] of usable.entries()) {
+  for (const field of usable) {
     const key = keyOf(field);
     const named = !field.shape.startsWith("_:") && !/^n3-|^b\d+/.test(field.shape) && /[:/#]/.test(field.shape);
     const term = named ? namedNode(field.shape) : ui(key);
@@ -190,7 +196,7 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
       note(editor.startsWith(SHUI) ? "gap" : "handled", `"${field.label}": Elody has no ${editor.replace(SHUI, "shui:").replace(/^.*[#/]/, (m) => (editor.startsWith(SHUI) ? m : ""))}; the declared editor is left out and the spec's scoring picks one`);
     if (viewer && ontology.formatterValue(viewer) === undefined)
       note(viewer.startsWith(SHUI) ? "gap" : "handled", `"${field.label}": Elody has no ${viewer.replace(SHUI, "shui:")}; shown as plain text`);
-    if (!hasLabelRole && index === 0) {
+    if (!hasLabelRole && field === cardTitle) {
       add(term, shui("propertyRole"), namedNode(shui("LabelRole")));
       note("info", `"${field.label}" is used as the card title (the shapes declare no shui:LabelRole)`);
     }
@@ -301,9 +307,9 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   // -- create form: the same property shapes ------------------------------------------------------------
   const formFields = usable.filter((field) => {
     const ok = formEditable(field);
-    if (!ok && field.path.kind === "inverse")
-      note("gap", `"${field.label}": inverse path without sh:class; shown on the detail page, left out of the form (picking a value needs the related type)`);
-    else if (!ok) note("gap", `"${field.label}": ${(emptyEditor.get(field.shape) ?? field.editor?.widget ?? "").replace(SHUI, "shui:")} has no create-form field in Elody; left out of the form`);
+    if (field.path.kind === "inverse" && !hasClass(field))
+      note("info", `"${field.label}": inverse path without sh:class: the IRI is typed in (as shui:IRIEditor) and stored as the relation's key`);
+    if (!ok) note("gap", `"${field.label}": ${(emptyEditor.get(field.shape) ?? field.editor?.widget ?? "").replace(SHUI, "shui:")} has no create-form field in Elody; left out of the form`);
     return ok;
   });
   if (formFields.length) {
