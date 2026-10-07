@@ -29,39 +29,47 @@
 <https://elody.eu/ns/ui> a owl:Ontology ;
   rdfs:label "Elody UI ontology"@en ;
   rdfs:comment "The platform-specific presentation terms of an Elody UI declaration, layered on SHACL 1.2 UI (shui:) and DASH (dash:). The standard subset of a declaration stays readable by any SHACL-UI tool; the elody: subset describes listings, view modes, panels, filters, actions and flows, which the standard has no terms for."@en ;
-  owl:versionInfo "0.1.0" ;
-  owl:versionIRI <https://elody.eu/ns/ui/0.1.0> ;
+  owl:versionInfo "0.2.0" ;
+  owl:versionIRI <https://elody.eu/ns/ui/0.2.0> ;
+  owl:priorVersion <https://elody.eu/ns/ui/0.1.0> ;
   owl:imports <http://www.w3.org/ns/shacl-ui/> , <http://datashapes.org/dash> ;
   vann:preferredNamespacePrefix "elody" ;
   vann:preferredNamespaceUri "https://elody.eu/ns/ui#" ;
   dcterms:created "2026-10-02"^^xsd:date ;
-  dcterms:creator "Inuits" .
+  dcterms:modified "2026-10-07"^^xsd:date ;
+  dcterms:license <https://opensource.org/licenses/MIT> ;
+  dcterms:creator <https://inuits.eu/> .
 
 # =============================================================================
 # 1. Ontology-internal annotation terms
 # =============================================================================
 
-elody:enumValue a owl:DatatypeProperty , owl:AnnotationProperty ;
+elody:enumValue a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "GraphQL enum value"@en ;
   rdfs:domain owl:Thing ; rdfs:range xsd:string ;
   rdfs:comment "The literal the Elody GraphQL schema expects for this enumeration instance (e.g. elody:ListView elody:enumValue \"ViewModesList\"). Lets the generator render instances without a table of its own. No standard term: it binds an RDF individual to an implementation enum."@en .
 
-elody:inputFieldType a owl:DatatypeProperty , owl:AnnotationProperty ;
+elody:inputFieldType a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "Elody input field type"@en ;
   rdfs:domain shui:Editor ; rdfs:range xsd:string ;
   rdfs:comment "The Elody InputFieldTypes value an editor renders as. Stated on shui: editors and on Elody editors alike, so the ontology is the single editor-to-widget mapping read by the TS generator and the Python form builder. No standard term: shui names editors, not a platform's widget enum."@en .
 
-elody:formatterValue a owl:DatatypeProperty , owl:AnnotationProperty ;
+elody:formatterValue a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "Elody formatter value"@en ;
   rdfs:domain shui:Viewer ; rdfs:range xsd:string ;
   rdfs:comment "The formatter name the Elody keyValue resolver expects for this viewer (e.g. \"pill\"). Same role as elody:inputFieldType, for the read side."@en .
 
-elody:fallbackWidget a owl:ObjectProperty , owl:AnnotationProperty ;
+elody:fallbackWidget a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "standard fallback widget"@en ;
   rdfs:domain elody:Widget ; rdfs:range owl:Thing ;
   rdfs:comment "The standard shui: editor or viewer an Elody widget specialises. A renderer that does not know Elody falls back to it; shui's scoring then picks the standard widget. No standard term: shui has no specialisation relation between editors."@en .
 
 elody:directive a owl:AnnotationProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "generator directive"@en ;
   rdfs:range xsd:boolean ;
   rdfs:comment "Marks a term that steers the generator rather than describing the UI (emit, documents, graphqlType). Directives disappear as the generator learns to derive them."@en .
@@ -74,14 +82,17 @@ elody:directive a owl:AnnotationProperty ;
 # the standard predicates shui:editor / shui:viewer. Never elody:widget.
 
 elody:Widget a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "Elody widget"@en ;
   rdfs:comment "An editor or viewer only Elody renders. Each names the standard widget it falls back to."@en .
 
 elody:Editor a owl:Class ; rdfs:subClassOf shui:Editor , elody:Widget ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "Elody editor"@en ;
   rdfs:comment "An input widget of the Elody platform, usable where shui:editor expects a shui:Editor."@en .
 
 elody:Viewer a owl:Class ; rdfs:subClassOf shui:Viewer , elody:Widget ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "Elody viewer"@en ;
   rdfs:comment "A read-mode widget of the Elody platform, usable where shui:viewer expects a shui:Viewer."@en .
 
@@ -109,66 +120,79 @@ shui:SubClassEditor       elody:inputFieldType "dropdown" .
 
 # -- Elody editors -------------------------------------------------------------
 elody:EntityPickerEditor a elody:Editor ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "entity picker"@en ; elody:fallbackWidget shui:AutoCompleteEditor ;
   elody:inputFieldType "baseEntityPickerField" ;
   rdfs:comment "Search-and-pick an Elody entity in a modal listing with the platform's filters. Specialises AutoComplete: the search is the Elody filter engine, not shui:searchQuery."@en .
 
 elody:RelationSelectEditor a elody:Editor ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "relation select (single)"@en ; elody:fallbackWidget shui:InstancesSelectEditor ;
   elody:inputFieldType "dropdownSingleselectRelations" ;
   rdfs:comment "Dropdown over the instances of a related entity type, stored as an Elody relation."@en .
 
 elody:RelationMultiSelectEditor a elody:Editor ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "relation select (multiple)"@en ; elody:fallbackWidget shui:InstancesSelectEditor ;
   elody:inputFieldType "dropdownMultiselectRelations" ;
   rdfs:comment "Multi-select over the instances of a related entity type, stored as Elody relations (sh:maxCount absent or > 1)."@en .
 
 elody:MetadataSelectEditor a elody:Editor ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "metadata select (single)"@en ; elody:fallbackWidget shui:EnumSelectEditor ;
   elody:inputFieldType "dropdownSingleselectMetadata" ;
   rdfs:comment "Dropdown whose options come from a metadata key's known values rather than sh:in."@en .
 
 elody:MetadataMultiSelectEditor a elody:Editor ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "metadata select (multiple)"@en ; elody:fallbackWidget shui:EnumSelectEditor ;
   elody:inputFieldType "dropdownMultiselectMetadata" ;
   rdfs:comment "Multi-select variant of elody:MetadataSelectEditor."@en .
 
 elody:RadioEditor a elody:Editor ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "radio buttons"@en ; elody:fallbackWidget shui:EnumSelectEditor ;
   elody:inputFieldType "radio" ;
   rdfs:comment "sh:in rendered as radio buttons (short enumerations)."@en .
 
 elody:RangeEditor a elody:Editor ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "range slider"@en ; elody:fallbackWidget shui:NumberFieldEditor ;
   elody:inputFieldType "range" ;
   rdfs:comment "Number within sh:minInclusive/sh:maxInclusive as a slider."@en .
 
 elody:ColorEditor a elody:Editor ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "colour picker"@en ; elody:fallbackWidget shui:TextFieldEditor ;
   elody:inputFieldType "color" ;
   rdfs:comment "A colour value as a picker; the stored literal is the CSS colour string."@en .
 
 elody:ResizableTextAreaEditor a elody:Editor ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "resizable text area"@en ; elody:fallbackWidget shui:TextAreaEditor ;
   elody:inputFieldType "resizableTextarea" ;
   rdfs:comment "Text area the user can resize."@en .
 
 elody:FileUploadEditor a elody:Editor ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "file upload"@en ; elody:fallbackWidget shui:Editor ;
   elody:inputFieldType "fileUpload" ;
   rdfs:comment "Upload one or more files into Elody mediafiles. No standard editor: shui edits RDF terms, not binary uploads."@en .
 
 elody:CsvUploadEditor a elody:Editor ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "CSV upload"@en ; elody:fallbackWidget elody:FileUploadEditor ;
   elody:inputFieldType "csvUpload" ;
   rdfs:comment "Upload a CSV the platform imports."@en .
 
 elody:XmlUploadEditor a elody:Editor ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "XML upload"@en ; elody:fallbackWidget elody:FileUploadEditor ;
   elody:inputFieldType "xmlUpload" ;
   rdfs:comment "Upload an XML file the platform imports."@en .
 
 elody:FileSystemImportEditor a elody:Editor ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "file system import"@en ; elody:fallbackWidget elody:FileUploadEditor ;
   elody:inputFieldType "baseFileSystemImportField" ;
   rdfs:comment "Import from a server-side folder (filesystem importer service)."@en .
@@ -183,29 +207,35 @@ shui:DetailsViewer   elody:formatterValue "" .
 
 # -- Elody viewers -------------------------------------------------------------
 elody:PillViewer a elody:Viewer ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "pill"@en ; elody:fallbackWidget shui:LiteralViewer ;
   elody:formatterValue "pill" ;
   rdfs:comment "The value as a coloured pill; elody:viewerArgument selects the colour scheme (\"auto\")."@en .
 
 elody:LinkViewer a elody:Viewer ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "link"@en ; elody:fallbackWidget shui:HyperlinkViewer ;
   elody:formatterValue "link" ;
   rdfs:comment "The value as a clickable link (Elody LinkFormatter)."@en .
 
 elody:RegexpMatchViewer a elody:Viewer ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "regexp match"@en ; elody:fallbackWidget shui:LiteralViewer ;
   elody:formatterValue "regexpMatch" ;
   rdfs:comment "Shows only the part of the value matching elody:viewerArgument (a regular expression)."@en .
 
 elody:MediafilePreviewViewer a elody:Viewer ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "mediafile preview"@en ; elody:fallbackWidget shui:ImageViewer ;
   rdfs:comment "Renders the referenced Elody mediafile as a preview (image, audio, video). Not implemented as a field formatter yet (no CustomFormatterTypes value): reserved term, rejected by the meta-shapes."@en .
 
 elody:MarkdownViewer a elody:Viewer ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "markdown"@en ; elody:fallbackWidget shui:HTMLViewer ;
   rdfs:comment "Renders the literal as Markdown. Elody renders Markdown only as a detail element (elody:MarkdownElement), not as a field formatter: reserved term, rejected by the meta-shapes."@en .
 
 elody:viewerArgument a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "viewer argument"@en ;
   rdfs:domain sh:PropertyShape ; rdfs:range xsd:string ;
   rdfs:comment "A parameter for the chosen shui:viewer (pill colour scheme, regular expression). No standard term: shui viewers take no parameters."@en .
@@ -215,310 +245,390 @@ elody:viewerArgument a owl:DatatypeProperty ;
 # =============================================================================
 
 elody:EntityUi a owl:Class ; rdfs:subClassOf sh:NodeShape ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "entity UI"@en ;
   rdfs:comment "The UI of one Elody entity type. It is a sh:NodeShape (R1): its sh:property shapes are the one list of fields that drives the listing card, the detail panels, the sort options and the forms. sh:targetClass anchors it to the domain ontology. No standard term: shui describes forms, not listings and detail pages."@en .
 
 elody:ListingUi a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "listing UI"@en ;
   rdfs:comment "A listing over several entity families at once (e.g. a WEMI overview), with its own query names and view modes. No standard term."@en .
 
 elody:EntityFamily a owl:Class ; rdfs:subClassOf sh:NodeShape ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "entity family"@en ;
   rdfs:comment "One card fragment shared by several GraphQL types inside a listing, anchored to its domain class through sh:targetClass."@en .
 
 elody:ViewModeSelection a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "view mode selection"@en ;
   rdfs:comment "One allowed view mode of a listing, with its order and configuration entries."@en .
 
 elody:ViewMode a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "view mode"@en ;
   rdfs:comment "Enumeration of the ways Elody can render a listing. Instances carry elody:enumValue."@en .
-elody:ListView     a elody:ViewMode ; rdfs:label "list"@en ;     elody:enumValue "ViewModesList" .
-elody:GridView     a elody:ViewMode ; rdfs:label "grid"@en ;     elody:enumValue "ViewModesGrid" .
-elody:MapView      a elody:ViewMode ; rdfs:label "map"@en ;      elody:enumValue "ViewModesMap" .
-elody:MediaView    a elody:ViewMode ; rdfs:label "media"@en ;    elody:enumValue "ViewModesMedia" .
-elody:PipelineView a elody:ViewMode ; rdfs:label "pipeline"@en ; elody:enumValue "ViewModesPipeline" .
+elody:ListView     a elody:ViewMode ; rdfs:label "list"@en ;     elody:enumValue "ViewModesList" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:GridView     a elody:ViewMode ; rdfs:label "grid"@en ;     elody:enumValue "ViewModesGrid" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:MapView      a elody:ViewMode ; rdfs:label "map"@en ;      elody:enumValue "ViewModesMap" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:MediaView    a elody:ViewMode ; rdfs:label "media"@en ;    elody:enumValue "ViewModesMedia" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:PipelineView a elody:ViewMode ; rdfs:label "pipeline"@en ; elody:enumValue "ViewModesPipeline" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 elody:CalendarView a elody:ViewMode ; rdfs:label "calendar"@en ; elody:enumValue "ViewModesCalendar" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Ahead of master: the enum value lives on branch feat/calendar-view-mode (#166680)."@en .
-elody:TableView    a elody:ViewMode ; rdfs:label "table"@en ;    elody:enumValue "Table" .
+elody:TableView    a elody:ViewMode ; rdfs:label "table"@en ;    elody:enumValue "Table" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:ConfigEntry a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "configuration entry"@en ;
   rdfs:comment "A key/value pair passed to a view mode (multiLine, multiLineColumns, edgeRelations, ...)."@en .
 
 elody:Filter a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "filter"@en ;
   rdfs:comment "An advanced filter offered on a listing or a picker: its kind, the key it filters on, defaults and visibility. No standard term: shui:searchQuery is SPARQL, Elody filters the document store."@en .
 
 elody:FilterKind a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "filter kind"@en ;
   rdfs:comment "Enumeration of Elody advanced filter types."@en .
-elody:TextFilter      a elody:FilterKind ; elody:enumValue "text" .
-elody:DateFilter      a elody:FilterKind ; elody:enumValue "date" .
-elody:NumberFilter    a elody:FilterKind ; elody:enumValue "number" .
-elody:SelectionFilter a elody:FilterKind ; elody:enumValue "selection" .
-elody:BooleanFilter   a elody:FilterKind ; elody:enumValue "boolean" .
-elody:TypeFilter      a elody:FilterKind ; elody:enumValue "type" .
-elody:IdFilter        a elody:FilterKind ; elody:enumValue "id" .
-elody:GeoFilter       a elody:FilterKind ; elody:enumValue "geo" .
-elody:MetadataOnRelationFilter a elody:FilterKind ; elody:enumValue "metadata_on_relation" .
+elody:TextFilter      a elody:FilterKind ; elody:enumValue "text" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DateFilter      a elody:FilterKind ; elody:enumValue "date" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:NumberFilter    a elody:FilterKind ; elody:enumValue "number" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:SelectionFilter a elody:FilterKind ; elody:enumValue "selection" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:BooleanFilter   a elody:FilterKind ; elody:enumValue "boolean" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:TypeFilter      a elody:FilterKind ; elody:enumValue "type" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:IdFilter        a elody:FilterKind ; elody:enumValue "id" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:GeoFilter       a elody:FilterKind ; elody:enumValue "geo" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:MetadataOnRelationFilter a elody:FilterKind ; elody:enumValue "metadata_on_relation" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:ContextMenu a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "context menu"@en ;
   rdfs:comment "The per-card context menu: whether it is always shown, whether the platform's basic actions are included, and the client's own actions."@en .
 
 elody:Action a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "context menu action"@en ;
   rdfs:comment "A platform action offered in a context menu. The declaration carries parameters (kind, form, label, icon); the behaviour lives in the platform."@en .
 
 elody:ActionKind a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "action kind"@en ;
   rdfs:comment "Enumeration of the platform actions a context menu can trigger (ContextMenuElodyActionEnum)."@en .
-elody:UpdateMetadataAction a elody:ActionKind ; elody:enumValue "UpdateMetadata" .
-elody:DeleteEntityAction   a elody:ActionKind ; elody:enumValue "DeleteEntity" .
-elody:DeleteRelationAction a elody:ActionKind ; elody:enumValue "DeleteRelation" .
-elody:ShareAction          a elody:ActionKind ; elody:enumValue "Share" .
-elody:EndpointCallAction   a elody:ActionKind ; elody:enumValue "EndpointCall" .
-elody:DownloadQueryResultAction a elody:ActionKind ; elody:enumValue "DownloadQueryResult" .
-elody:CreateEntityFromExternalSourceAction a elody:ActionKind ; elody:enumValue "CreateEntityFromExternalSource" .
+elody:UpdateMetadataAction a elody:ActionKind ; elody:enumValue "UpdateMetadata" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DeleteEntityAction   a elody:ActionKind ; elody:enumValue "DeleteEntity" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DeleteRelationAction a elody:ActionKind ; elody:enumValue "DeleteRelation" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:ShareAction          a elody:ActionKind ; elody:enumValue "Share" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:EndpointCallAction   a elody:ActionKind ; elody:enumValue "EndpointCall" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DownloadQueryResultAction a elody:ActionKind ; elody:enumValue "DownloadQueryResult" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:CreateEntityFromExternalSourceAction a elody:ActionKind ; elody:enumValue "CreateEntityFromExternalSource" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:BulkOperation a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "bulk operation"@en ;
   rdfs:comment "An operation in the listing's action bar: kind, label, icon, permissions, the interaction context it is enabled in and the modal it opens."@en .
 
 elody:BulkOperationKind a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "bulk operation kind"@en ;
   rdfs:comment "Enumeration of platform bulk operations (BulkOperationTypes)."@en .
-elody:CreateEntityOperation     a elody:BulkOperationKind ; elody:enumValue "createEntity" .
-elody:AddRelationOperation      a elody:BulkOperationKind ; elody:enumValue "addRelation" .
-elody:DeleteEntitiesOperation   a elody:BulkOperationKind ; elody:enumValue "deleteEntities" .
-elody:DeleteRelationsOperation  a elody:BulkOperationKind ; elody:enumValue "deleteRelations" .
-elody:EditOperation             a elody:BulkOperationKind ; elody:enumValue "edit" .
-elody:ExportCsvOperation        a elody:BulkOperationKind ; elody:enumValue "exportCsv" .
-elody:DownloadMediafilesOperation a elody:BulkOperationKind ; elody:enumValue "downloadMediafiles" .
-elody:ReorderEntitiesOperation  a elody:BulkOperationKind ; elody:enumValue "reorderEntities" .
-elody:StartOcrOperation         a elody:BulkOperationKind ; elody:enumValue "startOcr" .
-elody:OpenDropdownOperation     a elody:BulkOperationKind ; elody:enumValue "openDropdown" .
+elody:CreateEntityOperation     a elody:BulkOperationKind ; elody:enumValue "createEntity" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:AddRelationOperation      a elody:BulkOperationKind ; elody:enumValue "addRelation" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DeleteEntitiesOperation   a elody:BulkOperationKind ; elody:enumValue "deleteEntities" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DeleteRelationsOperation  a elody:BulkOperationKind ; elody:enumValue "deleteRelations" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:EditOperation             a elody:BulkOperationKind ; elody:enumValue "edit" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:ExportCsvOperation        a elody:BulkOperationKind ; elody:enumValue "exportCsv" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DownloadMediafilesOperation a elody:BulkOperationKind ; elody:enumValue "downloadMediafiles" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:ReorderEntitiesOperation  a elody:BulkOperationKind ; elody:enumValue "reorderEntities" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:StartOcrOperation         a elody:BulkOperationKind ; elody:enumValue "startOcr" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:OpenDropdownOperation     a elody:BulkOperationKind ; elody:enumValue "openDropdown" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:BulkOperationContext a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "bulk operation context"@en ;
   rdfs:comment "When a bulk operation is enabled: the interaction mode, the selection state, and the tooltip explaining it."@en .
 
 elody:InteractionMode a owl:Class ; rdfs:label "interaction mode"@en ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Enumeration: read or edit mode of a listing."@en .
-elody:ReadMode a elody:InteractionMode ; elody:enumValue "readMode" .
-elody:EditMode a elody:InteractionMode ; elody:enumValue "editMode" .
+elody:ReadMode a elody:InteractionMode ; elody:enumValue "readMode" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:EditMode a elody:InteractionMode ; elody:enumValue "editMode" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:SelectionState a owl:Class ; rdfs:label "selection state"@en ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Enumeration: how many entities are selected."@en .
-elody:NoneSelected a elody:SelectionState ; elody:enumValue "noneSelected" .
-elody:SomeSelected a elody:SelectionState ; elody:enumValue "someSelected" .
+elody:NoneSelected a elody:SelectionState ; elody:enumValue "noneSelected" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:SomeSelected a elody:SelectionState ; elody:enumValue "someSelected" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:BulkOperationModal a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "bulk operation modal"@en ;
   rdfs:comment "The modal a bulk operation opens: its kind, the form it loads, the relation it creates, and the permission it needs."@en .
 
 elody:ModalKind a owl:Class ; rdfs:label "modal kind"@en ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Enumeration of platform modals (TypeModals)."@en .
-elody:DynamicFormModal      a elody:ModalKind ; elody:enumValue "DynamicForm" .
-elody:DeleteEntitiesModal   a elody:ModalKind ; elody:enumValue "BulkOperationsDeleteEntities" .
-elody:DeleteRelationsModal  a elody:ModalKind ; elody:enumValue "BulkOperationsDeleteRelations" .
-elody:BulkEditModal         a elody:ModalKind ; elody:enumValue "BulkOperationsEdit" .
-elody:ConfirmModal          a elody:ModalKind ; elody:enumValue "Confirm" .
-elody:DeleteModal           a elody:ModalKind ; elody:enumValue "Delete" .
-elody:EntityDetailModal     a elody:ModalKind ; elody:enumValue "EntityDetailModal" .
-elody:EntityEditModal       a elody:ModalKind ; elody:enumValue "EntityEditModal" .
+elody:DynamicFormModal      a elody:ModalKind ; elody:enumValue "DynamicForm" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DeleteEntitiesModal   a elody:ModalKind ; elody:enumValue "BulkOperationsDeleteEntities" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DeleteRelationsModal  a elody:ModalKind ; elody:enumValue "BulkOperationsDeleteRelations" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:BulkEditModal         a elody:ModalKind ; elody:enumValue "BulkOperationsEdit" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:ConfirmModal          a elody:ModalKind ; elody:enumValue "Confirm" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DeleteModal           a elody:ModalKind ; elody:enumValue "Delete" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:EntityDetailModal     a elody:ModalKind ; elody:enumValue "EntityDetailModal" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:EntityEditModal       a elody:ModalKind ; elody:enumValue "EntityEditModal" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:Permission a owl:Class ; rdfs:label "permission"@en ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Enumeration of the generic platform permissions a modal may require."@en .
-elody:CanCreate a elody:Permission ; elody:enumValue "cancreate" .
-elody:CanRead   a elody:Permission ; elody:enumValue "canread" .
-elody:CanUpdate a elody:Permission ; elody:enumValue "canupdate" .
-elody:CanDelete a elody:Permission ; elody:enumValue "candelete" .
+elody:CanCreate a elody:Permission ; elody:enumValue "cancreate" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:CanRead   a elody:Permission ; elody:enumValue "canread" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:CanUpdate a elody:Permission ; elody:enumValue "canupdate" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:CanDelete a elody:Permission ; elody:enumValue "candelete" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:CustomBulkOperations a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "custom bulk operations"@en ;
   rdfs:comment "A named set of bulk operations a list element loads on demand (an embedded relation list has its own action bar)."@en .
 
 elody:Form a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "form"@en ;
   rdfs:comment "A create/edit form: the node shape whose property shapes are its fields (elody:shape), a label and a submit action. The field widgets come from shui:editor / sh:datatype / sh:class on those property shapes; nothing is repeated here (R1)."@en .
 
 elody:SubmitAction a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "submit action"@en ;
   rdfs:comment "What a form's submit button does: label, icon, the platform mutation and the entity type it creates."@en .
 
 elody:GuidedFlow a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "guided flow"@en ;
   rdfs:comment "A multi-step form (stepper) that creates or picks entities and attaches them to the host entity (Elody RepetitiveForm)."@en .
 
 elody:FlowStep a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "flow step"@en ;
   rdfs:comment "One step of a guided flow: which entity type, which form or picker, how many may be selected, and the overview fields."@en .
 
 elody:OverviewField a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "overview field"@en ;
   rdfs:comment "A field shown in a flow step's overview of what was created or picked."@en .
 
 elody:Finalize a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "finalize"@en ;
   rdfs:comment "How a guided flow attaches its result to the host entity: from which step, with which relation type."@en .
 
 elody:Picker a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "entity picker"@en ;
   rdfs:comment "A pick-from-listing modal: the result fragments per type and the scoping filters. The generator derives both its documents' names from the node."@en .
 
 elody:PickerResult a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "picker result"@en ;
   rdfs:comment "One GraphQL type a picker may return, with the card fragment that renders it."@en .
 
 elody:DetailLayout a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "detail layout"@en ;
   rdfs:comment "The detail page of an entity: columns of elements. No standard term: shui describes a form, not a page layout."@en .
 
 elody:Column a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "column"@en ;
   rdfs:comment "A column of the detail page with its width and ordered elements."@en .
 
 elody:ColumnSize a owl:Class ; rdfs:label "column size"@en ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Enumeration of column widths in percent (ColumnSizes)."@en .
-elody:Width10  a elody:ColumnSize ; elody:enumValue "ten" .
-elody:Width20  a elody:ColumnSize ; elody:enumValue "twenty" .
-elody:Width30  a elody:ColumnSize ; elody:enumValue "thirty" .
-elody:Width40  a elody:ColumnSize ; elody:enumValue "forty" .
-elody:Width50  a elody:ColumnSize ; elody:enumValue "fifty" .
-elody:Width60  a elody:ColumnSize ; elody:enumValue "sixty" .
-elody:Width70  a elody:ColumnSize ; elody:enumValue "seventy" .
-elody:Width80  a elody:ColumnSize ; elody:enumValue "eighty" .
-elody:Width90  a elody:ColumnSize ; elody:enumValue "ninety" .
-elody:Width100 a elody:ColumnSize ; elody:enumValue "hundred" .
+elody:Width10  a elody:ColumnSize ; elody:enumValue "ten" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:Width20  a elody:ColumnSize ; elody:enumValue "twenty" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:Width30  a elody:ColumnSize ; elody:enumValue "thirty" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:Width40  a elody:ColumnSize ; elody:enumValue "forty" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:Width50  a elody:ColumnSize ; elody:enumValue "fifty" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:Width60  a elody:ColumnSize ; elody:enumValue "sixty" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:Width70  a elody:ColumnSize ; elody:enumValue "seventy" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:Width80  a elody:ColumnSize ; elody:enumValue "eighty" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:Width90  a elody:ColumnSize ; elody:enumValue "ninety" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:Width100 a elody:ColumnSize ; elody:enumValue "hundred" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:Element a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "detail element"@en ;
   rdfs:comment "A block on the detail page. Subclasses say which kind."@en .
-elody:schemaField a owl:DatatypeProperty , owl:AnnotationProperty ;
+elody:schemaField a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "schema field"@en ;
   rdfs:domain owl:Class ; rdfs:range xsd:string ;
   rdfs:comment "The field of the GraphQL type EntityViewElements this element class is rendered as. Binds the class to the schema the same way elody:enumValue binds an instance."@en .
 
 elody:WindowElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "windowElement" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "window element"@en ;
   rdfs:comment "A window holding metadata/relation panels."@en .
 elody:ListElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "entityListElement" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "list element"@en ;
   rdfs:comment "An embedded listing of related entities, with its own query, filters, bulk operations and picker."@en .
 elody:ShaclShapeElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "shaclShapeElement" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "shape element"@en ;
   rdfs:comment "A read-only panel whose fields are derived at runtime from a SHACL shape (the entity's shapeFields)."@en .
 elody:MarkdownElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "markdownViewerElement" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "markdown element"@en ;
   rdfs:comment "Renders one metadata value as Markdown."@en .
 
 elody:Panel a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "panel"@en ;
   rdfs:comment "A panel inside a window element: its kind, collapsed state, editability and the fields it shows (references to the EntityUi's property shapes by sh:path)."@en .
 
 elody:PanelKind a owl:Class ; rdfs:label "panel kind"@en ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Enumeration of panel types (PanelType)."@en .
-elody:MetadataPanel  a elody:PanelKind ; elody:enumValue "metadata" .
-elody:RelationPanel  a elody:PanelKind ; elody:enumValue "relation" .
-elody:MediainfoPanel a elody:PanelKind ; elody:enumValue "mediainfo" .
-elody:MapPanel       a elody:PanelKind ; elody:enumValue "map" .
-elody:BulkDataPanel  a elody:PanelKind ; elody:enumValue "bulkData" .
+elody:MetadataPanel  a elody:PanelKind ; elody:enumValue "metadata" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:RelationPanel  a elody:PanelKind ; elody:enumValue "relation" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:MediainfoPanel a elody:PanelKind ; elody:enumValue "mediainfo" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:MapPanel       a elody:PanelKind ; elody:enumValue "map" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:BulkDataPanel  a elody:PanelKind ; elody:enumValue "bulkData" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:FormSource a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "form source document"@en ;
   rdfs:comment "An id-addressed GraphQL document a modal loads by name; the resolver answers with a runtime-derived form or report (processor config forms, pipeline validation)."@en .
 
 elody:SearchInputKind a owl:Class ; rdfs:label "search input kind"@en ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Enumeration of the search bar variants of a list element (SearchInputType)."@en .
-elody:AdvancedSearchInput   a elody:SearchInputKind ; elody:enumValue "AdvancedInputType" .
-elody:SimpleSearchInput     a elody:SearchInputKind ; elody:enumValue "SimpleInputtype" .
-elody:SavedSearchInput      a elody:SearchInputKind ; elody:enumValue "AdvancedSavedSearchType" .
+elody:AdvancedSearchInput   a elody:SearchInputKind ; elody:enumValue "AdvancedInputType" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:SimpleSearchInput     a elody:SearchInputKind ; elody:enumValue "SimpleInputtype" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:SavedSearchInput      a elody:SearchInputKind ; elody:enumValue "AdvancedSavedSearchType" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:SortDirection a owl:Class ; rdfs:label "sort direction"@en ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Enumeration: ascending or descending."@en .
-elody:Ascending  a elody:SortDirection ; elody:enumValue "asc" .
-elody:Descending a elody:SortDirection ; elody:enumValue "desc" .
+elody:Ascending  a elody:SortDirection ; elody:enumValue "asc" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:Descending a elody:SortDirection ; elody:enumValue "desc" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:Unit a owl:Class ; rdfs:label "display unit"@en ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Enumeration of value display formats (Unit)."@en .
-elody:DatetimeDefault a elody:Unit ; elody:enumValue "DATETIME_DEFAULT" .
-elody:DatetimeDmy24   a elody:Unit ; elody:enumValue "DATETIME_DMY24" .
-elody:DatetimeDmy12   a elody:Unit ; elody:enumValue "DATETIME_DMY12" .
-elody:DatetimeMdy24   a elody:Unit ; elody:enumValue "DATETIME_MDY24" .
-elody:DatetimeMdy12   a elody:Unit ; elody:enumValue "DATETIME_MDY12" .
-elody:DateDefault     a elody:Unit ; elody:enumValue "DATE_DEFAULT" .
-elody:SecondsDefault  a elody:Unit ; elody:enumValue "SECONDS_DEFAULT" .
-elody:ListDefault     a elody:Unit ; elody:enumValue "LIST_DEFAULT" .
-elody:CoordinatesDefault a elody:Unit ; elody:enumValue "COORDINATES_DEFAULT" .
-elody:Percent a elody:Unit ; elody:enumValue "PERCENT" .
-elody:Pixels  a elody:Unit ; elody:enumValue "PX" .
-elody:Html    a elody:Unit ; elody:enumValue "HTML" .
-elody:Volt    a elody:Unit ; elody:enumValue "VOLT" .
-elody:Image   a elody:Unit ; elody:enumValue "IMAGE" .
+elody:DatetimeDefault a elody:Unit ; elody:enumValue "DATETIME_DEFAULT" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DatetimeDmy24   a elody:Unit ; elody:enumValue "DATETIME_DMY24" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DatetimeDmy12   a elody:Unit ; elody:enumValue "DATETIME_DMY12" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DatetimeMdy24   a elody:Unit ; elody:enumValue "DATETIME_MDY24" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DatetimeMdy12   a elody:Unit ; elody:enumValue "DATETIME_MDY12" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DateDefault     a elody:Unit ; elody:enumValue "DATE_DEFAULT" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:SecondsDefault  a elody:Unit ; elody:enumValue "SECONDS_DEFAULT" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:ListDefault     a elody:Unit ; elody:enumValue "LIST_DEFAULT" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:CoordinatesDefault a elody:Unit ; elody:enumValue "COORDINATES_DEFAULT" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:Percent a elody:Unit ; elody:enumValue "PERCENT" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:Pixels  a elody:Unit ; elody:enumValue "PX" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:Html    a elody:Unit ; elody:enumValue "HTML" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:Volt    a elody:Unit ; elody:enumValue "VOLT" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:Image   a elody:Unit ; elody:enumValue "IMAGE" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:ValueSource a owl:Class ; rdfs:label "value source"@en ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Enumeration of where a card field's value is read from (KeyValueSource)."@en .
-elody:MetadataSource      a elody:ValueSource ; elody:enumValue "metadata" .
-elody:RelationsSource     a elody:ValueSource ; elody:enumValue "relations" .
-elody:RootSource          a elody:ValueSource ; elody:enumValue "root" .
-elody:TypePillLabelSource a elody:ValueSource ; elody:enumValue "typePillLabel" .
-elody:TechnicalMetadataSource a elody:ValueSource ; elody:enumValue "technicalMetadata" .
-elody:RelationMetadataSource  a elody:ValueSource ; elody:enumValue "relationMetadata" .
+elody:MetadataSource      a elody:ValueSource ; elody:enumValue "metadata" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:RelationsSource     a elody:ValueSource ; elody:enumValue "relations" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:RootSource          a elody:ValueSource ; elody:enumValue "root" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:TypePillLabelSource a elody:ValueSource ; elody:enumValue "typePillLabel" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:TechnicalMetadataSource a elody:ValueSource ; elody:enumValue "technicalMetadata" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:RelationMetadataSource  a elody:ValueSource ; elody:enumValue "relationMetadata" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 # =============================================================================
 # 4. Properties — generator directives
 # =============================================================================
 
 elody:graphqlType a owl:DatatypeProperty ; elody:directive true ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "GraphQL type"@en ;
   rdfs:domain owl:Thing ; rdfs:range xsd:string ;
   rdfs:comment "The GraphQL object type this UI (or picker result) is rendered for. Directive: it will be derived from sh:targetClass through the application profile's class-to-type register."@en .
 
 elody:graphqlTypes a owl:ObjectProperty ; elody:directive true ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "GraphQL types"@en ;
   rdfs:domain elody:EntityFamily ; rdfs:range rdf:List ;
   rdfs:comment "The GraphQL object types sharing one family fragment, as an RDF list. Directive, same fate as elody:graphqlType."@en .
 
 elody:documentName a owl:DatatypeProperty ; elody:directive true ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "document name"@en ;
   rdfs:domain elody:EntityUi ; rdfs:range xsd:string ;
   rdfs:comment "Base name of the generated fragments and documents (minimal<Name>, full<Name>, <name>.queries.ts). Defaults to elody:graphqlType; needed when several declarations render the same GraphQL type, such as a showcase on BaseEntity."@en .
 
 elody:emit a owl:DatatypeProperty ; elody:directive true ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "emit mode"@en ;
   rdfs:domain elody:EntityUi ; rdfs:range xsd:string ;
   rdfs:comment "\"file\": the whole query document is generated; \"regions\": generated blocks are spliced between markers in a hand-written file. Absent declaration = hand-written GraphQL. This is the per-entity ttl / both / graphql switch."@en .
 
 elody:documents a owl:DatatypeProperty ; elody:directive true ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "standard documents"@en ;
   rdfs:domain elody:EntityUi ; rdfs:range xsd:string ;
   rdfs:comment "Which standard documents to emit for the type: entities, filters, sortOptions, bulkOperations. Directive: derivable from what the declaration contains."@en .
 
 elody:fragment a owl:DatatypeProperty ; elody:directive true ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "fragment name"@en ;
   rdfs:domain owl:Thing ; rdfs:range xsd:string ;
   rdfs:comment "The name of a GraphQL fragment (a family's card, a picker result). Directive: derivable from the node."@en .
 
 elody:queryName a owl:DatatypeProperty ; elody:directive true ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "query name"@en ;
   rdfs:domain owl:Thing ; rdfs:range xsd:string ;
   rdfs:comment "The GraphQL operation name of a form, flow, picker, custom bulk operation set or form source. Optional: the generator derives it from the node's local name when absent (R3)."@en .
 
 elody:entitiesQuery a owl:DatatypeProperty ; elody:directive true ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "entities query name"@en ; rdfs:domain elody:ListingUi ; rdfs:range xsd:string ;
   rdfs:comment "Operation name of a listing's entities document."@en .
 elody:entitiesField a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "entities resolver field"@en ; rdfs:domain elody:ListingUi ; rdfs:range xsd:string ;
   rdfs:comment "The resolver field a listing reads instead of the standard Entities field."@en .
 elody:filtersQuery a owl:DatatypeProperty ; elody:directive true ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "filters query name"@en ; rdfs:domain elody:ListingUi ; rdfs:range xsd:string ;
   rdfs:comment "Operation name of a listing's filters document."@en .
 elody:rootFilter a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "root filter key"@en ; rdfs:domain elody:ListingUi ; rdfs:range xsd:string ;
   rdfs:comment "The hidden selection filter whose empty value resolves to the host entity ids."@en .
 elody:family a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "family"@en ; rdfs:domain elody:ListingUi ; rdfs:range elody:EntityFamily ;
   rdfs:comment "An entity family shown in the listing."@en .
 
@@ -527,213 +637,278 @@ elody:family a owl:ObjectProperty ;
 # =============================================================================
 
 elody:typePills a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "type pills"@en ; rdfs:domain elody:EntityUi ; rdfs:range xsd:boolean ;
   rdfs:comment "Show the platform's type pill on the card."@en .
 
 elody:dynamicFormConfig a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "dynamic form config field"@en ; rdfs:domain elody:EntityUi ; rdfs:range xsd:string ;
   rdfs:comment "The resolver field carrying runtime-computed form panels for this type (read as the generic dynamicFormConfig)."@en .
 
 elody:ports a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "ports field"@en ; rdfs:domain elody:EntityUi ; rdfs:range xsd:string ;
   rdfs:comment "The resolver field carrying the typed ports the pipeline view wires."@en .
 
 elody:viewMode a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "view mode"@en ; rdfs:domain owl:Thing ; rdfs:range elody:ViewModeSelection ;
   rdfs:comment "An allowed view mode of the listing (EntityUi or ListingUi)."@en .
 elody:mode a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "mode"@en ; rdfs:domain elody:ViewModeSelection ; rdfs:range elody:ViewMode ;
   rdfs:comment "Which view mode. Range changed in 0.1: an elody:ViewMode instance, no longer the enum string."@en .
 elody:config a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "config"@en ; rdfs:domain owl:Thing ; rdfs:range elody:ConfigEntry ;
   rdfs:comment "A configuration entry of a view mode or a map element."@en .
 elody:key a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "key"@en ; rdfs:domain owl:Thing ; rdfs:range xsd:string ;
   rdfs:comment "A platform key: a config entry's name, a filter's document key, a step's key, a card field's value key when it differs from sh:name."@en .
 elody:value a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "value"@en ; rdfs:domain elody:ConfigEntry ; rdfs:range rdfs:Literal ;
   rdfs:comment "A config entry's value: string, number, boolean or an RDF list of strings."@en .
 elody:edgeRelations a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "edge relations"@en ; rdfs:domain elody:ViewModeSelection ; rdfs:range rdf:List ;
   rdfs:comment "For the pipeline view: the relation types rendered as edges, as an RDF list. Equivalent to the config entry \"edgeRelations\"."@en .
 
 # -- property shape presentation facts (the card and the panels) ----------------
 elody:teaser a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "on the card"@en ; rdfs:domain sh:PropertyShape ; rdfs:range xsd:boolean ;
   rdfs:comment "false keeps the field off the listing card (it stays in the fragment for the panels). Default true. dash:hidden is not the same: hidden fields are not shown anywhere."@en .
 elody:colSpan a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "column span"@en ; rdfs:domain sh:PropertyShape ; rdfs:range xsd:integer ;
   rdfs:comment "How many card columns the field spans in multi-line list mode."@en .
 elody:unit a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "unit"@en ; rdfs:domain sh:PropertyShape ; rdfs:range elody:Unit ;
   rdfs:comment "Display format of the value (dates, percentages). Not sh:datatype: it is presentation, the stored literal is unchanged."@en .
 elody:sortable a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "sortable"@en ; rdfs:domain sh:PropertyShape ; rdfs:range xsd:boolean ;
   rdfs:comment "Offer the field in the listing's sort options."@en .
 elody:defaultSortDirection a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "default sort direction"@en ; rdfs:domain sh:PropertyShape ; rdfs:range elody:SortDirection ;
   rdfs:comment "The listing opens sorted on this field in this direction."@en .
 elody:source a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "value source"@en ; rdfs:domain sh:PropertyShape ; rdfs:range elody:ValueSource ;
   rdfs:comment "Where the card reads the value (metadata by default)."@en .
 elody:index a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "index"@en ; rdfs:domain sh:PropertyShape ; rdfs:range xsd:integer ;
   rdfs:comment "For list-valued sources: which element to show."@en .
 
 # -- filters ---------------------------------------------------------------------
 elody:filter a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "filter"@en ; rdfs:domain owl:Thing ; rdfs:range elody:Filter ;
   rdfs:comment "A filter of a listing (EntityUi) or a picker."@en .
 elody:alias a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "alias"@en ; rdfs:domain owl:Thing ; rdfs:range xsd:string ;
   rdfs:comment "The GraphQL alias under which a filter, action, panel or element is emitted. Open string by design."@en .
 elody:filterKind a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "filter kind"@en ; rdfs:domain elody:Filter ; rdfs:range elody:FilterKind ;
   rdfs:comment "Which advanced filter. Range changed in 0.1: an elody:FilterKind instance, no longer the string."@en .
 elody:keyAsList a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "key as list"@en ; rdfs:domain elody:Filter ; rdfs:range xsd:boolean ;
   rdfs:comment "Emit the filter key as a one-element list (default true; the type selection filter needs a bare string)."@en .
 elody:defaultValueAsList a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "default value as list"@en ; rdfs:domain elody:Filter ; rdfs:range xsd:boolean ;
   rdfs:comment "Emit the sh:defaultValue(s) as a list literal."@en .
 elody:displayedByDefault a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "displayed by default"@en ; rdfs:domain elody:Filter ; rdfs:range xsd:boolean ;
   rdfs:comment "The filter is open when the listing loads."@en .
 elody:showTooltip a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "show tooltip"@en ; rdfs:domain owl:Thing ; rdfs:range xsd:boolean ;
   rdfs:comment "Show the platform tooltip on a filter. Replaces the boolean use of the retired elody:tooltip; the tooltip text of a property is sh:description."@en .
 
 # -- context menu and actions ----------------------------------------------------
 elody:contextMenu a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "context menu"@en ; rdfs:domain elody:EntityUi ; rdfs:range elody:ContextMenu ;
   rdfs:comment "The card's context menu."@en .
 elody:forceShow a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "force show"@en ; rdfs:domain elody:ContextMenu ; rdfs:range xsd:boolean ;
   rdfs:comment "Show the menu even when it would be empty by platform rules."@en .
 elody:includeBasicActions a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "include basic actions"@en ; rdfs:domain elody:ContextMenu ; rdfs:range xsd:boolean ;
   rdfs:comment "Include the platform's basic actions (edit, delete, share)."@en .
 elody:action a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "action"@en ; rdfs:domain elody:ContextMenu ; rdfs:range elody:Action ;
   rdfs:comment "An action of the menu."@en .
 elody:actionKind a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "action kind"@en ; rdfs:domain elody:Action ; rdfs:range elody:ActionKind ;
   rdfs:comment "Which platform action. Replaces the string elody:actionType."@en .
 elody:form a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "form"@en ; rdfs:domain owl:Thing ; rdfs:range elody:Form ;
   rdfs:comment "The form an action, a modal or a flow step opens, as a node (R3): the generator derives the document name. Replaces the string references elody:formQuery and elody:createForm. An EntityUi lists its forms with the same property."@en .
 elody:formSourceRef a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "form source"@en ; rdfs:domain owl:Thing ; rdfs:range elody:FormSource ;
   rdfs:comment "The runtime form source an action opens, as a node (processor config forms)."@en .
 elody:formFlow a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "form flow"@en ; rdfs:domain elody:Action ; rdfs:range xsd:string ;
   rdfs:comment "The platform's ContextMenuFormFlow value (Update, ...). Open string: the enum is small and client-extended."@en .
 elody:formTitle a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "form title"@en ; rdfs:domain elody:Action ; rdfs:range xsd:string ;
   rdfs:comment "Translation key of the modal title."@en .
 elody:icon a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "icon"@en ; rdfs:domain owl:Thing ; rdfs:range xsd:string ;
   rdfs:comment "A DamsIcons name. Open string: the icon set is the platform's and grows."@en .
 
 # -- bulk operations -------------------------------------------------------------
 elody:bulkOperation a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "bulk operation"@en ; rdfs:domain elody:EntityUi ; rdfs:range elody:BulkOperation ;
   rdfs:comment "An operation in the listing's action bar."@en .
 elody:customBulkOperations a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "custom bulk operations"@en ; rdfs:domain owl:Thing ; rdfs:range elody:CustomBulkOperations ;
   rdfs:comment "A named operation set (on an EntityUi: declares it; on a list element: uses it, as a node reference)."@en .
 elody:operation a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "operation"@en ; rdfs:domain elody:CustomBulkOperations ; rdfs:range elody:BulkOperation ;
   rdfs:comment "An operation in a custom set."@en .
 elody:operationKind a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "operation kind"@en ; rdfs:domain elody:BulkOperation ; rdfs:range elody:BulkOperationKind ;
   rdfs:comment "Which platform bulk operation. Replaces the string elody:value on bulk operations."@en .
 elody:primary a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "primary"@en ; rdfs:domain elody:BulkOperation ; rdfs:range xsd:boolean ;
   rdfs:comment "Render as the primary button."@en .
 elody:can a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "required permission"@en ; rdfs:domain owl:Thing ; rdfs:range xsd:string ;
   rdfs:comment "A fine-grained permission string (\"update:pipeline:has-runner\"). Open string: permissions are client-defined."@en .
 elody:context a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "context"@en ; rdfs:domain elody:BulkOperation ; rdfs:range elody:BulkOperationContext ;
   rdfs:comment "When the operation is enabled."@en .
 elody:activeViewMode a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "active view mode"@en ; rdfs:domain elody:BulkOperationContext ; rdfs:range elody:InteractionMode ;
   rdfs:comment "Read or edit mode."@en .
 elody:selection a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "selection"@en ; rdfs:domain elody:BulkOperationContext ; rdfs:range elody:SelectionState ;
   rdfs:comment "Required selection state."@en .
 elody:tooltipLabel a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "tooltip label"@en ; rdfs:domain elody:BulkOperationContext ; rdfs:range xsd:string ;
   rdfs:comment "Translation key of the tooltip explaining why the operation is enabled or not. Replaces the string use of the retired elody:tooltip."@en .
 elody:modal a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "modal"@en ; rdfs:domain elody:BulkOperation ; rdfs:range elody:BulkOperationModal ;
   rdfs:comment "The modal the operation opens."@en .
 elody:modalKind a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "modal kind"@en ; rdfs:domain elody:BulkOperationModal ; rdfs:range elody:ModalKind ;
   rdfs:comment "Which platform modal. Replaces the string elody:typeModal."@en .
 elody:formRelationType a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "form relation type"@en ; rdfs:domain elody:BulkOperationModal ; rdfs:range xsd:string ;
   rdfs:comment "The relation type under which the created entity is attached to the host."@en .
 elody:closeConfirmation a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "ask close confirmation"@en ; rdfs:domain elody:BulkOperationModal ; rdfs:range xsd:boolean ;
   rdfs:comment "Ask before closing the modal with unsaved input."@en .
 elody:permission a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "needed permission"@en ; rdfs:domain elody:BulkOperationModal ; rdfs:range elody:Permission ;
   rdfs:comment "The generic permission the modal requires."@en .
 
 # -- forms (R1) ------------------------------------------------------------------
 elody:shape a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "shape"@en ; rdfs:domain elody:Form ; rdfs:range sh:NodeShape ;
   rdfs:comment "The node shape whose property shapes are the form's fields, in sh:order. May be the EntityUi itself or a sub-shape."@en .
 elody:submit a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "submit"@en ; rdfs:domain elody:Form ; rdfs:range elody:SubmitAction ;
   rdfs:comment "The form's submit action."@en .
 elody:actionQuery a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "action query"@en ; rdfs:domain elody:SubmitAction ; rdfs:range xsd:string ;
   rdfs:comment "The platform mutation document the submit calls (CreateEntity, ...)."@en .
 elody:creationType a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "creation type"@en ; rdfs:domain elody:SubmitAction ; rdfs:range xsd:string ;
   rdfs:comment "The Elody entity type created (Entitytyping value). Open string: client-defined."@en .
 
 # -- guided flows ----------------------------------------------------------------
 elody:guidedFlow a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "guided flow"@en ; rdfs:domain elody:EntityUi ; rdfs:range elody:GuidedFlow ;
   rdfs:comment "A stepper flow declared for the type. Replaces elody:repetitiveForm."@en .
 elody:repeatable a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "repeatable"@en ; rdfs:domain elody:GuidedFlow ; rdfs:range xsd:boolean ;
   rdfs:comment "Offer \"add another\" after the last step."@en .
 elody:refetchOnFinish a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "refetch on finish"@en ; rdfs:domain elody:GuidedFlow ; rdfs:range xsd:boolean ;
   rdfs:comment "Reload the host entity when the flow closes."@en .
 elody:step a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "step"@en ; rdfs:domain elody:GuidedFlow ; rdfs:range elody:FlowStep ;
   rdfs:comment "A step of the flow."@en .
 elody:entityType a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "entity type"@en ; rdfs:domain elody:FlowStep ; rdfs:range xsd:string ;
   rdfs:comment "The Elody entity type the step creates or picks."@en .
 elody:picker a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "picker"@en ; rdfs:domain owl:Thing ; rdfs:range elody:Picker ;
   rdfs:comment "A picker, as a node (R3): on an EntityUi it is declared; on a flow step or list element it is used. Replaces the string pairs pickerQuery/pickerFiltersQuery and pickerList/pickerFilters."@en .
 elody:acceptedTypes a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "accepted types"@en ; rdfs:domain elody:FlowStep ; rdfs:range xsd:string ;
   rdfs:comment "Entity types the step accepts from the picker."@en .
 elody:maxSelection a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "max selection"@en ; rdfs:domain elody:FlowStep ; rdfs:range xsd:integer ;
   rdfs:comment "How many entities the step may pick."@en .
 elody:overviewField a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "overview field"@en ; rdfs:domain elody:FlowStep ; rdfs:range elody:OverviewField ;
   rdfs:comment "A field in the step's overview."@en .
 elody:finalize a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "finalize"@en ; rdfs:domain elody:GuidedFlow ; rdfs:range elody:Finalize ;
   rdfs:comment "How the flow attaches its result to the host."@en .
 elody:fromStep a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "from step"@en ; rdfs:domain elody:Finalize ; rdfs:range xsd:string ;
   rdfs:comment "The key of the step whose result is attached."@en .
 elody:relationType a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "relation type"@en ; rdfs:domain owl:Thing ; rdfs:range xsd:string ;
   rdfs:comment "An Elody relation type name (hasProcessor, isRunnerFor). Open string: client-defined, convention has<X> / is<X>For. On a property shape it names the relation the property reads and writes; without it, sh:path ex:x with sh:class is has<X> and sh:path [ sh:inversePath ex:x ] is is<X>For, the mirror collection-api stores on the other entity."@en .
 elody:valueLabelKey a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "value label key"@en ; rdfs:domain sh:PropertyShape ; rdfs:range xsd:string ;
   rdfs:comment "The metadata key(s) of a related entity that label it as a value of this property (alternatives separated by |). Elody's counterpart of the spec's label chain for value nodes; default title|name|label."@en .
 
@@ -745,111 +920,142 @@ elody:valueLabelKey a owl:DatatypeProperty ;
 # elody:classSource, are spelled out in these terms when a declaration is read.
 
 elody:SparqlSource a owl:Class ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "SPARQL source"@en ;
   rdfs:comment "A linked-data source read live through collection-api's SPARQL engine: its endpoint, the query naming its resources and the one finding them for a search term."@en .
 
 elody:readsFrom a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "reads from"@en ; rdfs:domain elody:EntityUi ; rdfs:range elody:SparqlSource ;
   rdfs:comment "The source an entity UI's resources come from: its Elody type is a collection on that source, not in the database."@en .
 
 elody:optionsFrom a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "options from"@en ; rdfs:domain sh:PropertyShape ; rdfs:range elody:EntityUi ;
   rdfs:comment "The values of this property are resources of that entity UI's source: a relation, chosen with a dropdown that searches the source for what is typed."@en .
 
 elody:classSource a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "class source"@en ; rdfs:domain sh:PropertyShape ;
   rdfs:comment "The SPARQL endpoint a shui:SubClassEditor reads sh:rootClass and its subclasses from, live and searched by label, instead of the class tree in the graphs the generator is given."@en .
 
 elody:endpoint a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "endpoint"@en ; rdfs:domain elody:SparqlSource ;
   rdfs:comment "The SPARQL endpoint queries are sent to."@en .
 
 elody:selectQuery a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "select query"@en ; rdfs:domain elody:SparqlSource ; rdfs:range xsd:string ;
   rdfs:comment "A SELECT binding ?value: the source's resources, for a listing."@en .
 
 elody:searchQuery a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "search query"@en ; rdfs:domain elody:SparqlSource ; rdfs:range xsd:string ;
   rdfs:comment "A SELECT binding ?value for what the user typed: $searchTerm and $uiLanguage are filled in as string literals, as for shui:searchQuery."@en .
 
 elody:identifierEncoding a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "identifier encoding"@en ; rdfs:domain elody:SparqlSource ; rdfs:range xsd:string ;
   rdfs:comment "\"iri\": a resource's Elody identifier is its IRI, encoded; for sources whose IRIs share no prefix."@en .
 
 # -- pickers ---------------------------------------------------------------------
 elody:result a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "result"@en ; rdfs:domain elody:Picker ; rdfs:range elody:PickerResult ;
   rdfs:comment "A type the picker may return."@en .
 
 # -- detail layout -----------------------------------------------------------------
 elody:detail a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "detail"@en ; rdfs:domain elody:EntityUi ; rdfs:range elody:DetailLayout ;
   rdfs:comment "The detail page layout."@en .
 elody:shapeDriven a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "shape driven"@en ; rdfs:domain elody:DetailLayout ; rdfs:range xsd:boolean ;
   rdfs:comment "The detail fragment asks for the runtime shapeFields (the fields come from a SHACL shape, not from this declaration)."@en .
 elody:fragmentField a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "extra fragment field"@en ; rdfs:domain elody:DetailLayout ; rdfs:range xsd:string ;
   rdfs:comment "A resolver field added verbatim to the detail fragment (pipelineConnections). Escape hatch, open string."@en .
 elody:column a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "column"@en ; rdfs:domain elody:DetailLayout ; rdfs:range elody:Column ;
   rdfs:comment "A column of the page."@en .
 elody:size a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "size"@en ; rdfs:domain elody:Column ; rdfs:range elody:ColumnSize ;
   rdfs:comment "Column width."@en .
 elody:element a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "element"@en ; rdfs:domain elody:Column ; rdfs:range elody:Element ;
   rdfs:comment "An element in the column."@en .
 elody:expandButton a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "expand button"@en ; rdfs:domain elody:WindowElement ; rdfs:range xsd:boolean ;
   rdfs:comment "Offer the expand-to-full-screen button."@en .
 elody:collapsed a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "collapsed"@en ; rdfs:domain owl:Thing ; rdfs:range xsd:boolean ;
   rdfs:comment "The element or panel starts collapsed."@en .
 elody:showsUngrouped a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "shows ungrouped properties"@en ; rdfs:domain sh:PropertyGroup ; rdfs:range xsd:boolean ;
   rdfs:comment "This detail panel also shows the entity's properties that have no sh:group, after its own. Lets a page put ungrouped properties in a panel without giving them a group they do not have: a create form keeps them as plain fields."@en .
 elody:fieldsKey a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "fields key"@en ; rdfs:domain elody:ShaclShapeElement ; rdfs:range xsd:string ;
   rdfs:comment "The entity field holding the runtime shape-derived fields (default shapeFields)."@en .
 elody:metadataKey a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "metadata key"@en ; rdfs:domain elody:Element ; rdfs:range xsd:string ;
   rdfs:comment "The metadata key whose value the element renders or edits (markdown, wysiwyg, entity viewer)."@en .
 elody:entityTypes a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "entity types"@en ; rdfs:domain elody:ListElement ; rdfs:range xsd:string ;
   rdfs:comment "The entity types the embedded list shows."@en .
 elody:customQuery a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "custom query"@en ; rdfs:domain elody:Element ; rdfs:range xsd:string ;
   rdfs:comment "The entities document the list loads (GetEntities or a client document)."@en .
 elody:customQueryFilters a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "custom query filters"@en ; rdfs:domain elody:ListElement ; rdfs:range xsd:string ;
   rdfs:comment "The filters document the list loads."@en .
 elody:searchInput a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "search input"@en ; rdfs:domain elody:ListElement ; rdfs:range elody:SearchInputKind ;
   rdfs:comment "Which search bar the list shows. Replaces the string elody:searchInputType."@en .
 elody:panel a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "panel"@en ; rdfs:domain elody:WindowElement ;
   rdfs:range [ owl:unionOf ( elody:Panel sh:PropertyGroup ) ] ;
   rdfs:comment "A panel in the window. Preferably a sh:PropertyGroup: its fields are then the property shapes whose sh:group is that group, in their own sh:order (SHACL 1.2 UI grouping). An elody:Panel with an explicit elody:field list remains for a panel whose order differs from the properties' sh:order."@en .
 
 elody:labelKey a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "label translation key"@en ; rdfs:domain owl:Thing ; rdfs:range xsd:string ;
   rdfs:comment "The Elody translation key under which the label is shown. The label text itself is sh:name (property shapes) or rdfs:label (property groups), language-tagged; `generate` writes those texts into the client's translation bundles under this key. Without elody:labelKey the generator mints ui.<type>.<key>. No standard term: SHACL carries label texts, not an application's translation keys."@en .
 elody:panelKind a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "panel kind"@en ; rdfs:domain elody:Panel ; rdfs:range elody:PanelKind ;
   rdfs:comment "Which panel type. Replaces the string elody:panelType."@en .
 elody:field a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "field"@en ; rdfs:domain owl:Thing ; rdfs:range rdfs:Resource ;
   rdfs:comment "A field shown in a panel or an overview, referenced by the sh:path IRI of the EntityUi's property shape (R3). On a form source: the resolver field, as a string (see elody:formSourceField)."@en .
 
 # -- form sources ------------------------------------------------------------------
 elody:formSource a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "form source"@en ; rdfs:domain elody:EntityUi ; rdfs:range elody:FormSource ;
   rdfs:comment "An id-addressed runtime document declared for the type."@en .
 elody:resolverField a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "resolver field"@en ; rdfs:domain elody:FormSource ; rdfs:range xsd:string ;
   rdfs:comment "The GraphQL field the document selects (ProcessorConfigForm). Replaces the string use of elody:field on form sources."@en .
 elody:withParent a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "with parent"@en ; rdfs:domain elody:FormSource ; rdfs:range xsd:boolean ;
   rdfs:comment "The document also takes the host entity id."@en .
 
@@ -858,63 +1064,83 @@ elody:withParent a owl:DatatypeProperty ;
 # =============================================================================
 
 elody:hidden a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "hidden (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy dash:hidden ;
   rdfs:comment "Retired: use dash:hidden."@en .
 elody:editable a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "editable (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy dash:readOnly ;
   rdfs:comment "Retired: use dash:readOnly (negated)."@en .
 elody:required a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "required (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy sh:minCount ;
   rdfs:comment "Retired: use sh:minCount 1."@en .
 elody:inputType a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "input type (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy shui:editor ;
   rdfs:comment "Retired: use sh:datatype / sh:class / sh:node (inferred widget) or an explicit shui:editor."@en .
 elody:defaultValue a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "default value (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy sh:defaultValue ;
   rdfs:comment "Retired: use sh:defaultValue."@en .
 elody:tooltip a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "tooltip (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy elody:showTooltip , elody:tooltipLabel , sh:description ;
   rdfs:comment "Retired: it meant three things. Boolean on a filter -> elody:showTooltip; text on a bulk operation context -> elody:tooltipLabel; a property's tooltip text -> sh:description."@en .
 elody:formatter a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "formatter (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy shui:viewer ;
   rdfs:comment "Retired: use shui:viewer with an Elody viewer (and elody:viewerArgument for the part after the pipe)."@en .
 elody:createForm a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "create form (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy elody:form ;
   rdfs:comment "Retired: declare an elody:Form (fields as property shapes under elody:shape) and reference it with elody:form."@en .
 elody:formQuery a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "form query (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy elody:form ;
   rdfs:comment "Retired: reference the form node with elody:form (or the form source with elody:formSourceRef)."@en .
 elody:actionType a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "action type (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy elody:actionKind ;
   rdfs:comment "Retired: use elody:actionKind with an elody:ActionKind instance."@en .
 elody:typeModal a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "type modal (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy elody:modalKind ;
   rdfs:comment "Retired: use elody:modalKind with an elody:ModalKind instance."@en .
 elody:panelType a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "panel type (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy elody:panelKind ;
   rdfs:comment "Retired: use elody:panelKind with an elody:PanelKind instance."@en .
 elody:searchInputType a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "search input type (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy elody:searchInput ;
   rdfs:comment "Retired: use elody:searchInput with an elody:SearchInputKind instance."@en .
 elody:repetitiveForm a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "repetitive form (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy elody:guidedFlow ;
   rdfs:comment "Retired: use elody:guidedFlow."@en .
 elody:pickerQuery a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "picker query (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy elody:picker ;
   rdfs:comment "Retired: reference the picker node with elody:picker."@en .
 elody:pickerFiltersQuery a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "picker filters query (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy elody:picker ;
   rdfs:comment "Retired: reference the picker node with elody:picker."@en .
 elody:pickerList a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "picker list (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy elody:picker ;
   rdfs:comment "Retired: reference the picker node with elody:picker."@en .
 elody:pickerFilters a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "picker filters (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy elody:picker ;
   rdfs:comment "Retired: reference the picker node with elody:picker."@en .
 elody:filtersQueryName a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "filters query name (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy elody:queryName ;
   rdfs:comment "Retired: a picker has one elody:queryName (optional); the filters document is named after it."@en .
 elody:type a owl:DeprecatedProperty ; owl:deprecated true ;
+  rdfs:label "type (retired)"@en ; rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   dcterms:isReplacedBy elody:graphqlType ;
   rdfs:comment "Retired: a picker result names its type with elody:graphqlType."@en .
 
@@ -923,14 +1149,17 @@ elody:type a owl:DeprecatedProperty ; owl:deprecated true ;
 # =============================================================================
 
 elody:PlatformForm a owl:Class ; rdfs:subClassOf elody:Form ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "platform form"@en ;
   rdfs:comment "A form document the platform provides; a declaration references it with elody:form instead of naming its query."@en .
 
 elody:EntityPickerForm a elody:PlatformForm ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "entity picker form"@en ; elody:queryName "GetEntityPickerForm" ;
   rdfs:comment "The generic pick-existing-entities form."@en .
 
 elody:RemoveFromListForm a elody:PlatformForm ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "remove from list form"@en ; elody:queryName "GetBulkRemovingMediafilesInDetailForm" ;
   rdfs:comment "The generic confirm-removal form used by delete operations on an embedded list."@en .
 
@@ -941,24 +1170,28 @@ elody:RemoveFromListForm a elody:PlatformForm ;
 # the runtime metadata form with InputFieldTypes. One editor, two platform
 # enums; the ontology carries both so no generator keeps a table.
 
-elody:formFieldType a owl:DatatypeProperty , owl:AnnotationProperty ;
+elody:formFieldType a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "Elody create-form field type"@en ;
   rdfs:domain shui:Editor ; rdfs:range xsd:string ;
   rdfs:comment "The BaseFieldType value a create form uses for this editor (inputField(type: ...)). Sibling of elody:inputFieldType."@en .
 
-elody:multilingual a owl:DatatypeProperty , owl:AnnotationProperty ;
+elody:multilingual a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "multilingual"@en ;
-  rdfs:domain shui:Editor ; rdfs:range xsd:boolean ;
-  rdfs:comment "The editor edits language-tagged text: Elody renders its field as one multilingual value (isMultilingual), edited and shown per language. Stated on the shui: WithLang editors; the SHACL 1.2 UI scoring system picks those for rdf:langString."@en .
+  rdfs:domain [ a owl:Class ; owl:unionOf ( shui:Editor elody:WysiwygElement ) ] ; rdfs:range xsd:boolean ;
+  rdfs:comment "One text per language. On an editor (the shui: WithLang editors, which the SHACL 1.2 UI scoring system picks for rdf:langString): Elody renders its field as one multilingual value (isMultilingual), edited and shown per language. On a rich-text element, which has no datatype for it to follow from, the declaration says it here."@en .
 
-elody:multipleValuesInputFieldType a owl:DatatypeProperty , owl:AnnotationProperty ;
+elody:multipleValuesInputFieldType a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "input field type for several values"@en ;
   rdfs:domain shui:Editor ; rdfs:range xsd:string ;
   rdfs:comment "The Elody InputFieldTypes value of the field a single-value editor becomes when the property may hold several values (no sh:maxCount 1). SHACL UI repeats such an editor once per value; Elody uses one field holding the list. The generator emits it as a custom input field per property."@en .
 
 shui:TextFieldEditor elody:multipleValuesInputFieldType "dropdownMultiselectMetadata" .
 
-elody:panelElement a owl:ObjectProperty , owl:AnnotationProperty ;
+elody:panelElement a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "panel element"@en ;
   rdfs:range elody:Element ;
   rdfs:comment "The Elody element that implements a widget inside a detail panel, in place of a metadata field. A panel lists metadata fields, rich-text elements and entity lists side by side, so the property keeps its place among the others. elody:WysiwygElement: the rich-text editor on the property's metadata key, read in view mode and edited in edit mode. elody:ListElement: the entities the property's relation points to, filtered on that relation, with the sh:node shape's properties as their teaser."@en .
@@ -999,169 +1232,210 @@ elody:FileSystemImportEditor elody:formFieldType "baseFileSystemImportField" .
 # GraphQL in "regions" mode for now.
 
 elody:MediaFileElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "mediaFileElement" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "media element"@en ;
   rdfs:comment "The entity's mediafiles in the platform viewer (IIIF, video, audio, PDF). No standard term: shui:ImageViewer shows one value, this is a gallery with its own viewer."@en .
 
 elody:SingleMediaFileElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "singleMediaFileElement" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "single media element"@en ;
   rdfs:comment "One mediafile (the primary one) in the platform viewer."@en .
 
 elody:MapElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "mapElement" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "map element"@en ;
   rdfs:comment "The entity (or its related entities) on a map: points, WKT shapes or a heat map. No standard term: shui has no geographic viewer."@en .
 
 elody:GraphElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "graphElement" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "graph element"@en ;
   rdfs:comment "A chart over a time series of the entity (IoT measurements). No standard term."@en .
 
 elody:HierarchyListElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "hierarchyListElement" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "hierarchy list element"@en ;
   rdfs:comment "A tree of related entities, one level per relation, with the entity as centre point. No standard term."@en .
 
 elody:ManifestViewerElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "manifestViewerElement" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "IIIF manifest element"@en ;
   rdfs:comment "A IIIF viewer on a manifest URL read from the entity's metadata."@en .
 
 elody:EntityViewerElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "entityViewerElement" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "embedded entity element"@en ;
   rdfs:comment "Another entity's detail embedded in this page, found through a relation type or a metadata key. Closest standard idea is shui:DetailsViewer, but that shows a nested node of the same graph, not a separate entity."@en .
 
 elody:ActionElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "actionElement" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "action element"@en ;
   rdfs:comment "A block of buttons for platform actions on the entity (OCR, download)."@en .
 
 elody:WysiwygElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "wysiwygElement" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "rich text element"@en ;
   rdfs:comment "A rich-text editor on one metadata key, with optional entity tagging. Elody's counterpart of shui:RichTextEditor, but as a page block rather than a form field."@en .
 
 elody:CommentsElement a owl:Class ; rdfs:subClassOf elody:Element ; elody:schemaField "commentsElement" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "comments element"@en ;
   rdfs:comment "A comment thread on the entity, written with a rich-text composer."@en .
 
 # -- enumerations used by these elements ------------------------------------------
 
 elody:MediaElementKind a owl:Class ; rdfs:label "media element kind"@en ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Enumeration of MediaFileElementTypes."@en .
-elody:MediaKindMedia a elody:MediaElementKind ; elody:enumValue "media" .
-elody:MediaKindMap   a elody:MediaElementKind ; elody:enumValue "map" .
+elody:MediaKindMedia a elody:MediaElementKind ; elody:enumValue "media" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:MediaKindMap   a elody:MediaElementKind ; elody:enumValue "map" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:MapType a owl:Class ; rdfs:label "map type"@en ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Enumeration of MapTypes."@en .
-elody:PointsMap a elody:MapType ; elody:enumValue "pointsMap" .
-elody:WktMap    a elody:MapType ; elody:enumValue "wktMap" .
-elody:HeatMap   a elody:MapType ; elody:enumValue "heatMap" .
+elody:PointsMap a elody:MapType ; elody:enumValue "pointsMap" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:WktMap    a elody:MapType ; elody:enumValue "wktMap" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:HeatMap   a elody:MapType ; elody:enumValue "heatMap" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:GraphType a owl:Class ; rdfs:label "chart type"@en ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Enumeration of GraphType."@en .
-elody:BarGraph       a elody:GraphType ; elody:enumValue "bar" .
-elody:BubbleGraph    a elody:GraphType ; elody:enumValue "bubble" .
-elody:DoughnutGraph  a elody:GraphType ; elody:enumValue "doughnut" .
-elody:LineGraph      a elody:GraphType ; elody:enumValue "line" .
-elody:PieGraph       a elody:GraphType ; elody:enumValue "pie" .
-elody:PolarAreaGraph a elody:GraphType ; elody:enumValue "polarArea" .
-elody:RadarGraph     a elody:GraphType ; elody:enumValue "radar" .
-elody:ScatterGraph   a elody:GraphType ; elody:enumValue "scatter" .
+elody:BarGraph       a elody:GraphType ; elody:enumValue "bar" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:BubbleGraph    a elody:GraphType ; elody:enumValue "bubble" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DoughnutGraph  a elody:GraphType ; elody:enumValue "doughnut" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:LineGraph      a elody:GraphType ; elody:enumValue "line" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:PieGraph       a elody:GraphType ; elody:enumValue "pie" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:PolarAreaGraph a elody:GraphType ; elody:enumValue "polarArea" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:RadarGraph     a elody:GraphType ; elody:enumValue "radar" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:ScatterGraph   a elody:GraphType ; elody:enumValue "scatter" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:TimeUnit a owl:Class ; rdfs:label "time unit"@en ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Enumeration of TimeUnit: how a graph buckets its time series."@en .
-elody:Month     a elody:TimeUnit ; elody:enumValue "month" .
-elody:Hour      a elody:TimeUnit ; elody:enumValue "hour" .
-elody:DayOfYear a elody:TimeUnit ; elody:enumValue "dayOfYear" .
-elody:DayOfWeek a elody:TimeUnit ; elody:enumValue "dayOfWeek" .
+elody:Month     a elody:TimeUnit ; elody:enumValue "month" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:Hour      a elody:TimeUnit ; elody:enumValue "hour" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DayOfYear a elody:TimeUnit ; elody:enumValue "dayOfYear" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DayOfWeek a elody:TimeUnit ; elody:enumValue "dayOfWeek" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:ElementAction a owl:Class ; rdfs:label "element action"@en ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Enumeration of Actions offered by an action element."@en .
-elody:OcrAction      a elody:ElementAction ; elody:enumValue "ocr" .
-elody:DownloadAction a elody:ElementAction ; elody:enumValue "download" .
-elody:NoActions      a elody:ElementAction ; elody:enumValue "noActions" .
+elody:OcrAction      a elody:ElementAction ; elody:enumValue "ocr" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DownloadAction a elody:ElementAction ; elody:enumValue "download" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:NoActions      a elody:ElementAction ; elody:enumValue "noActions" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 elody:WysiwygExtension a owl:Class ; rdfs:label "rich text extension"@en ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:comment "Enumeration of WysiwygExtensions: the editor features a rich text element switches on."@en .
-elody:StarterKitExtension a elody:WysiwygExtension ; elody:enumValue "starterKit" .
-elody:DocExtension        a elody:WysiwygExtension ; elody:enumValue "doc" .
-elody:ParagraphExtension  a elody:WysiwygExtension ; elody:enumValue "paragraph" .
-elody:TextExtension       a elody:WysiwygExtension ; elody:enumValue "text" .
-elody:HardBreakExtension  a elody:WysiwygExtension ; elody:enumValue "hardBreak" .
-elody:BoldExtension       a elody:WysiwygExtension ; elody:enumValue "bold" .
-elody:ItalicExtension     a elody:WysiwygExtension ; elody:enumValue "italic" .
-elody:ColorExtension      a elody:WysiwygExtension ; elody:enumValue "color" .
-elody:TextStyleExtension  a elody:WysiwygExtension ; elody:enumValue "textStyle" .
-elody:ListItemExtension   a elody:WysiwygExtension ; elody:enumValue "listItem" .
-elody:TaggingExtension    a elody:WysiwygExtension ; elody:enumValue "elodyTaggingExtension" .
+elody:StarterKitExtension a elody:WysiwygExtension ; elody:enumValue "starterKit" ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:DocExtension        a elody:WysiwygExtension ; elody:enumValue "doc" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:ParagraphExtension  a elody:WysiwygExtension ; elody:enumValue "paragraph" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:TextExtension       a elody:WysiwygExtension ; elody:enumValue "text" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:HardBreakExtension  a elody:WysiwygExtension ; elody:enumValue "hardBreak" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:BoldExtension       a elody:WysiwygExtension ; elody:enumValue "bold" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:ItalicExtension     a elody:WysiwygExtension ; elody:enumValue "italic" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:ColorExtension      a elody:WysiwygExtension ; elody:enumValue "color" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:TextStyleExtension  a elody:WysiwygExtension ; elody:enumValue "textStyle" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:ListItemExtension   a elody:WysiwygExtension ; elody:enumValue "listItem" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
+elody:TaggingExtension    a elody:WysiwygExtension ; elody:enumValue "elodyTaggingExtension" ; rdfs:isDefinedBy <https://elody.eu/ns/ui> .
 
 # -- properties of these elements ---------------------------------------------------
 
 elody:mediaKind a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "media kind"@en ; rdfs:range elody:MediaElementKind ;
   rdfs:domain [ owl:unionOf ( elody:MediaFileElement elody:SingleMediaFileElement ) ] ;
   rdfs:comment "Whether the media element shows the mediafiles or their locations."@en .
 
 elody:mapType a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "map type"@en ; rdfs:domain elody:MapElement ; rdfs:range elody:MapType ;
   rdfs:comment "Points, WKT shapes or heat map."@en .
 elody:center a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "center"@en ; rdfs:domain elody:MapElement ; rdfs:range xsd:string ;
   rdfs:comment "Initial map centre as \"lat,lon\"."@en .
 
 elody:graphType a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "chart type"@en ; rdfs:domain elody:GraphElement ; rdfs:range elody:GraphType ;
   rdfs:comment "Which chart."@en .
 elody:datasource a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "data source"@en ; rdfs:domain elody:GraphElement ; rdfs:range xsd:string ;
   rdfs:comment "The time-series source the chart reads."@en .
 elody:datasetLabel a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "dataset label"@en ; rdfs:domain elody:GraphElement ; rdfs:range xsd:string ;
   rdfs:comment "A series to plot (dataset.labels)."@en .
 elody:datasetFilter a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "dataset filter"@en ; rdfs:domain elody:GraphElement ; rdfs:range elody:ConfigEntry ;
   rdfs:comment "Restricts the series: elody:key and one or more elody:value."@en .
 elody:timeUnit a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "time unit"@en ; rdfs:domain elody:GraphElement ; rdfs:range elody:TimeUnit ;
   rdfs:comment "How the chart buckets time."@en .
 elody:datapoints a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "data points"@en ; rdfs:domain elody:GraphElement ; rdfs:range xsd:integer ;
   rdfs:comment "How many buckets to show."@en .
 elody:convertTo a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "convert to"@en ; rdfs:domain elody:GraphElement ; rdfs:range xsd:string ;
   rdfs:comment "Unit the values are converted to before plotting."@en .
 
 elody:hierarchyLevel a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "hierarchy level"@en ; rdfs:domain elody:HierarchyListElement ; rdfs:range elody:ConfigEntry ;
   rdfs:comment "One level of the tree: elody:key is the relation, elody:entityType the type at that level; ordered by sh:order."@en .
 elody:centerEntityType a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "centre entity type"@en ; rdfs:domain elody:HierarchyListElement ; rdfs:range xsd:string ;
   rdfs:comment "The entity type the tree is centred on."@en .
 elody:centerCoordinatesKey a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "centre coordinates key"@en ; rdfs:domain elody:HierarchyListElement ; rdfs:range xsd:string ;
   rdfs:comment "The metadata key holding the centre point's coordinates."@en .
 
 elody:manifestUrlKey a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "manifest URL key"@en ; rdfs:domain elody:ManifestViewerElement ; rdfs:range xsd:string ;
   rdfs:comment "The metadata key holding the IIIF manifest URL."@en .
 elody:manifestVersionKey a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "manifest version key"@en ; rdfs:domain elody:ManifestViewerElement ; rdfs:range xsd:string ;
   rdfs:comment "The metadata key holding the IIIF Presentation API version."@en .
 
 elody:elementAction a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "action"@en ; rdfs:domain elody:ActionElement ; rdfs:range elody:ElementAction ;
   rdfs:comment "An action button of the element."@en .
 
 elody:extension a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "extension"@en ; rdfs:domain elody:WysiwygElement ; rdfs:range elody:WysiwygExtension ;
   rdfs:comment "An editor feature switched on."@en .
-elody:multilingual a owl:DatatypeProperty ;
-  rdfs:label "multilingual"@en ; rdfs:domain elody:WysiwygElement ; rdfs:range xsd:boolean ;
-  rdfs:comment "One text per language. On form fields this follows from rdf:langString; a page block has no datatype, so it is said here."@en .
 elody:infoTitle a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "info title"@en ; rdfs:domain elody:Element ; rdfs:range xsd:string ;
   rdfs:comment "Title of the help panel next to the element (translation key)."@en .
 elody:infoContent a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "info content"@en ; rdfs:domain elody:Element ; rdfs:range xsd:string ;
   rdfs:comment "Content of the help panel (HTML)."@en .
 
 elody:composer a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "composer"@en ; rdfs:domain elody:CommentsElement ; rdfs:range elody:WysiwygElement ;
   rdfs:comment "The rich-text element used to write a comment."@en .
 elody:parentFilterKey a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui> ;
   rdfs:label "parent filter key"@en ; rdfs:domain elody:CommentsElement ; rdfs:range xsd:string ;
   rdfs:comment "The filter key that ties comments to this entity."@en .
