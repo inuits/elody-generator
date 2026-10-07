@@ -9,7 +9,7 @@ import rdf from "@zazuko/env";
 import SHACLValidator from "rdf-validate-shacl";
 import type { Quad } from "n3";
 import { Reading } from "./reading.js";
-import { META_SHAPES_PATH, ONTOLOGY_PATH } from "./ontology.js";
+import { META_SHAPES_PATH, VOCABULARY_PATH } from "./ontology.js";
 import { compact } from "./vocab.js";
 
 export type ValidationIssue = {
@@ -29,7 +29,8 @@ const load = (path: string): Quad[] => Reading.parse(readFileSync(path, "utf-8")
 
 export async function validateDeclaration(ttl: string): Promise<ValidationReport> {
   shapesCache ??= load(META_SHAPES_PATH);
-  ontologyCache ??= load(ONTOLOGY_PATH);
+  // the vocabulary alone: a declaration is valid or not regardless of how Elody implements it
+  ontologyCache ??= load(VOCABULARY_PATH);
   const reading = Reading.parse(ttl);
   const declaration = reading.quads();
 

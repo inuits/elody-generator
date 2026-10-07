@@ -6,6 +6,7 @@ so the result must match `elody-ui validate` (rdf-validate-shacl).
 
 usage: python scripts/validate_pyshacl.py DECLARATION.ui.ttl [...]
 """
+import os
 import sys
 from pathlib import Path
 
@@ -13,8 +14,10 @@ from pyshacl import validate
 from rdflib import Graph
 
 ROOT = Path(__file__).resolve().parent.parent
-ONTOLOGY = ROOT / "ontology" / "elody-ui.ttl"
-SHAPES = ROOT / "ontology" / "elody-ui.shapes.ttl"
+# the vocabulary and meta-shapes live in elody-ui-ontology: ELODY_UI_ONTOLOGY, else next to this module
+VOCABULARY_DIR = Path(os.environ.get("ELODY_UI_ONTOLOGY") or ROOT.parent / "elody-ui-ontology") / "ontology"
+ONTOLOGY = VOCABULARY_DIR / "elody-ui.ttl"
+SHAPES = VOCABULARY_DIR / "elody-ui.shapes.ttl"
 
 
 def main(paths):

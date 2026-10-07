@@ -1,0 +1,284 @@
+# Elody UI ontology — implementation bindings.
+#
+# How Elody implements the terms of the elody: vocabulary (elody-ui-ontology,
+# https://elody.eu/ns/ui#): the literal each enumeration individual is in the
+# GraphQL schema, the PWA widget each editor and viewer renders as, the schema
+# field of each detail element. These follow baseGraphql and the PWA and change
+# with them, so they live with the generator, not in the published vocabulary.
+# A declaration never states them; the generator reads them.
+
+@prefix elody:   <https://elody.eu/ns/ui#> .
+@prefix shui:    <http://www.w3.org/ns/shacl-ui/> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<https://elody.eu/ns/ui/bindings> a owl:Ontology ;
+  rdfs:label "Elody UI ontology — implementation bindings"@en ;
+  rdfs:comment "How Elody's GraphQL schema and PWA implement the terms of the Elody UI vocabulary. Read by the declaration generator; not part of the published vocabulary."@en ;
+  owl:imports <https://elody.eu/ns/ui> ;
+  owl:versionInfo "0.2.0" ;
+  dcterms:license <https://opensource.org/licenses/MIT> ;
+  dcterms:creator <https://inuits.eu/> .
+
+# =============================================================================
+# The binding properties
+# =============================================================================
+
+elody:enumValue a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui/bindings> ;
+  rdfs:label "GraphQL enum value"@en ;
+  rdfs:domain owl:Thing ; rdfs:range xsd:string ;
+  rdfs:comment "The literal the Elody GraphQL schema expects for this enumeration instance (e.g. elody:ListView elody:enumValue \"ViewModesList\"). Lets the generator render instances without a table of its own. No standard term: it binds an RDF individual to an implementation enum."@en .
+
+elody:inputFieldType a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui/bindings> ;
+  rdfs:label "Elody input field type"@en ;
+  rdfs:domain shui:Editor ; rdfs:range xsd:string ;
+  rdfs:comment "The Elody InputFieldTypes value an editor renders as. Stated on shui: editors and on Elody editors alike, so the ontology is the single editor-to-widget mapping read by the TS generator and the Python form builder. No standard term: shui names editors, not a platform's widget enum."@en .
+
+elody:formFieldType a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui/bindings> ;
+  rdfs:label "Elody create-form field type"@en ;
+  rdfs:domain shui:Editor ; rdfs:range xsd:string ;
+  rdfs:comment "The BaseFieldType value a create form uses for this editor (inputField(type: ...)). Sibling of elody:inputFieldType."@en .
+
+elody:formatterValue a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui/bindings> ;
+  rdfs:label "Elody formatter value"@en ;
+  rdfs:domain shui:Viewer ; rdfs:range xsd:string ;
+  rdfs:comment "The formatter name the Elody keyValue resolver expects for this viewer (e.g. \"pill\"). Same role as elody:inputFieldType, for the read side."@en .
+
+elody:multipleValuesInputFieldType a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui/bindings> ;
+  rdfs:label "input field type for several values"@en ;
+  rdfs:domain shui:Editor ; rdfs:range xsd:string ;
+  rdfs:comment "The Elody InputFieldTypes value of the field a single-value editor becomes when the property may hold several values (no sh:maxCount 1). SHACL UI repeats such an editor once per value; Elody uses one field holding the list. The generator emits it as a custom input field per property."@en .
+
+elody:schemaField a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui/bindings> ;
+  rdfs:label "schema field"@en ;
+  rdfs:domain owl:Class ; rdfs:range xsd:string ;
+  rdfs:comment "The field of the GraphQL type EntityViewElements this element class is rendered as. Binds the class to the schema the same way elody:enumValue binds an instance."@en .
+
+elody:panelElement a owl:ObjectProperty ;
+  rdfs:isDefinedBy <https://elody.eu/ns/ui/bindings> ;
+  rdfs:label "panel element"@en ;
+  rdfs:range elody:Element ;
+  rdfs:comment "The Elody element that implements a widget inside a detail panel, in place of a metadata field. A panel lists metadata fields, rich-text elements and entity lists side by side, so the property keeps its place among the others. elody:WysiwygElement: the rich-text editor on the property's metadata key, read in view mode and edited in edit mode. elody:ListElement: the entities the property's relation points to, filtered on that relation, with the sh:node shape's properties as their teaser."@en .
+
+# =============================================================================
+# The bindings
+# =============================================================================
+
+# -- editors → the PWA input field type (InputFieldTypes) they render as ----------
+# "datetime-local" is not an InputFieldTypes value: baseGraphql's baseFields
+# passes it as a raw string for baseDateTimeField. Keep in sync until the enum gets it.
+elody:ColorEditor elody:inputFieldType "color" .
+elody:CsvUploadEditor elody:inputFieldType "csvUpload" .
+elody:EntityPickerEditor elody:inputFieldType "baseEntityPickerField" .
+elody:FileSystemImportEditor elody:inputFieldType "baseFileSystemImportField" .
+elody:FileUploadEditor elody:inputFieldType "fileUpload" .
+elody:MetadataMultiSelectEditor elody:inputFieldType "dropdownMultiselectMetadata" .
+elody:MetadataSelectEditor elody:inputFieldType "dropdownSingleselectMetadata" .
+elody:RadioEditor elody:inputFieldType "radio" .
+elody:RangeEditor elody:inputFieldType "range" .
+elody:RelationMultiSelectEditor elody:inputFieldType "dropdownMultiselectRelations" .
+elody:RelationSelectEditor elody:inputFieldType "dropdownSingleselectRelations" .
+elody:ResizableTextAreaEditor elody:inputFieldType "resizableTextarea" .
+elody:XmlUploadEditor elody:inputFieldType "xmlUpload" .
+shui:AutoCompleteEditor elody:inputFieldType "baseEntityPickerField" .
+shui:BooleanEditor elody:inputFieldType "checkbox" .
+shui:DatePickerEditor elody:inputFieldType "date" .
+shui:DateTimePickerEditor elody:inputFieldType "datetime-local" .
+shui:DetailsEditor elody:inputFieldType "inputFieldWithSubFields" .
+shui:EnumSelectEditor elody:inputFieldType "dropdown" .
+shui:IRIEditor elody:inputFieldType "text" .
+shui:InstancesSelectEditor elody:inputFieldType "dropdownSingleselectRelations" .
+shui:NumberFieldEditor elody:inputFieldType "number" .
+shui:SubClassEditor elody:inputFieldType "dropdown" .
+shui:TextAreaEditor elody:inputFieldType "textarea" .
+shui:TextAreaWithLangEditor elody:inputFieldType "textarea" .
+shui:TextFieldEditor elody:inputFieldType "text" .
+shui:TextFieldWithLangEditor elody:inputFieldType "text" .
+
+# -- editors → the field they become for a property with several values ----------
+shui:TextFieldEditor elody:multipleValuesInputFieldType "dropdownMultiselectMetadata" .
+
+# -- editors → the create-form field type (BaseFieldType) -------------------------
+# A create form (GetDynamicForm) names its field widgets with BaseFieldType, the
+# runtime metadata form with InputFieldTypes: one editor, two platform enums.
+elody:ColorEditor elody:formFieldType "baseColorField" .
+elody:CsvUploadEditor elody:formFieldType "baseCsvUploadField" .
+elody:EntityPickerEditor elody:formFieldType "baseEntityPickerField" .
+elody:FileSystemImportEditor elody:formFieldType "baseFileSystemImportField" .
+elody:FileUploadEditor elody:formFieldType "baseFileUploadField" .
+elody:ResizableTextAreaEditor elody:formFieldType "baseResizableTextareaField" .
+elody:XmlUploadEditor elody:formFieldType "baseXmlUploadField" .
+shui:AutoCompleteEditor elody:formFieldType "baseEntityPickerField" .
+shui:BooleanEditor elody:formFieldType "baseCheckbox" .
+shui:DatePickerEditor elody:formFieldType "baseDateField" .
+shui:DateTimePickerEditor elody:formFieldType "baseDateTimeField" .
+shui:IRIEditor elody:formFieldType "baseTextField" .
+shui:NumberFieldEditor elody:formFieldType "baseNumberField" .
+shui:TextAreaEditor elody:formFieldType "baseTextareaField" .
+shui:TextAreaWithLangEditor elody:formFieldType "baseTextareaField" .
+shui:TextFieldEditor elody:formFieldType "baseTextField" .
+shui:TextFieldWithLangEditor elody:formFieldType "baseTextField" .
+
+# -- viewers → the keyValue formatter --------------------------------------------
+elody:LinkViewer elody:formatterValue "link" .
+elody:PillViewer elody:formatterValue "pill" .
+elody:RegexpMatchViewer elody:formatterValue "regexpMatch" .
+shui:DetailsViewer elody:formatterValue "" .
+shui:HyperlinkViewer elody:formatterValue "link" .
+shui:LangStringViewer elody:formatterValue "" .
+shui:LiteralViewer elody:formatterValue "" .
+
+# -- widgets Elody implements as an element inside a detail panel ----------------
+shui:HTMLViewer elody:panelElement elody:WysiwygElement .
+shui:RichTextEditor elody:panelElement elody:WysiwygElement .
+shui:ValueTableViewer elody:panelElement elody:ListElement .
+
+# -- detail elements → their field in the GraphQL schema (EntityViewElements) ----
+elody:ActionElement elody:schemaField "actionElement" .
+elody:CommentsElement elody:schemaField "commentsElement" .
+elody:EntityViewerElement elody:schemaField "entityViewerElement" .
+elody:GraphElement elody:schemaField "graphElement" .
+elody:HierarchyListElement elody:schemaField "hierarchyListElement" .
+elody:ListElement elody:schemaField "entityListElement" .
+elody:ManifestViewerElement elody:schemaField "manifestViewerElement" .
+elody:MapElement elody:schemaField "mapElement" .
+elody:MarkdownElement elody:schemaField "markdownViewerElement" .
+elody:MediaFileElement elody:schemaField "mediaFileElement" .
+elody:ShaclShapeElement elody:schemaField "shaclShapeElement" .
+elody:SingleMediaFileElement elody:schemaField "singleMediaFileElement" .
+elody:WindowElement elody:schemaField "windowElement" .
+elody:WysiwygElement elody:schemaField "wysiwygElement" .
+
+# -- platform forms → the GraphQL document the platform ships --------------------
+elody:EntityPickerForm elody:queryName "GetEntityPickerForm" .
+elody:RemoveFromListForm elody:queryName "GetBulkRemovingMediafilesInDetailForm" .
+
+# -- enumeration individuals → the literal the GraphQL schema expects ------------
+elody:AddRelationOperation elody:enumValue "addRelation" .
+elody:AdvancedSearchInput elody:enumValue "AdvancedInputType" .
+elody:Ascending elody:enumValue "asc" .
+elody:BarGraph elody:enumValue "bar" .
+elody:BoldExtension elody:enumValue "bold" .
+elody:BooleanFilter elody:enumValue "boolean" .
+elody:BubbleGraph elody:enumValue "bubble" .
+elody:BulkDataPanel elody:enumValue "bulkData" .
+elody:BulkEditModal elody:enumValue "BulkOperationsEdit" .
+elody:CalendarView elody:enumValue "ViewModesCalendar" .
+elody:CanCreate elody:enumValue "cancreate" .
+elody:CanDelete elody:enumValue "candelete" .
+elody:CanRead elody:enumValue "canread" .
+elody:CanUpdate elody:enumValue "canupdate" .
+elody:ColorExtension elody:enumValue "color" .
+elody:ConfirmModal elody:enumValue "Confirm" .
+elody:CoordinatesDefault elody:enumValue "COORDINATES_DEFAULT" .
+elody:CreateEntityFromExternalSourceAction elody:enumValue "CreateEntityFromExternalSource" .
+elody:CreateEntityOperation elody:enumValue "createEntity" .
+elody:DateDefault elody:enumValue "DATE_DEFAULT" .
+elody:DateFilter elody:enumValue "date" .
+elody:DatetimeDefault elody:enumValue "DATETIME_DEFAULT" .
+elody:DatetimeDmy12 elody:enumValue "DATETIME_DMY12" .
+elody:DatetimeDmy24 elody:enumValue "DATETIME_DMY24" .
+elody:DatetimeMdy12 elody:enumValue "DATETIME_MDY12" .
+elody:DatetimeMdy24 elody:enumValue "DATETIME_MDY24" .
+elody:DayOfWeek elody:enumValue "dayOfWeek" .
+elody:DayOfYear elody:enumValue "dayOfYear" .
+elody:DeleteEntitiesModal elody:enumValue "BulkOperationsDeleteEntities" .
+elody:DeleteEntitiesOperation elody:enumValue "deleteEntities" .
+elody:DeleteEntityAction elody:enumValue "DeleteEntity" .
+elody:DeleteModal elody:enumValue "Delete" .
+elody:DeleteRelationAction elody:enumValue "DeleteRelation" .
+elody:DeleteRelationsModal elody:enumValue "BulkOperationsDeleteRelations" .
+elody:DeleteRelationsOperation elody:enumValue "deleteRelations" .
+elody:Descending elody:enumValue "desc" .
+elody:DocExtension elody:enumValue "doc" .
+elody:DoughnutGraph elody:enumValue "doughnut" .
+elody:DownloadAction elody:enumValue "download" .
+elody:DownloadMediafilesOperation elody:enumValue "downloadMediafiles" .
+elody:DownloadQueryResultAction elody:enumValue "DownloadQueryResult" .
+elody:DynamicFormModal elody:enumValue "DynamicForm" .
+elody:EditMode elody:enumValue "editMode" .
+elody:EditOperation elody:enumValue "edit" .
+elody:EndpointCallAction elody:enumValue "EndpointCall" .
+elody:EntityDetailModal elody:enumValue "EntityDetailModal" .
+elody:EntityEditModal elody:enumValue "EntityEditModal" .
+elody:ExportCsvOperation elody:enumValue "exportCsv" .
+elody:GeoFilter elody:enumValue "geo" .
+elody:GridView elody:enumValue "ViewModesGrid" .
+elody:HardBreakExtension elody:enumValue "hardBreak" .
+elody:HeatMap elody:enumValue "heatMap" .
+elody:Hour elody:enumValue "hour" .
+elody:Html elody:enumValue "HTML" .
+elody:IdFilter elody:enumValue "id" .
+elody:Image elody:enumValue "IMAGE" .
+elody:ItalicExtension elody:enumValue "italic" .
+elody:LineGraph elody:enumValue "line" .
+elody:ListDefault elody:enumValue "LIST_DEFAULT" .
+elody:ListItemExtension elody:enumValue "listItem" .
+elody:ListView elody:enumValue "ViewModesList" .
+elody:MapPanel elody:enumValue "map" .
+elody:MapView elody:enumValue "ViewModesMap" .
+elody:MediaKindMap elody:enumValue "map" .
+elody:MediaKindMedia elody:enumValue "media" .
+elody:MediaView elody:enumValue "ViewModesMedia" .
+elody:MediainfoPanel elody:enumValue "mediainfo" .
+elody:MetadataOnRelationFilter elody:enumValue "metadata_on_relation" .
+elody:MetadataPanel elody:enumValue "metadata" .
+elody:MetadataSource elody:enumValue "metadata" .
+elody:Month elody:enumValue "month" .
+elody:NoActions elody:enumValue "noActions" .
+elody:NoneSelected elody:enumValue "noneSelected" .
+elody:NumberFilter elody:enumValue "number" .
+elody:OcrAction elody:enumValue "ocr" .
+elody:OpenDropdownOperation elody:enumValue "openDropdown" .
+elody:ParagraphExtension elody:enumValue "paragraph" .
+elody:Percent elody:enumValue "PERCENT" .
+elody:PieGraph elody:enumValue "pie" .
+elody:PipelineView elody:enumValue "ViewModesPipeline" .
+elody:Pixels elody:enumValue "PX" .
+elody:PointsMap elody:enumValue "pointsMap" .
+elody:PolarAreaGraph elody:enumValue "polarArea" .
+elody:RadarGraph elody:enumValue "radar" .
+elody:ReadMode elody:enumValue "readMode" .
+elody:RelationMetadataSource elody:enumValue "relationMetadata" .
+elody:RelationPanel elody:enumValue "relation" .
+elody:RelationsSource elody:enumValue "relations" .
+elody:ReorderEntitiesOperation elody:enumValue "reorderEntities" .
+elody:RootSource elody:enumValue "root" .
+elody:SavedSearchInput elody:enumValue "AdvancedSavedSearchType" .
+elody:ScatterGraph elody:enumValue "scatter" .
+elody:SecondsDefault elody:enumValue "SECONDS_DEFAULT" .
+elody:SelectionFilter elody:enumValue "selection" .
+elody:ShareAction elody:enumValue "Share" .
+elody:SimpleSearchInput elody:enumValue "SimpleInputtype" .
+elody:SomeSelected elody:enumValue "someSelected" .
+elody:StartOcrOperation elody:enumValue "startOcr" .
+elody:StarterKitExtension elody:enumValue "starterKit" .
+elody:TableView elody:enumValue "Table" .
+elody:TaggingExtension elody:enumValue "elodyTaggingExtension" .
+elody:TechnicalMetadataSource elody:enumValue "technicalMetadata" .
+elody:TextExtension elody:enumValue "text" .
+elody:TextFilter elody:enumValue "text" .
+elody:TextStyleExtension elody:enumValue "textStyle" .
+elody:TypeFilter elody:enumValue "type" .
+elody:TypePillLabelSource elody:enumValue "typePillLabel" .
+elody:UpdateMetadataAction elody:enumValue "UpdateMetadata" .
+elody:Volt elody:enumValue "VOLT" .
+elody:Width10 elody:enumValue "ten" .
+elody:Width100 elody:enumValue "hundred" .
+elody:Width20 elody:enumValue "twenty" .
+elody:Width30 elody:enumValue "thirty" .
+elody:Width40 elody:enumValue "forty" .
+elody:Width50 elody:enumValue "fifty" .
+elody:Width60 elody:enumValue "sixty" .
+elody:Width70 elody:enumValue "seventy" .
+elody:Width80 elody:enumValue "eighty" .
+elody:Width90 elody:enumValue "ninety" .
+elody:WktMap elody:enumValue "wktMap" .

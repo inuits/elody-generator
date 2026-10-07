@@ -17,15 +17,24 @@ for what only the platform knows.
 
 ## Contents
 
-- `ontology/elody-ui.ttl` — the ontology, namespace `https://elody.eu/ns/ui#`
-  (imports shui + dash). Every term has a domain, a range and a comment saying
-  why no standard term carries the meaning. Enumerations are instances with an
-  `elody:enumValue` (the GraphQL literal); editors carry `elody:inputFieldType`
-  / `elody:formFieldType`, viewers `elody:formatterValue`. The ontology is the
-  only editor→widget mapping: the generator has no table of its own.
-- `ontology/elody-ui.shapes.ttl` — meta-shapes: what a valid declaration
-  looks like. SHACL Core only, so `rdf-validate-shacl` and pySHACL agree.
-  Retired terms fail, each with its replacement in the message.
+- The **vocabulary** and its **meta-shapes** live in their own repository,
+  [`elody-ui-ontology`](../elody-ui-ontology): `ontology/elody-ui.ttl` (namespace
+  `https://elody.eu/ns/ui#`, imports shui + dash) says what a declaration may
+  say; `ontology/elody-ui.shapes.ttl` says what a valid declaration looks like.
+  The generator finds it through `ELODY_UI_ONTOLOGY` when set, else the
+  installed `elody-ui-ontology` package, else the sibling checkout
+  (`modules/elody-ui-ontology`). Until that repository has a remote, the
+  dependency is not in `package.json`: keep both checkouts side by side.
+- `ontology/elody-ui.bindings.ttl` — the **implementation bindings**: how Elody
+  implements the vocabulary. The GraphQL literal of each enumeration instance
+  (`elody:enumValue`), the widget of each editor and viewer
+  (`elody:inputFieldType`, `elody:formFieldType`, `elody:formatterValue`,
+  `elody:panelElement`), the schema field of each detail element
+  (`elody:schemaField`), the documents of the platform forms. They follow
+  baseGraphql and the PWA, so they change with this generator rather than with
+  the vocabulary. Together with the vocabulary they are the only
+  editor→widget mapping: the generator has no table of its own. Validation
+  reads the vocabulary alone.
 - `src/` — reader, parser, renderers, `generate | check | validate | migrate`.
 - `examples/dishacled.ui.ttl` — the dishacled declaration migrated to 0.1.
 - `scripts/validate_pyshacl.py` — the pySHACL check for CI.
