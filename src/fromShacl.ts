@@ -173,6 +173,7 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
   const ownClass = form.nodeShape
     ? [form.nodeShape, ...(bySubject.get(form.nodeShape) ?? []).filter((q) => q.predicate.value === sh("targetClass")).map((q) => q.object.value)]
     : [];
+  const teaserOff = new Set<string>();
   const tableColumns = (field: SpecField, viewer: string) => {
     const quads = (s: string) => bySubject.get(s) ?? [];
     const shape = quads(field.shape).find((q) => q.predicate.value === sh("node"))?.object.value;
@@ -191,6 +192,8 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
         roles.push(`"${name}" its teaser${path === rdf("type") ? " (the entity's type)" : ""}`);
       } else roles.push(`"${name}" comes from the related type's own teaser`);
     }
+    // the columns are the related type's teaser: of this type's own properties, only the columns
+    if (own) for (const other of usable) teaserOff.add(other.shape);
     note("info", `"${field.label}": ${viewer.replace(SHUI, "shui:")} is Elody's list of the related entities in the panel; columns: ${roles.join(", ")}`);
   };
 
@@ -240,6 +243,8 @@ export async function fromShacl(shapes: string, options: FromShaclOptions): Prom
     add(entity, sh("property"), term);
     propertyTerm.set(field.shape, term);
   }
+
+  for (const shape of teaserOff) add(propertyTerm.get(shape)!, elody("teaser"), literal("false", namedNode(`${XSD}boolean`)));
 
   // -- what label resolution reads beyond the property shapes ---------------------------------------
   // the label triples about each predicate and each sh:in IRI (shapes and data graph), and the node

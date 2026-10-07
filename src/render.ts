@@ -18,7 +18,7 @@ export function renderInitialValues(entity: M.UiEntity, indent: number, withForm
       const formatter = withFormatters && property.formatter ? `, formatter: "${property.formatter}"` : "";
       if (property.relationType)
         return `${pad(indent)}${property.key}: keyValue(key: "${property.relationType}", source: relations, metadataKeyAsLabel: "${property.valueLabelKey ?? DEFAULT_VALUE_LABEL_KEY}"${formatter})`;
-      return `${pad(indent)}${property.key}: keyValue(key: "${property.key}", source: metadata${formatter})`;
+      return `${pad(indent)}${property.key}: keyValue(key: "${property.key}", source: ${property.source ?? "metadata"}${formatter})`;
     })
     .join("\n");
 }

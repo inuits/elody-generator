@@ -93,4 +93,15 @@ describe("shui:ValueTableViewer: the related entities as a list in the panel (ex
     expect(findings.filter((f) => f.kind === "gap")).toEqual([]);
     expect(findings.find((f) => /ValueTableViewer/.test(f.message))?.kind).toBe("info");
   });
+
+  it("renders those columns as the teaser, the type from the entity itself", async () => {
+    const { file } = await convert(example("31-ValueTableViewer"), "SpecE31");
+    const minimal = file.slice(file.indexOf("fragment minimalSpecE31"), file.indexOf("fragment fullSpecE31"));
+    expect(minimal).toContain('type: keyValue(key: "type", source: root)');
+    const teaser = minimal.slice(minimal.indexOf("teaserMetadata {"));
+    expect(teaser).toContain('altLabel: metaData {');
+    expect(teaser).toContain('type: metaData {');
+    // the columns are the sh:node shape's: not the type's other properties
+    expect(teaser).not.toContain("isBroaderFor: metaData {");
+  });
 });
