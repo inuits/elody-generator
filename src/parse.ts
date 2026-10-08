@@ -736,6 +736,7 @@ class Parse {
       bulkOperationsFragment: this.optionalFlag(subject, elody("bulkOperations")) ?? (this.legacy ? true : undefined),
       thumbnail: this.thumbnail(r.node(subject, elody("thumbnail"))),
       excludeBaseSortOptions: r.literal(subject, elody("excludeBaseSortOptions")) === true,
+      filtersFragmentName: r.value(subject, elody("filtersFragmentName")) || undefined,
       spreads: {
         listingValues: r.literals(subject, elody("listingValuesSpread")),
         detailValues: r.literals(subject, elody("detailValuesSpread")),
@@ -820,6 +821,7 @@ class Parse {
       inputType: editor && this.isNested(node, editor) ? this.nestedField(node, key) : undefined,
       relationType: editor && this.isNested(node, editor) ? undefined : this.relationTypeOf(node),
       valueLabelKey: this.relationTypeOf(node) ? this.valueLabelKeyOf(node) : undefined,
+      valueLabelRootKey: r.value(node, elody("valueLabelRootKey")) || undefined,
       // set by entity() for the properties an editable panel shows
       editInputType: undefined,
       required: Number(r.value(node, sh("minCount")) ?? 0) >= 1,
@@ -883,6 +885,15 @@ class Parse {
       selectionOption: r.value(node, elody("selectionOption")) || undefined,
       operator: r.value(node, elody("filterOperator")) || undefined,
       showTime: this.optionalFlag(node, elody("showTime")),
+      matchersType: r.value(node, elody("matchersType")) || undefined,
+      lookup: r.node(node, elody("lookup"))
+        ? {
+            from: String(r.value(r.node(node, elody("lookup"))!, elody("lookupFrom")) ?? ""),
+            localField: String(r.value(r.node(node, elody("lookup"))!, elody("lookupLocalField")) ?? ""),
+            foreignField: String(r.value(r.node(node, elody("lookup"))!, elody("lookupForeignField")) ?? ""),
+            as: String(r.value(r.node(node, elody("lookup"))!, elody("lookupAs")) ?? ""),
+          }
+        : undefined,
       options: r.value(node, elody("optionsType"))
         ? {
             type: String(r.value(node, elody("optionsType"))),
@@ -1256,6 +1267,9 @@ class Parse {
       relationType: r.value(element, elody("relationType")),
       customQuery,
       customQueryRelationType: r.value(element, elody("customQueryRelationType")) || undefined,
+      listViewMode: r.value(element, elody("listViewMode")) || undefined,
+      can: r.literals(element, elody("can")),
+      editButton: r.literal(element, elody("editButton")) === true,
       mediaKind: this.enumValue(element, elody("mediaKind"), elody("MediaElementKind")),
       customQueryFilters,
       searchInputType: this.enumValue(element, elody("searchInput"), elody("SearchInputKind"), elody("searchInputType")),

@@ -414,6 +414,8 @@ export async function compareClient(options: CompareOptions): Promise<CompareRep
   await generate({ root, declaration, ontology: options.ontology });
 
   const client = readDefinitions(readQueryFiles(options.clientSrc));
+  // a file out of scope with a gap does not count, parse errors included
+  client.errors = client.errors.filter((error) => !options.scope?.outOfScopeFiles?.[error.file]);
   const generated = readDefinitions(readQueryFiles(join(root, "src")));
   const comparison = compareDefinitions(client.definitions, generated.definitions, options.scope);
   return {

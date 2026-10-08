@@ -21,7 +21,11 @@ export function renderInitialValues(entity: M.UiEntity, indent: number, withForm
       const index = property.index !== undefined ? `, index: ${property.index}` : "";
       const formatter = withFormatters && property.formatter ? `, formatter: "${property.formatter}"` : "";
       // elody:valueLabelKey "" reads the relation without a label key
-      const labelKey = property.valueLabelKey === "" ? "" : `, metadataKeyAsLabel: "${property.valueLabelKey ?? DEFAULT_VALUE_LABEL_KEY}"`;
+      const labelKey = property.valueLabelRootKey
+        ? `, rootKeyAsLabel: "${property.valueLabelRootKey}"`
+        : property.valueLabelKey === ""
+          ? ""
+          : `, metadataKeyAsLabel: "${property.valueLabelKey ?? DEFAULT_VALUE_LABEL_KEY}"`;
       if (property.relationType)
         return `${pad(indent)}${alias}: keyValue(key: "${property.relationType}", source: relations${labelKey}${index}${formatter})`;
       return `${pad(indent)}${alias}: keyValue(key: "${property.key}", source: ${property.source ?? "metadata"}${index}${formatter})`;
@@ -202,7 +206,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ].join("\n");
 
     // a scoping selection filter (no label, no option search) is compact; a visible one reads like the other kinds
-    if (filter.kind === "selection" && !filter.label && !filter.options) {
+    if (filter.kind === "selection" && !filter.label && !filter.options && !filter.lookup && !filter.matchersType) {
       const key = filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`;
       const parent = filter.parentKey ? `, parentKey: "${filter.parentKey}"` : "";
       const operator = filter.operator ? `, operator: ${filter.operator}` : "";
@@ -223,6 +227,19 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
     }
 
     const options = filter.options ? renderFilterOptions(filter.options, indent + 4) : undefined;
+    const lookupArgs = filter.lookup
+      ? [
+          `${pad(indent + 4)}lookup: {`,
+          `${pad(indent + 6)}from: "${filter.lookup.from}"`,
+          `${pad(indent + 6)}local_field: "${filter.lookup.localField}"`,
+          `${pad(indent + 6)}foreign_field: "${filter.lookup.foreignField}"`,
+          `${pad(indent + 6)}as: "${filter.lookup.as}"`,
+          `${pad(indent + 4)}}`,
+        ]
+      : [];
+    const lookupFields = filter.lookup
+      ? [`${pad(indent + 4)}lookup {`, `${pad(indent + 6)}from`, `${pad(indent + 6)}local_field`, `${pad(indent + 6)}foreign_field`, `${pad(indent + 6)}as`, `${pad(indent + 4)}}`]
+      : [];
     const mapping =
       filter.optionsLabel || filter.optionsValue
         ? [
@@ -233,7 +250,9 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
           ]
         : [];
     const args = [
+      ...lookupArgs,
       `${pad(indent + 4)}type: ${filter.kind}`,
+      ...(filter.matchersType ? [`${pad(indent + 4)}matchersType: ${filter.matchersType}`] : []),
       ...(filter.parentKey ? [`${pad(indent + 4)}parentKey: "${filter.parentKey}"`] : []),
       ...(filter.key ? [`${pad(indent + 4)}key: ${filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`}`] : []),
       ...(filter.operator ? [`${pad(indent + 4)}operator: ${filter.operator}`] : []),
@@ -245,7 +264,9 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(options ? options.args : []),
     ];
     const selection = [
+      ...lookupFields,
       `${pad(indent + 4)}type`,
+      ...(filter.matchersType ? [`${pad(indent + 4)}matchersType`] : []),
       ...(filter.parentKey ? [`${pad(indent + 4)}parentKey`] : []),
       ...(filter.key ? [`${pad(indent + 4)}key`] : []),
       ...(filter.operator ? [`${pad(indent + 4)}operator`] : []),
@@ -589,6 +610,8 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
       ];
       if (element.entityTypes.length > 0) lines.push(`${pad(depth + 2)}entityTypes(input: [${element.entityTypes.join(", ")}])`);
       if (element.relationType) lines.push(`${pad(depth + 2)}relationType: label(input: "${element.relationType}")`);
+      if (element.listViewMode) lines.push(`${pad(depth + 2)}viewMode(input: ${element.listViewMode})`);
+      if (element.can.length) lines.push(`${pad(depth + 2)}can(input: [${element.can.map((c) => `"${c}"`).join(", ")}])`);
       if (element.customQuery) lines.push(`${pad(depth + 2)}customQuery(input: "${element.customQuery}")`);
       if (element.customQueryRelationType) lines.push(`${pad(depth + 2)}customQueryRelationType: label(input: "${element.customQueryRelationType}")`);
       if (element.customQueryFilters) lines.push(`${pad(depth + 2)}customQueryFilters(input: "${element.customQueryFilters}")`);
@@ -619,6 +642,11 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
       ].join("\n");
 
     const lines = [`${pad(depth)}${element.alias ? `${element.alias}: ` : ""}windowElement {`, `${pad(depth + 2)}label(input: "${element.label ?? ""}")`];
+    if (element.editButton) {
+      lines.push(`${pad(depth + 2)}editMetadataButton(input: { hasButton: true }) {`);
+      lines.push(`${pad(depth + 4)}...editMetadataButton`);
+      lines.push(`${pad(depth + 2)}}`);
+    }
     if (element.expandButton) {
       lines.push(`${pad(depth + 2)}expandButtonOptions {`);
       lines.push(`${pad(depth + 4)}shown(input: true)`);
@@ -760,7 +788,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   if (sort) fragments.push([`  fragment ${low}SortOptions on ${onType} {`, sort, "  }"].join("\n"));
 
   if (entity.filters.length > 0)
-    fragments.push([`  fragment filtersFor${type} on ${onType} {`, renderFilters(entity, 4), "  }"].join("\n"));
+    fragments.push([`  fragment ${entity.filtersFragmentName ?? `filtersFor${type}`} on ${onType} {`, renderFilters(entity, 4), "  }"].join("\n"));
 
   const bulkOperations = carriesBulkOperations(entity);
   if (bulkOperations)
@@ -810,7 +838,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
         `  query Get${type}Filters($entityType: String!) {`,
         "    EntityTypeFilters(type: $entityType) {",
         `      ... on ${onType} {`,
-        `        ...filtersFor${type}`,
+        `        ...${entity.filtersFragmentName ?? `filtersFor${type}`}`,
         "      }",
         "    }",
         "  }",

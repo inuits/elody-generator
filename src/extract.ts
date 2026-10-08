@@ -65,6 +65,7 @@ type Property = {
   formatter?: string;
   relationType?: string;
   valueLabelKey?: string;
+  valueLabelRootKey?: string;
   inListing: boolean;
   inDetail: boolean;
   /** no initial value is read for it: a spread or the platform provides it */
@@ -84,11 +85,13 @@ type Property = {
   clientField?: string;
   readOnly: boolean;
   labelRole: boolean;
+  /** isMultilingual: one value per language, edited with the language-aware editor */
+  multilingual?: boolean;
 };
 
 type Panel = { alias: string; label?: string; kind?: string; collapsed: boolean; editable: boolean; multipleColumns: boolean; fields: string[]; spreads: string[] };
 type Element =
-  | { kind: "window"; alias?: string; label?: string; expandButton: boolean; panels: Panel[] }
+  | { kind: "window"; alias?: string; label?: string; expandButton: boolean; editButton?: boolean; panels: Panel[] }
   | { kind: "shaclShape"; label?: string; fieldsKey?: string; collapsed: boolean }
   | { kind: "markdown"; label?: string; metadataKey?: string; collapsed: boolean }
   | {
@@ -97,6 +100,8 @@ type Element =
       label?: string;
       mediaKind?: string;
       customQueryRelationType?: string;
+      listViewMode?: string;
+      can?: string[];
       collapsed: boolean;
       entityTypes: string[];
       relationType?: string;
@@ -129,6 +134,8 @@ type Filter = {
   selectionOption?: string;
   operator?: string;
   showTime?: boolean;
+  matchersType?: string;
+  lookup?: { from: string; localField: string; foreignField: string; as: string };
 };
 
 type FormField = { key: string; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; clientField?: string };
@@ -159,6 +166,7 @@ type Entity = {
   relationValues?: boolean;
   detailFormatters?: boolean;
   excludeBaseSortOptions?: boolean;
+  filtersFragmentName?: string;
   documents: string[];
   columns: Column[];
   shapeDriven: boolean;
@@ -278,7 +286,8 @@ export class Extractor {
           alias: undefined,
           source: source && source !== "metadata" && source !== "relations" ? source : undefined,
           relationType: source === "relations" ? key : undefined,
-          valueLabelKey: source === "relations" ? (str(field, "metadataKeyAsLabel") ?? "") : undefined,
+          valueLabelKey: source === "relations" && !str(field, "rootKeyAsLabel") ? (str(field, "metadataKeyAsLabel") ?? "") : undefined,
+          valueLabelRootKey: str(field, "rootKeyAsLabel"),
           index: str(field, "index") !== undefined ? Number(str(field, "index")) : undefined,
           inListing: false,
           inDetail: false,
@@ -340,6 +349,7 @@ export class Extractor {
         if (alias(field) !== (property.alias ?? property.key)) this.note(`${where}: card field ${alias(field)} shows the value ${key}; the card will show it under ${property.alias ?? property.key}`);
         property.teaser = true;
         property.labelKey = input(child(field, "label"));
+        if (input(child(field, "isMultilingual")) === "true") property.multilingual = true;
         const unit = input(child(field, "unit"));
         if (unit) property.unit = this.instance("Unit", unit, `${where} ${key}`);
         const colSpan = input(child(field, "colSpan"));
@@ -454,6 +464,7 @@ export class Extractor {
 
     // filters, form, bulk operations
     const filters = this.fragment(`filtersFor${name}`) ?? this.fragment(`${name.charAt(0).toLowerCase() + name.slice(1)}Filters`);
+    if (filters && filters.name.value !== `filtersFor${name}`) entity.filtersFragmentName = filters.name.value;
     if (filters) {
       const block = child(filters, "advancedFilters");
       entity.filters = this.filters(block, where);
@@ -521,7 +532,7 @@ export class Extractor {
     const panels: Panel[] = [];
     for (const panel of fields(element.selectionSet)) {
       if (panel.name.value !== "panels") {
-        if (!["label", "expandButtonOptions"].includes(panel.name.value)) this.note(`${where}: window element field ${panel.name.value} has no term; left out`);
+        if (!["label", "expandButtonOptions", "editMetadataButton"].includes(panel.name.value)) this.note(`${where}: window element field ${panel.name.value} has no term; left out`);
         continue;
       }
       const header = child(panel, "panelHeaderContent");
@@ -553,6 +564,7 @@ export class Extractor {
           entity.properties.push(property);
           if (!byAlias.has(alias(field))) byAlias.set(alias(field), property);
         }
+        if (input(child(field, "isMultilingual")) === "true") property.multilingual = true;
         const label = input(child(field, "label"));
         if (label && !property.labelKey) property.labelKey = label;
         else if (label && property.labelKey && label !== property.labelKey) this.note(`${where}: panel field ${key} is labelled ${label}, the card ${property.labelKey}; the card's label is kept`);
@@ -571,11 +583,11 @@ export class Extractor {
       }
       panels.push(result);
     }
-    return { kind: "window", alias: element.alias?.value, label: input(child(element, "label")), expandButton: child(element, "expandButtonOptions") !== undefined, panels };
+    return { kind: "window", alias: element.alias?.value, label: input(child(element, "label")), expandButton: child(element, "expandButtonOptions") !== undefined, editButton: child(element, "editMetadataButton") !== undefined, panels };
   }
 
   private list(element: FieldNode, where: string, entity: Entity): Element {
-    const known = ["label", "isCollapsed", "type", "entityTypes", "relationType", "searchInputType", "customQuery", "customQueryRelationType", "customQueryFilters", "customBulkOperations", "customQueryEntityPickerList", "customQueryEntityPickerListFilters"];
+    const known = ["label", "isCollapsed", "type", "entityTypes", "relationType", "searchInputType", "customQuery", "customQueryRelationType", "customQueryFilters", "customBulkOperations", "customQueryEntityPickerList", "customQueryEntityPickerListFilters", "viewMode", "can"];
     for (const field of fields(element.selectionSet))
       if (!known.includes(alias(field)) && !known.includes(field.name.value)) this.note(`${where}: list element ${alias(element)} field ${alias(field)} has no term; left out`);
     const types = child(element, "entityTypes");
@@ -597,6 +609,8 @@ export class Extractor {
       label: input(child(element, "label")),
       mediaKind: this.instance("MediaElementKind", input(child(element, "type")), `${where} list ${alias(element)}`),
       customQueryRelationType: scoped ? input(scoped) : undefined,
+      listViewMode: input(child(element, "viewMode")),
+      can: list(child(element, "can") ? argument(child(element, "can")!, "input") : undefined).map((v) => scalar(v) ?? ""),
       collapsed: input(child(element, "isCollapsed")) === "true",
       entityTypes: list(types ? argument(types, "input") : undefined).map((v) => scalar(v) ?? ""),
       relationType: relation ? input(relation) : undefined,
@@ -661,8 +675,10 @@ export class Extractor {
       return;
     }
     const custom = fields(query.selectionSet).find((f) => f.name.value === "CustomBulkOperations");
-    const operations = this.operations(child(child(custom, "bulkOperationOptions"), "options"), `${where} ${name}`);
-    if (operations.length) entity.customOperations.push({ name, operations });
+    const options = child(child(custom, "bulkOperationOptions"), "options");
+    const operations = this.operations(options, `${where} ${name}`);
+    const declaredEmpty = list(options ? argument(options, "input") : undefined).length === 0;
+    if (operations.length || declaredEmpty) entity.customOperations.push({ name, operations });
     else {
       this.note(`${where}: custom bulk operations ${name} declare no operation the vocabulary knows; the element names them, nothing is generated`);
       this.stubs.add(name);
@@ -700,6 +716,15 @@ export class Extractor {
       filter.selectionOption = str(field, "selectionOption");
       filter.operator = str(field, "operator");
       filter.showTime = str(field, "showTimeForDateFilter") === undefined ? undefined : str(field, "showTimeForDateFilter") === "true";
+      filter.matchersType = str(field, "matchersType");
+      const lookup = argument(field, "lookup");
+      if (lookup?.kind === Kind.OBJECT)
+        filter.lookup = {
+          from: scalar(objectField(lookup, "from")) ?? "",
+          localField: scalar(objectField(lookup, "local_field")) ?? "",
+          foreignField: scalar(objectField(lookup, "foreign_field")) ?? "",
+          as: scalar(objectField(lookup, "as")) ?? "",
+        };
       const retrieving = argument(field, "advancedFilterInputForRetrievingOptions");
       if (retrieving) {
         const inputs = list(retrieving).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT);
@@ -716,7 +741,7 @@ export class Extractor {
         else this.note(`${where}: filter ${alias(field)} fetches its options in a way the vocabulary cannot say (no text search scoped to one type); its option source is left out`);
       }
       for (const a of field.arguments ?? [])
-        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator", "showTimeForDateFilter"].includes(a.name.value))
+        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator", "showTimeForDateFilter", "matchersType", "lookup"].includes(a.name.value))
           this.note(`${where}: filter ${alias(field)} argument ${a.name.value} has no term; left out`);
       result.push(filter);
     }
@@ -742,11 +767,12 @@ export class Extractor {
         const type = widget ? (str(widget, "type") ?? "baseTextField") : "baseTextField";
         const base = BASE_FIELDS[type];
         const key = input(child(field, "key")) ?? alias(field);
+        const multilingual = input(child(field, "isMultilingual")) === "true";
         form.fields.push({
           key,
           alias: alias(field) !== key ? alias(field) : undefined,
           label: input(child(field, "label")),
-          editor: base?.editor,
+          editor: multilingual ? (base?.editor === "shui:TextAreaEditor" ? "shui:TextAreaWithLangEditor" : "shui:TextFieldWithLangEditor") : base?.editor,
           datatype: base?.datatype,
           single: true,
           required: this.required(child(widget, "validation"), `${where} form ${queryName} field ${key}`),
@@ -848,10 +874,12 @@ export class Extractor {
     if (p.datatype) lines.push(`    sh:datatype ${p.datatype} ;`);
     if (p.relationType) lines.push(`    elody:relationType ${q(p.relationType)} ;`);
     if (p.valueLabelKey !== undefined) lines.push(`    elody:valueLabelKey ${q(p.valueLabelKey)} ;`);
+    if (p.valueLabelRootKey) lines.push(`    elody:valueLabelRootKey ${q(p.valueLabelRootKey)} ;`);
     if (p.editor || p.datatype || p.clientField) lines.push(`    sh:maxCount 1 ;`);
     if (p.required) lines.push(`    sh:minCount 1 ;`);
     if (p.labelRole) lines.push(`    shui:propertyRole shui:LabelRole ;`);
-    if (p.editor) lines.push(`    shui:editor ${p.editor} ;`);
+    const editor = p.multilingual ? (p.editor === "shui:TextAreaEditor" ? "shui:TextAreaWithLangEditor" : "shui:TextFieldWithLangEditor") : p.editor;
+    if (editor) lines.push(`    shui:editor ${editor} ;`);
     if (p.clientField) lines.push(`    elody:clientInputField ${q(p.clientField)} ;`);
     if (p.readOnly) lines.push(`    dash:readOnly true ;`);
     if (p.formatter) {
@@ -897,6 +925,9 @@ export class Extractor {
     if (f.selectionOption) lines.push(`    elody:selectionOption ${q(f.selectionOption)} ;`);
     if (f.operator) lines.push(`    elody:filterOperator ${q(f.operator)} ;`);
     if (f.showTime !== undefined) lines.push(`    elody:showTime ${f.showTime} ;`);
+    if (f.matchersType) lines.push(`    elody:matchersType ${q(f.matchersType)} ;`);
+    if (f.lookup)
+      lines.push(`    elody:lookup [ elody:lookupFrom ${q(f.lookup.from)} ; elody:lookupLocalField ${q(f.lookup.localField)} ; elody:lookupForeignField ${q(f.lookup.foreignField)} ; elody:lookupAs ${q(f.lookup.as)} ] ;`);
     if (f.options) {
       lines.push(`    elody:optionsType ${q(f.options.type)} ;`, `    elody:optionsKey ${q(f.options.key)} ;`);
       if (f.options.matchExact !== undefined) lines.push(`    elody:optionsMatchExact ${f.options.matchExact} ;`);
@@ -954,6 +985,7 @@ export class Extractor {
     if (entity.relationValues !== undefined) out.push(`  elody:relationValues ${entity.relationValues} ;`);
     if (entity.detailFormatters === false) out.push(`  elody:detailFormatters false ;`);
     if (entity.excludeBaseSortOptions) out.push(`  elody:excludeBaseSortOptions true ;`);
+    if (entity.filtersFragmentName) out.push(`  elody:filtersFragmentName ${q(entity.filtersFragmentName)} ;`);
     if (entity.thumbnail)
       out.push(`  elody:thumbnail [ ${entity.thumbnail.fromMediafile ? "elody:fromMediafile true" : `elody:key ${q(entity.thumbnail.key ?? "thumbnail")}`}${entity.thumbnail.order ? ` ; sh:order ${entity.thumbnail.order}` : ""} ] ;`);
     for (const s of entity.spreads.listingValues) out.push(`  elody:listingValuesSpread ${q(s)} ;`);
@@ -994,6 +1026,7 @@ export class Extractor {
             const w = [`      [ a elody:WindowElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`];
             if (element.alias) w.push(`      elody:alias ${q(element.alias)} ;`);
             if (element.expandButton) w.push(`      elody:expandButton true ;`);
+            if (element.editButton) w.push(`      elody:editButton true ;`);
             if (panels.length) w.push(`      elody:panel ${panels.join(" , ")} ;`);
             w[w.length - 1] = w[w.length - 1].replace(/ ;$/, " ]");
             return w.join("\n");
@@ -1017,6 +1050,8 @@ export class Extractor {
           for (const type of element.entityTypes) l.push(`      elody:entityTypes ${q(type)} ;`);
           if (element.relationType) l.push(`      elody:relationType ${q(element.relationType)} ;`);
           if (element.customQueryRelationType) l.push(`      elody:customQueryRelationType ${q(element.customQueryRelationType)} ;`);
+          if (element.listViewMode) l.push(`      elody:listViewMode ${q(element.listViewMode)} ;`);
+          for (const can of element.can ?? []) l.push(`      elody:can ${q(can)} ;`);
           if (element.searchInput) l.push(`      elody:searchInput ${element.searchInput} ;`);
           if (element.listQuery) l.push(`      elody:listQuery ui:${element.listQuery} ;`);
           else {

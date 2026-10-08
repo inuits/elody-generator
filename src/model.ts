@@ -51,6 +51,8 @@ export type UiProperty = {
   relationType?: string;
   /** metadata key(s) labelling the related entity (metadataKeyAsLabel) */
   valueLabelKey?: string;
+  /** elody:valueLabelRootKey: a root field labelling the related entity (rootKeyAsLabel) */
+  valueLabelRootKey?: string;
   /**
    * An element in the detail panel in place of a metadata field (elody:panelElement):
    * the rich-text editor on the metadata key, or the list of the entities its relation points to.
@@ -77,6 +79,10 @@ export type UiFilter = {
   operator?: string;
   /** elody:showTime: a date filter with (true) or without (false) the time of day; undefined leaves it unsaid */
   showTime?: boolean;
+  /** elody:matchersType: which matchers the filter offers */
+  matchersType?: string;
+  /** elody:lookup: the join the filter needs */
+  lookup?: { from: string; localField: string; foreignField: string; as: string };
   label?: string;
   defaultValues: string[];
   defaultValueAsList: boolean;
@@ -213,6 +219,12 @@ export type UiElement = {
   /** elody:mediaKind on a list element: a list of media files (type(input: media)) */
   mediaKind?: string;
   customQueryFilters?: string;
+  /** elody:listViewMode: viewMode(input: Library) */
+  listViewMode?: string;
+  /** elody:can on a list: the permissions the list needs */
+  can: string[];
+  /** elody:editButton on a window: the edit-metadata button */
+  editButton?: boolean;
   searchInputType?: string;
   customBulkOperations?: string;
   pickerList?: string;
@@ -242,6 +254,8 @@ export type UiEntity = {
   detailFormatters?: boolean;
   /** elody:excludeBaseSortOptions: only the declared sort options */
   excludeBaseSortOptions: boolean;
+  /** elody:filtersFragmentName: the filters fragment's name when not filtersFor<Type> */
+  filtersFragmentName?: string;
   /** elody:thumbnail: the card's picture, from an initial value or the primary media file; sh:order places it among the card's fields */
   thumbnail?: { key?: string; fromMediafile?: boolean; order?: number };
   /** hand-written shared fragments spread into a block (elody:listingValuesSpread & co) */
