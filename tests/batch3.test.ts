@@ -1,0 +1,150 @@
+/**
+ * Gap batch 3 (vliz): the input field a client registers itself for a
+ * property (G-017), hand-written shared fragments spread into a block
+ * (G-020), and selection filters that fetch their options from the entities
+ * of a type (G-013).
+ */
+import { readFileSync } from "fs";
+import { join } from "path";
+import { describe, expect, it } from "vitest";
+import { readUiDeclaration } from "../src/parse.js";
+import { renderEntityFile } from "../src/render.js";
+import { formatIssue, validateDeclaration } from "../src/validate.js";
+
+const prefixes = `
+@prefix elody: <https://elody.eu/ns/ui#> . @prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix shui: <http://www.w3.org/ns/shacl-ui/> . @prefix dash: <http://datashapes.org/dash#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> . @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix em: <https://elody.io/ns/metadata#> . @prefix ui: <urn:ui:> .`;
+
+const label = `[ sh:path em:title ; sh:order 1 ; shui:propertyRole shui:LabelRole ; sh:datatype xsd:string ; sh:maxCount 1 ; sh:minCount 1 ; elody:labelKey "metadata.labels.title" ]`;
+const language = `[ sh:path em:language ; sh:order 2 ; sh:class em:Language ; elody:valueLabelKey "title" ; elody:clientInputField "languageTypeField" ; elody:labelKey "metadata.labels.language" ; elody:detailOnly true ]`;
+const window = (panel: string) =>
+  `elody:detail [ elody:column [ sh:order 1 ; elody:size elody:Width70 ; elody:element [ a elody:WindowElement ; sh:order 1 ; rdfs:label "window-element-labels.info-window" ; elody:expandButton true ; elody:panel ${panel} ] ] ]`;
+const info = (extra = "", fields = "em:title , em:language") => `ui:Info a elody:Panel ; elody:alias "info" ; rdfs:label "panel-labels.keyword-info" ; elody:panelKind elody:MetadataPanel ; ${extra} elody:field ${fields} .`;
+
+const entity = (body: string, more = "") => `${prefixes}
+ui:KeywordUi a elody:EntityUi ; elody:graphqlType "Keyword" ; elody:emit "file" ;
+  ${body} .
+${more}`;
+
+async function render(ttl: string): Promise<string> {
+  const { entities, warnings, inputFields } = await readUiDeclaration(ttl);
+  expect(warnings.map((warning) => warning.message)).toEqual([]);
+  return renderEntityFile(entities[0], "src/ui/test.ui.ttl") + `\n// inputFields: ${Object.keys(inputFields).join(",")}`;
+}
+const fragment = (file: string, name: string): string => {
+  const start = file.indexOf(`  fragment ${name} `);
+  if (start === -1) return "";
+  const end = file.indexOf("\n  }\n", start);
+  return file.slice(start, end + 4);
+};
+const query = (file: string, name: string): string => {
+  const start = file.indexOf(`  query ${name}`);
+  if (start === -1) return "";
+  const end = file.indexOf("\n  }\n", start);
+  return file.slice(start, end + 4);
+};
+
+describe("elody:clientInputField", () => {
+  it("edits the property with the client's field on the detail page and mints nothing", async () => {
+    const file = await render(entity(`sh:property ${label} , ${language} ; ${window("ui:Info")}`, info()));
+    const full = fragment(file, "fullKeyword");
+    expect(full).toContain('language: keyValue(key: "hasLanguage", source: relations, metadataKeyAsLabel: "title")');
+    expect(full).toContain("language: metaData {\n                label(input: \"metadata.labels.language\")\n                key(input: \"language\")\n                inputField(type: languageTypeField) {");
+    expect(file.endsWith("// inputFields: ")).toBe(true);
+  });
+
+  it("is the create form's field too", async () => {
+    const form = `ui:Create a elody:Form ; rdfs:label "navigation.create-keyword" ; elody:queryName "GetKeywordCreateForm" ; elody:alias "keyword" ;
+      elody:shape [ sh:property ${label} , [ sh:path em:language ; sh:order 2 ; sh:class em:Language ; elody:clientInputField "languageTypeField" ; elody:labelKey "metadata.labels.language" ] ] ;
+      elody:submit [ rdfs:label "actions.labels.create" ; elody:actionQuery "CreateEntity" ; elody:creationType "keyword" ; elody:icon "Create" ] .`;
+    const file = await render(entity(`sh:property ${label} ; elody:form ui:Create`, form));
+    expect(query(file, "GetKeywordCreateForm")).toContain("inputField(type: languageTypeField) {\n              ...inputfield\n            }");
+    expect(file.endsWith("// inputFields: ")).toBe(true);
+  });
+});
+
+describe("shared fragments spread into a block", () => {
+  it("spreads into the listing and detail initial values, the card, the filters and a panel", async () => {
+    const file = await render(
+      entity(
+        `elody:listingValuesSpread "vocabTeaserIntialValues" ; elody:detailValuesSpread "vocabIntialValues" , "entityAuditIntialValues" ; elody:cardSpread "vocabTeaserMetadata" ; elody:filtersSpread "entityAuditFilters" ;
+         sh:property ${label} ; ${window("ui:Info")} ;
+         elody:filter [ sh:order 1 ; elody:alias "type" ; dash:hidden true ; sh:defaultValue "keyword" ; elody:filterKind elody:TypeFilter ]`,
+        info('elody:spread "vocabInfoMetadata" ;', "em:title"),
+      ),
+    );
+    expect(fragment(file, "minimalKeyword")).toContain("    intialValues {\n      ...vocabTeaserIntialValues\n      title: keyValue(");
+    expect(fragment(file, "minimalKeyword")).toContain("    teaserMetadata {\n      ...vocabTeaserMetadata\n      title: metaData {");
+    expect(fragment(file, "fullKeyword")).toContain("    intialValues {\n      ...vocabIntialValues\n      ...entityAuditIntialValues\n      title: keyValue(");
+    expect(fragment(file, "fullKeyword")).toContain("              }\n              ...vocabInfoMetadata\n            }");
+    expect(fragment(file, "filtersForKeyword")).toContain("    advancedFilters {\n      ...entityAuditFilters\n      type: advancedFilter(type: type) {");
+  });
+});
+
+describe("a selection filter that fetches its options", () => {
+  it("renders the option search and asks the inputs back", async () => {
+    const file = await render(
+      entity(`sh:property ${label} ; elody:filter
+        [ rdfs:label "metadata.labels.language" ; sh:order 1 ; elody:alias "language" ; elody:key "vliz:1|properties.has_language.value" ; elody:displayedByDefault true ;
+          elody:optionsType "language" ; elody:optionsKey "vliz:1|properties.title.value" ; elody:filterKind elody:SelectionFilter ; elody:showTooltip true ]`),
+    );
+    expect(fragment(file, "filtersForKeyword")).toContain(
+      [
+        "      language: advancedFilter(",
+        "        type: selection",
+        '        key: ["vliz:1|properties.has_language.value"]',
+        '        label: "metadata.labels.language"',
+        "        isDisplayedByDefault: true",
+        "        advancedFilterInputForRetrievingOptions: [",
+        "          {",
+        "            type: text",
+        '            key: ["vliz:1|properties.title.value"]',
+        '            value: "*"',
+        "            match_exact: false",
+        "          }",
+        '          { type: type, value: "language" }',
+        "        ]",
+        "      ) {",
+        "        type",
+        "        key",
+        "        label",
+        "        isDisplayedByDefault",
+        "        advancedFilterInputForRetrievingOptions {",
+        "          type",
+        "          key",
+        "          value",
+        "          match_exact",
+        "        }",
+        "        tooltip(value: true)",
+        "      }",
+      ].join("\n"),
+    );
+  });
+
+  it("renders distinct_by and match_exact when declared", async () => {
+    const file = await render(
+      entity(`sh:property ${label} ; elody:filter
+        [ rdfs:label "metadata.labels.status" ; sh:order 1 ; elody:alias "status" ; elody:key "dams:1|metadata.status.value" ; elody:displayedByDefault true ;
+          elody:optionsType "asset" ; elody:optionsKey "dams:1|metadata.status.value" ; elody:optionsDistinctBy "metadata.status.value" ; elody:optionsMatchExact true ; elody:filterKind elody:SelectionFilter ]`),
+    );
+    const filters = fragment(file, "filtersForKeyword");
+    expect(filters).toContain('            value: "*"\n            distinct_by: "metadata.status.value"\n            match_exact: true');
+    expect(filters).toContain("          value\n          distinct_by\n          match_exact\n        }");
+  });
+});
+
+describe("the 0.3.0 fixture", () => {
+  it("conforms with the batch-3 terms and renders them", async () => {
+    const { VOCABULARY_PATH } = await import("../src/ontology.js");
+    const fixture = readFileSync(join(VOCABULARY_PATH, "..", "..", "tests", "fixtures", "ui", "aliases-and-defaults.ui.ttl"), "utf-8");
+    expect((await validateDeclaration(fixture)).issues.map(formatIssue)).toEqual([]);
+    const { entities, inputFields } = await readUiDeclaration(fixture);
+    const user = renderEntityFile(entities.find((entity) => entity.graphqlType === "User")!, "x");
+    expect(user).toContain("...vocabTeaserIntialValues");
+    expect(user).toContain("inputField(type: languageTypeField)");
+    expect(user).toContain("advancedFilterInputForRetrievingOptions");
+    expect(Object.keys(inputFields)).not.toContain("userLanguageField");
+  });
+});

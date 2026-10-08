@@ -19,6 +19,8 @@ export type UiProperty = {
   teaser: boolean;
   /** elody:alias: the GraphQL field name the value is read under, when not the key */
   alias?: string;
+  /** elody:clientInputField: the input field the client registers itself for editing this property */
+  clientInputField?: string;
   /** elody:detailOnly: read on the detail page only, not in the listing fragment */
   detailOnly: boolean;
   sortable: boolean;
@@ -60,6 +62,8 @@ export type UiFilter = {
   keyAsList: boolean;
   /** elody:parentFilterKey: the parentKey argument of a selection filter */
   parentKey?: string;
+  /** elody:optionsType & co: a selection filter fetches its options from the entities of a type */
+  options?: { type: string; key: string; matchExact: boolean; distinctBy?: string };
   label?: string;
   defaultValues: string[];
   defaultValueAsList: boolean;
@@ -169,6 +173,8 @@ export type UiPanel = {
   editable: boolean;
   /** elody:multipleColumns: canBeMultipleColumns(input: true) */
   multipleColumns: boolean;
+  /** elody:spread: hand-written fragments on WindowElementPanel spread after the fields */
+  spreads: string[];
   fields: string[];
 };
 
@@ -217,6 +223,8 @@ export type UiEntity = {
   detailFormatters?: boolean;
   /** elody:thumbnail: the card's picture, from an initial value or the primary media file */
   thumbnail?: { key?: string; fromMediafile?: boolean };
+  /** hand-written shared fragments spread into a block (elody:listingValuesSpread & co) */
+  spreads: { listingValues: string[]; detailValues: string[]; card: string[]; filters: string[] };
   dynamicFormConfigField?: string;
   portsField?: string;
   viewModes: UiViewMode[];

@@ -236,6 +236,9 @@ class Parse {
 
   /** The create form's widget for a property, to edit it on the detail page; none when Elody cannot write it. */
   private editWidget(node: string): string | undefined {
+    // the client registers the field itself
+    const client = this.r.value(node, elody("clientInputField"));
+    if (client) return client;
     // a typed-in IRI is a table of relations, which the detail page would show
     // instead of the related entity's label: it is entered in the create form only
     if (this.inversePredicate(node) && !this.r.node(node, sh("class"))) return undefined;
@@ -730,6 +733,12 @@ class Parse {
       relationValues: this.optionalFlag(subject, elody("relationValues")) ?? (this.legacy ? true : undefined),
       bulkOperationsFragment: this.optionalFlag(subject, elody("bulkOperations")) ?? (this.legacy ? true : undefined),
       thumbnail: this.thumbnail(r.node(subject, elody("thumbnail"))),
+      spreads: {
+        listingValues: r.literals(subject, elody("listingValuesSpread")),
+        detailValues: r.literals(subject, elody("detailValuesSpread")),
+        card: r.literals(subject, elody("cardSpread")),
+        filters: r.literals(subject, elody("filtersSpread")),
+      },
       // the legacy generator read the raw values on the detail page
       detailFormatters: this.optionalFlag(subject, elody("detailFormatters")) ?? (this.legacy ? false : undefined),
       dynamicFormConfigField: r.value(subject, elody("dynamicFormConfig")) || undefined,
@@ -782,6 +791,7 @@ class Parse {
     return {
       key,
       alias: r.value(node, elody("alias")) || undefined,
+      clientInputField: r.value(node, elody("clientInputField")) || undefined,
       detailOnly,
       sortLabelKey: r.value(node, elody("sortLabelKey")) || undefined,
       sortOrder: typeof sortOrder === "number" ? sortOrder : undefined,
@@ -863,6 +873,14 @@ class Parse {
       key: r.value(node, elody("key")),
       keyAsList: r.literal(node, elody("keyAsList")) !== false,
       parentKey: r.value(node, elody("parentFilterKey")) || undefined,
+      options: r.value(node, elody("optionsType"))
+        ? {
+            type: String(r.value(node, elody("optionsType"))),
+            key: String(r.value(node, elody("optionsKey")) ?? ""),
+            matchExact: r.literal(node, elody("optionsMatchExact")) === true,
+            distinctBy: r.value(node, elody("optionsDistinctBy")) || undefined,
+          }
+        : undefined,
       label: r.value(node, rdfs("label")),
       defaultValues,
       defaultValueAsList: r.literal(node, elody("defaultValueAsList")) === true,
@@ -1016,7 +1034,9 @@ class Parse {
     const key0 = this.keyOf(node);
     let inputType: string;
     const optionsFrom = r.node(node, elody("optionsFrom"));
-    if (optionsFrom) inputType = this.sourceField(node, key0, optionsFrom);
+    const clientField = r.value(node, elody("clientInputField"));
+    if (clientField) inputType = clientField;
+    else if (optionsFrom) inputType = this.sourceField(node, key0, optionsFrom);
     else if (this.inversePredicate(node) && !r.node(node, sh("class")))
       // no type to search: the IRI is typed in, as shui:IRIEditor does
       inputType = this.typedRelationField(node, key0);
@@ -1255,6 +1275,7 @@ class Parse {
         collapsed: r.literal(panel, elody("collapsed")) === true,
         editable,
         multipleColumns: r.literal(panel, elody("multipleColumns")) === true,
+        spreads: r.literals(panel, elody("spread")),
         fields: [
           ...(this.groupFields.get(panel) ?? []),
           ...(r.literal(panel, elody("showsUngrouped")) === true ? this.ungroupedFields : []),
@@ -1282,6 +1303,7 @@ class Parse {
       collapsed: r.literal(panel, elody("collapsed")) === true,
       editable,
       multipleColumns: r.literal(panel, elody("multipleColumns")) === true,
+      spreads: r.literals(panel, elody("spread")),
       fields,
     };
   }

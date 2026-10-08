@@ -158,10 +158,36 @@ const filterDefaultLiteral = (filter: M.UiFilter): string => {
 };
 
 export function renderFilters(entity: M.UiEntity, indent: number): string {
-  return renderFilterList(entity.filters, indent);
+  return renderFilterList(entity.filters, indent, entity.spreads.filters);
 }
 
-export function renderFilterList(filters: M.UiFilter[], indent: number): string {
+/** The option search of a selection filter: a text search on the options key, scoped to the type. */
+function renderFilterOptions(options: NonNullable<M.UiFilter["options"]>, indent: number): { args: string[]; fields: string[] } {
+  const args = [
+    `${pad(indent)}advancedFilterInputForRetrievingOptions: [`,
+    `${pad(indent + 2)}{`,
+    `${pad(indent + 4)}type: text`,
+    `${pad(indent + 4)}key: ["${options.key}"]`,
+    `${pad(indent + 4)}value: "*"`,
+    ...(options.distinctBy ? [`${pad(indent + 4)}distinct_by: "${options.distinctBy}"`] : []),
+    `${pad(indent + 4)}match_exact: ${options.matchExact}`,
+    `${pad(indent + 2)}}`,
+    `${pad(indent + 2)}{ type: type, value: "${options.type}" }`,
+    `${pad(indent)}]`,
+  ];
+  const fields = [
+    `${pad(indent)}advancedFilterInputForRetrievingOptions {`,
+    `${pad(indent + 2)}type`,
+    `${pad(indent + 2)}key`,
+    `${pad(indent + 2)}value`,
+    ...(options.distinctBy ? [`${pad(indent + 2)}distinct_by`] : []),
+    `${pad(indent + 2)}match_exact`,
+    `${pad(indent)}}`,
+  ];
+  return { args, fields };
+}
+
+export function renderFilterList(filters: M.UiFilter[], indent: number, spreads: string[] = []): string {
   const entries = filters.map((filter) => {
     const aliased = filter.alias ? `${filter.alias}: ` : "";
     if (filter.kind === "type")
@@ -173,7 +199,8 @@ export function renderFilterList(filters: M.UiFilter[], indent: number): string 
         `${pad(indent + 2)}}`,
       ].join("\n");
 
-    if (filter.kind === "selection") {
+    // a scoping selection filter (no label, no option search) is compact; a visible one reads like the other kinds
+    if (filter.kind === "selection" && !filter.label && !filter.options) {
       const key = filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`;
       const parent = filter.parentKey ? `, parentKey: "${filter.parentKey}"` : "";
       const selection = [
@@ -191,31 +218,29 @@ export function renderFilterList(filters: M.UiFilter[], indent: number): string 
       ].join("\n");
     }
 
+    const options = filter.options ? renderFilterOptions(filter.options, indent + 4) : undefined;
     const args = [
-      `type: ${filter.kind}`,
-      ...(filter.key ? [`key: ["${filter.key}"]`] : []),
-      ...(filter.label ? [`label: "${filter.label}"`] : []),
-      ...(filter.displayedByDefault ? ["isDisplayedByDefault: true"] : []),
+      `${pad(indent + 4)}type: ${filter.kind}`,
+      ...(filter.key ? [`${pad(indent + 4)}key: ["${filter.key}"]`] : []),
+      ...(filter.label ? [`${pad(indent + 4)}label: "${filter.label}"`] : []),
+      ...(filter.displayedByDefault ? [`${pad(indent + 4)}isDisplayedByDefault: true`] : []),
+      ...(options ? options.args : []),
     ];
     const selection = [
-      "type",
-      ...(filter.key ? ["key"] : []),
-      ...(filter.label ? ["label"] : []),
-      ...(filter.displayedByDefault ? ["isDisplayedByDefault"] : []),
-      ...(filter.tooltip ? ["tooltip(value: true)"] : []),
-      ...(filter.defaultValues.length > 0 || filter.defaultValueAsList ? [`defaultValue(value: ${filterDefaultLiteral(filter)})`] : []),
-      ...(filter.hidden ? ["hidden(value: true)"] : []),
+      `${pad(indent + 4)}type`,
+      ...(filter.key ? [`${pad(indent + 4)}key`] : []),
+      ...(filter.label ? [`${pad(indent + 4)}label`] : []),
+      ...(filter.displayedByDefault ? [`${pad(indent + 4)}isDisplayedByDefault`] : []),
+      ...(options ? options.fields : []),
+      ...(filter.tooltip ? [`${pad(indent + 4)}tooltip(value: true)`] : []),
+      ...(filter.defaultValues.length > 0 || filter.defaultValueAsList ? [`${pad(indent + 4)}defaultValue(value: ${filterDefaultLiteral(filter)})`] : []),
+      ...(filter.hidden ? [`${pad(indent + 4)}hidden(value: true)`] : []),
     ];
-    return [
-      `${pad(indent + 2)}${aliased}advancedFilter(`,
-      ...args.map((argument) => `${pad(indent + 4)}${argument}`),
-      `${pad(indent + 2)}) {`,
-      ...selection.map((field) => `${pad(indent + 4)}${field}`),
-      `${pad(indent + 2)}}`,
-    ].join("\n");
+    return [`${pad(indent + 2)}${aliased}advancedFilter(`, ...args, `${pad(indent + 2)}) {`, ...selection, `${pad(indent + 2)}}`].join("\n");
   });
 
-  return [`${pad(indent)}advancedFilters {`, ...entries, `${pad(indent)}}`].join("\n");
+  const spread = spreads.map((name) => `${pad(indent + 2)}...${name}`);
+  return [`${pad(indent)}advancedFilters {`, ...spread, ...entries, `${pad(indent)}}`].join("\n");
 }
 
 export function renderContextMenu(entity: M.UiEntity, indent: number): string {
@@ -524,6 +549,7 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
       }
       lines.push(`${pad(depth + 2)}}`);
     }
+    for (const spread of panel.spreads) lines.push(`${pad(depth + 2)}...${spread}`);
     lines.push(`${pad(depth)}}`);
     return lines.join("\n");
   };
@@ -674,6 +700,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   if (entity.portsField) minimal.push(entity.portsField === "ports" ? "    ports" : `    ports: ${entity.portsField}`);
   minimal.push("    intialValues {");
   if (entity.typePills) minimal.push("      ...typePillsIntialValues");
+  for (const spread of entity.spreads.listingValues) minimal.push(`      ...${spread}`);
   minimal.push(renderInitialValues(entity, 6, true, true));
   minimal.push("    }");
   if (readsRelationValues(entity, "listing")) minimal.push("    relationValues");
@@ -682,6 +709,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   const thumbnail = renderThumbnail(entity, 6);
   if (thumbnail) minimal.push(thumbnail);
   if (entity.typePills) minimal.push("      ...typePillsTeaserMetadata");
+  for (const spread of entity.spreads.card) minimal.push(`      ...${spread}`);
   const contextMenu = renderContextMenu(entity, 6);
   if (contextMenu) minimal.push(contextMenu);
   minimal.push(renderTeaserFields(entity, 6));
@@ -694,6 +722,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
     const full: string[] = [`  fragment full${type} on ${onType} {`];
     if (entity.detail.shapeDriven) full.push("    shapeFields");
     full.push("    intialValues {");
+    for (const spread of entity.spreads.detailValues) full.push(`      ...${spread}`);
     full.push(renderInitialValues(entity, 6, entity.detailFormatters !== false));
     full.push("    }");
     if (readsRelationValues(entity, "detail")) full.push("    relationValues");
