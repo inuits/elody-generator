@@ -170,7 +170,7 @@ type Filter = {
 };
 
 type FormField = { key: string; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; hidden?: boolean; clientField?: string };
-type Form = { queryName: string; label?: string; tabAlias?: string; fields: FormField[]; fieldsSpreads: string[]; copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string }[] }; submit?: { label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors: boolean } };
+type Form = { queryName: string; label?: string; tabAlias?: string; fields: FormField[]; fieldsSpreads: string[]; copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string }[] }; submit?: { alias?: string; label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors: boolean } };
 
 type Operation = {
   order?: number;
@@ -180,7 +180,7 @@ type Operation = {
   primary?: boolean;
   can: string[];
   context?: { mode?: string; selection?: string; tooltip?: string; requiresSameType?: boolean; minSelectedItems?: number; maxSelectedItems?: number };
-  modal?: { kind?: string; form?: string; relationType?: string; closeConfirmation?: boolean; permission?: string };
+  modal?: { kind?: string; form?: string; relationType?: string; closeConfirmation?: boolean; permission?: string; pickerNode?: string };
 };
 
 type FlowStep = {
@@ -197,6 +197,10 @@ type FlowStep = {
 type Flow = { queryName: string; label?: string; repeatable?: boolean; refetchOnFinish?: boolean; steps: FlowStep[]; finalize?: { fromStep: string; relationType: string } };
 /** an id-addressed document a modal loads by name (ProcessorConfigForm(id: $id)) */
 type FormSource = { queryName: string; field: string; withParent: boolean };
+
+type FieldsFragment = { name: string; fields: FormField[] };
+type ElementsFragment = { name: string; elements: Element[] };
+type ValuesFragment = { name: string; cardName?: string; fields: string[] };
 
 type ListQuery = { node?: string; name: string; filtersName?: string; filtersType?: string; results: { type: string; fragment: string }[]; filters: Filter[] };
 type Picker = ListQuery;
@@ -228,9 +232,17 @@ type Entity = {
   form?: Form;
   /** the forms the bulk operations and actions open, when these files hold them */
   forms: Form[];
+  /** list queries the type's documents name without a list element (the delete flow's) */
+  entityListQueries: string[];
   /** the guided flows (GetRepetitiveForm) and form sources in the file holding the listing fragment */
   flows: Flow[];
   formSources: FormSource[];
+  /** a GraphQL interface the subtypes share: filters, sort options and bulk operations without a listing */
+  interface?: boolean;
+  /** the fragments the file holds for the subtypes to spread */
+  fieldsFragments: FieldsFragment[];
+  elementsFragments: ElementsFragment[];
+  valuesFragments: ValuesFragment[];
   operations?: Operation[];
   customOperations: { name: string; operations: Operation[] }[];
   listQueries: ListQuery[];
@@ -256,6 +268,7 @@ export class Extractor {
   /** list query nodes by query and filters document: one node per pair, the entities document with the first */
   private readonly listQueryNodes = new Map<string, string>();
   private readonly pickerNodes = new Map<string, string>();
+  private readonly declaredCustomOps = new Set<string>();
   /** the form sources found in any file: an action naming one references it as a source, not a form */
   private readonly formSourceNames = new Set<string>();
   private readonly queriesWithResults = new Set<string>();
@@ -303,16 +316,38 @@ export class Extractor {
       .map((d) => d.name.slice("minimal".length))
       .filter((name) => (this.fragment(`minimal${name}`)?.typeCondition.name.value ?? "").length > 0)
       // a listing core (minimal<X>Core) belongs to the type that spreads it, not a type of its own
-      .filter((name) => !(name.endsWith("Core") && this.fragment(`minimal${name.slice(0, -"Core".length)}`)));
+      .filter((name) => !(name.endsWith("Core") && this.fragment(`minimal${name.slice(0, -"Core".length)}`)))
+      .concat(this.interfaceTypes());
+  }
+
+  /** The GraphQL interfaces the subtypes share: filters, sort options or bulk operations named after a type without a listing fragment. */
+  private interfaceTypes(): string[] {
+    const names = new Set<string>();
+    for (const d of this.definitions.values()) {
+      if (d.kind !== "fragment") continue;
+      const m = /^filtersFor(\w+)$/.exec(d.name) ?? /^(\w+)(BulkOperations|SortOptions)$/.exec(d.name);
+      if (!m) continue;
+      const name = m[1].charAt(0).toUpperCase() + m[1].slice(1);
+      const on = (d.node as FragmentDefinitionNode).typeCondition.name.value;
+      if (on === name && !this.fragment(`minimal${name}`)) names.add(name);
+    }
+    return [...names];
+  }
+
+  /** The fragment a type's file is known by: its listing, or for an interface its filters, bulk operations or sort options. */
+  private anchorOf(name: string): FragmentDefinitionNode | undefined {
+    const low = name.charAt(0).toLowerCase() + name.slice(1);
+    return this.fragment(`minimal${name}`) ?? this.fragment(`filtersFor${name}`) ?? this.fragment(`${low}BulkOperations`) ?? this.fragment(`${low}SortOptions`);
   }
 
   entity(name: string): Entity {
-    const minimal = this.fragment(`minimal${name}`)!;
+    const minimal = this.fragment(`minimal${name}`);
     const full = this.fragment(`full${name}`);
-    const graphqlType = minimal.typeCondition.name.value;
+    const anchor = this.anchorOf(name)!;
+    const graphqlType = anchor.typeCondition.name.value;
     // a split listing: minimal<X> spreads minimal<X>Core, which holds the values and the card
     const coreName = `minimal${name}Core`;
-    const core = spreads(minimal.selectionSet).includes(coreName) ? this.fragment(coreName) : undefined;
+    const core = minimal && spreads(minimal.selectionSet).includes(coreName) ? this.fragment(coreName) : undefined;
     const listing = core ?? minimal;
     const entity: Entity = {
       documentName: name,
@@ -332,8 +367,13 @@ export class Extractor {
       forms: [],
       flows: [],
       formSources: [],
+      entityListQueries: [],
+      fieldsFragments: [],
+      elementsFragments: [],
+      valuesFragments: [],
     };
     const where = name;
+    if (!minimal) entity.interface = true;
 
     // initial values: the detail fragment's order, the listing's values first when the detail lacks them
     const minimalValues = child(listing, "intialValues");
@@ -459,7 +499,7 @@ export class Extractor {
       return ia - ib;
     });
 
-    for (const field of [...fields(listing.selectionSet), ...(core ? fields(minimal.selectionSet) : [])]) {
+    for (const field of [...fields(listing?.selectionSet), ...(core ? fields(minimal?.selectionSet) : [])]) {
       if (["intialValues", "relationValues", "allowedViewModes", "teaserMetadata"].includes(field.name.value)) continue;
       if (alias(field) === "dynamicFormConfig") entity.dynamicFormConfig = field.name.value;
       else if (alias(field) === "ports") entity.ports = field.name.value;
@@ -486,17 +526,7 @@ export class Extractor {
       const positional = columnIndex === 0 ? "column" : `column${columnIndex + 1}`;
       const given = column.alias?.value ?? "column";
       const columnAlias = given !== positional ? given : undefined;
-      const elements: Element[] = [];
-      for (const element of fields(child(column, "elements")?.selectionSet)) {
-        if (element.name.value === "windowElement") elements.push(this.window(element, where, entity, byAlias));
-        else if (element.name.value === "entityListElement") elements.push(this.list(element, where, entity));
-        else if (element.name.value === "shaclShapeElement")
-          elements.push({ kind: "shaclShape", label: input(child(element, "label")), fieldsKey: input(child(element, "fieldsKey")), collapsed: input(child(element, "isCollapsed")) === "true" });
-        else if (element.name.value === "markdownViewerElement") {
-          const content = child(element, "markdownContent");
-          elements.push({ kind: "markdown", label: input(child(element, "label")), metadataKey: content ? str(content, "metadataKey") : undefined, collapsed: input(child(element, "isCollapsed")) === "true" });
-        } else this.note(`${where}: detail element ${element.name.value} is not rendered by the generator; left out`);
-      }
+      const elements = this.elementsOf(child(column, "elements")?.selectionSet, where, entity, byAlias);
       const elementSpreads = spreads(child(column, "elements")?.selectionSet);
       if (elements.length || elementSpreads.length) entity.columns.push({ alias: columnAlias, size, elements, elementSpreads });
       else this.note(`${where}: a column holds nothing the generator renders; left out`);
@@ -505,13 +535,13 @@ export class Extractor {
       for (const field of fields(full.selectionSet)) {
         if (["intialValues", "relationValues", "entityView"].includes(field.name.value)) continue;
         if (field.name.value === "shapeFields") entity.shapeDriven = true;
-        else if (field.name.value === "deleteQueryOptions") entity.deleteOptions = this.deleteOptions(field, where);
+        else if (field.name.value === "deleteQueryOptions") entity.deleteOptions = this.deleteOptions(field, where, entity);
         else entity.fragmentFields.push(alias(field));
       }
 
     // relationValues: the generator derives them for the detail page (a relation, a list, a context menu), never for the
     // listing; say it when the client has them elsewhere
-    const listingHas = [...fields(listing.selectionSet), ...fields(minimal.selectionSet)].some((f) => f.name.value === "relationValues");
+    const listingHas = [...fields(listing?.selectionSet), ...fields(minimal?.selectionSet)].some((f) => f.name.value === "relationValues");
     const detailHas = full ? fields(full.selectionSet).some((f) => f.name.value === "relationValues") : false;
     if (listingHas) {
       entity.relationValues = true;
@@ -571,7 +601,7 @@ export class Extractor {
     const form = this.operation(`Get${name}CreateForm`);
     if (form) entity.form = this.formWithFields(this.form(form, `Get${name}CreateForm`, where), where);
     const bulk = this.fragment(`${name.charAt(0).toLowerCase() + name.slice(1)}BulkOperations`);
-    if (bulk) entity.operations = this.operations(child(child(bulk, "bulkOperationOptions"), "options"), where);
+    if (bulk) entity.operations = this.operations(child(child(bulk, "bulkOperationOptions"), "options"), where, entity);
     // the forms the operations open: declared when these files hold them as dynamic forms
     const opened = [...(entity.operations ?? []), ...entity.customOperations.flatMap((c) => c.operations)]
       .map((op) => op.modal?.form)
@@ -585,9 +615,9 @@ export class Extractor {
     }
     // the type's other create forms: every Get*CreateForm dynamic form in the file that holds its listing fragment
     // (a listing variant of a type, minimal<X>InHomeScreen, leaves them to the type itself)
-    const file = entity.documentName === entity.graphqlType ? this.definitions.get(`minimal${name}`)?.file : undefined;
+    const file = entity.documentName === entity.graphqlType ? this.definitions.get(anchor.name.value)?.file : undefined;
     for (const definition of this.definitions.values()) {
-      if (definition.kind !== "query" || definition.file !== file || !/CreateForm$/.test(definition.name)) continue;
+      if (definition.kind !== "query" || definition.file !== file || !/Form$/.test(definition.name)) continue;
       if (definition.name === entity.form?.queryName || entity.forms.some((f) => f.queryName === definition.name)) continue;
       const query = definition.node as OperationDefinitionNode;
       if (!fields(query.selectionSet).some((f) => f.name.value === "GetDynamicForm")) continue;
@@ -606,6 +636,59 @@ export class Extractor {
         this.formSourceNames.add(definition.name);
       }
     }
+    // the fragments the file holds for other types to spread: on FormFields, on EntityViewElements, on IntialValues (+ teaserMetadata)
+    const cardTwins = new Map<string, FragmentDefinitionNode>();
+    for (const definition of this.definitions.values()) {
+      if (definition.kind !== "fragment" || definition.file !== file) continue;
+      const fragment = definition.node as FragmentDefinitionNode;
+      if (fragment.typeCondition.name.value === "teaserMetadata") cardTwins.set(definition.name, fragment);
+    }
+    for (const definition of this.definitions.values()) {
+      if (definition.kind !== "fragment" || definition.file !== file) continue;
+      const fragment = definition.node as FragmentDefinitionNode;
+      const on = fragment.typeCondition.name.value;
+      if (on === "FormFields") {
+        const sharedFields = fields(fragment.selectionSet).filter((f) => f.name.value === "metaData").map((f) => this.formField(f, `${where} fragment ${definition.name}`));
+        for (const f of fields(fragment.selectionSet)) if (f.name.value !== "metaData") this.note(`${where}: fragment ${definition.name} field ${f.name.value} has no term; left out`);
+        entity.fieldsFragments.push({ name: definition.name, fields: sharedFields });
+      } else if (on === "EntityViewElements") {
+        const elements = this.elementsOf(fragment.selectionSet, `${where} ${definition.name}`, entity, byAlias);
+        if (elements.length) entity.elementsFragments.push({ name: definition.name, elements });
+        else this.note(`${where}: fragment ${definition.name} holds nothing the generator renders; it stays hand-written`);
+      } else if (on === "IntialValues") {
+        const keys: string[] = [];
+        for (const field of fields(fragment.selectionSet)) {
+          if (field.name.value !== "keyValue") {
+            this.note(`${where}: fragment ${definition.name} field ${alias(field)} is not a keyValue; left out`);
+            continue;
+          }
+          const before = new Set(entity.properties);
+          add(field, false);
+          const property = entity.properties.find((p) => (p.alias ?? p.key) === alias(field) && !before.has(p)) ?? byAlias.get(alias(field));
+          if (property) {
+            // read by the fragment only: neither the listing nor the detail page of this type
+            if (!before.has(property)) property.inDetail = false;
+            keys.push(property.key);
+          }
+        }
+        // the twin on teaserMetadata (relatedWorksIntialValues / relatedWorksTeaserMetadata) labels the same fields on a card
+        const twinName = definition.name.replace(/IntialValues$/, "TeaserMetadata");
+        const twin = twinName !== definition.name ? cardTwins.get(twinName) : undefined;
+        if (twin) {
+          cardTwins.delete(twinName);
+          for (const field of fields(twin.selectionSet)) {
+            if (field.name.value !== "metaData") continue;
+            const key = input(child(field, "key")) ?? alias(field);
+            const property = entity.properties.find((p) => keys.includes(p.key) && ((p.alias ?? p.key) === alias(field) || p.key === key));
+            if (!property) continue;
+            property.labelKey = input(child(field, "label")) ?? property.labelKey;
+            if (key !== (property.alias ?? property.key)) property.cardKey = key;
+          }
+        }
+        entity.valuesFragments.push({ name: definition.name, cardName: twin ? twinName : undefined, fields: keys });
+      }
+    }
+    for (const name of cardTwins.keys()) this.note(`${where}: fragment ${name} on teaserMetadata has no IntialValues twin; left out`);
     for (const [suffix, document] of [["Entities", "entities"], ["Filters", "filters"], ["SortOptions", "sortOptions"], ["BulkOperations", "bulkOperations"]] as const)
       if (this.operation(`Get${name}${suffix}`)) entity.documents.push(document);
     return entity;
@@ -663,6 +746,22 @@ export class Extractor {
       });
     }
     return menu;
+  }
+
+  /** The elements of a column or of a shared elements fragment. */
+  private elementsOf(selectionSet: SelectionSetNode | undefined, where: string, entity: Entity, byAlias: Map<string, Property>): Element[] {
+    const elements: Element[] = [];
+    for (const element of fields(selectionSet)) {
+      if (element.name.value === "windowElement") elements.push(this.window(element, where, entity, byAlias));
+      else if (element.name.value === "entityListElement") elements.push(this.list(element, where, entity));
+      else if (element.name.value === "shaclShapeElement")
+        elements.push({ kind: "shaclShape", label: input(child(element, "label")), fieldsKey: input(child(element, "fieldsKey")), collapsed: input(child(element, "isCollapsed")) === "true" });
+      else if (element.name.value === "markdownViewerElement") {
+        const content = child(element, "markdownContent");
+        elements.push({ kind: "markdown", label: input(child(element, "label")), metadataKey: content ? str(content, "metadataKey") : undefined, collapsed: input(child(element, "isCollapsed")) === "true" });
+      } else this.note(`${where}: detail element ${element.name.value} is not rendered by the generator; left out`);
+    }
+    return elements;
   }
 
   private window(element: FieldNode, where: string, entity: Entity, byAlias: Map<string, Property>): Element {
@@ -804,7 +903,7 @@ export class Extractor {
     const entities = query ? fields(query.selectionSet).find((f) => f.name.value === "Entities") : undefined;
     const inline = (child(entities, "results")?.selectionSet?.selections ?? []).filter((s): s is InlineFragmentNode => s.kind === Kind.INLINE_FRAGMENT);
     // results selected inline (fields, not a fragment spread) cannot be declared: the list document stays hand-written
-    if (inline.every((on) => spreads(on.selectionSet).length > 0))
+    if (inline.every((on) => on.selectionSet.selections.every((x) => x.kind === Kind.FRAGMENT_SPREAD) && spreads(on.selectionSet).length > 0))
       for (const on of inline) results.push({ type: on.typeCondition?.name.value ?? "", fragment: spreads(on.selectionSet)[0] ?? "" });
     else if (query) this.note(`${where}: picker ${name} selects its results inline; only its filters document is declared`);
     if (!query) this.note(`${where}: picker ${name} is not in these files; declared without results`);
@@ -853,7 +952,8 @@ export class Extractor {
   }
 
   private customOperations(name: string, where: string, entity: Entity) {
-    if (entity.customOperations.some((c) => c.name === name)) return;
+    // a set several types' elements name is declared once, under the first type
+    if (entity.customOperations.some((c) => c.name === name) || this.declaredCustomOps.has(name)) return;
     const query = this.operation(name);
     if (!query) {
       this.note(`${where}: custom bulk operations ${name} are not in these files; the element names them, nothing is generated`);
@@ -862,9 +962,12 @@ export class Extractor {
     }
     const custom = fields(query.selectionSet).find((f) => f.name.value === "CustomBulkOperations");
     const options = child(child(custom, "bulkOperationOptions"), "options");
-    const operations = this.operations(options, `${where} ${name}`);
+    const operations = this.operations(options, `${where} ${name}`, entity);
     const declaredEmpty = list(options ? argument(options, "input") : undefined).length === 0;
-    if (operations.length || declaredEmpty) entity.customOperations.push({ name, operations });
+    if (operations.length || declaredEmpty) {
+      entity.customOperations.push({ name, operations });
+      this.declaredCustomOps.add(name);
+    }
     else {
       this.note(`${where}: custom bulk operations ${name} declare no operation the vocabulary knows; the element names them, nothing is generated`);
       this.stubs.add(name);
@@ -982,11 +1085,17 @@ export class Extractor {
   }
 
   /** deleteQueryOptions: the labels and documents of the delete flow. */
-  private deleteOptions(block: FieldNode, where: string): DeleteOptions {
+  private deleteOptions(block: FieldNode, where: string, entity: Entity): DeleteOptions {
     const value = (name: string) => input(child(block, name));
     const types = (name: string) => list(child(block, name) ? argument(child(block, name)!, "input") : undefined).map((v) => scalar(v) ?? "");
     const known = ["deleteEntityLabel", "customQueryDeleteRelations", "customQueryDeleteRelationsFilters", "customQueryEntityTypes", "deleteRelationsLabel", "customQueryBlockingRelations", "customQueryBlockingRelationsFilters", "customQueryBlockingEntityTypes", "blockingRelationsLabel"];
     for (const field of fields(block.selectionSet)) if (!known.includes(field.name.value)) this.note(`${where}: deleteQueryOptions field ${field.name.value} has no term; left out`);
+    // the documents the flow names are list queries of the type: their filters documents are declared
+    for (const [query, filters] of [["customQueryDeleteRelations", "customQueryDeleteRelationsFilters"], ["customQueryBlockingRelations", "customQueryBlockingRelationsFilters"]])
+      if (value(query) && value(filters) && this.operation(value(filters)!)) {
+        const node = this.listQuery(value(query)!, value(filters), where, entity);
+        if (!entity.entityListQueries.includes(node)) entity.entityListQueries.push(node);
+      }
     return {
       deleteEntityLabel: value("deleteEntityLabel"),
       deleteRelationsQuery: value("customQueryDeleteRelations"),
@@ -1028,31 +1137,10 @@ export class Extractor {
     for (const field of fields(tab?.selectionSet))
       if (!["formFields", "copyFromParent"].includes(field.name.value)) this.note(`${where}: form ${queryName} tab field ${field.name.value} has no term; left out`);
     for (const field of fields(child(tab, "formFields")?.selectionSet)) {
-      if (field.name.value === "metaData") {
-        const widget = child(field, "inputField");
-        const type = widget ? (str(widget, "type") ?? "baseTextField") : "baseTextField";
-        const base = BASE_FIELDS[type];
-        const key = input(child(field, "key")) ?? alias(field);
-        const multilingual = input(child(field, "isMultilingual")) === "true";
-        const validation = this.validation(child(widget, "validation"), `${where} form ${queryName} field ${key}`);
-        form.fields.push({
-          key,
-          alias: alias(field) !== key ? alias(field) : undefined,
-          label: input(child(field, "label")),
-          editor: multilingual ? (base?.editor === "shui:TextAreaEditor" ? "shui:TextAreaWithLangEditor" : "shui:TextFieldWithLangEditor") : base?.editor,
-          datatype: base?.datatype,
-          single: true,
-          required: validation.required,
-          validationRule: validation.rule,
-          validationValue: validation.value,
-          validationRelationType: validation.relationType,
-          validationAmount: validation.amount,
-          validationExact: validation.exact,
-          hidden: child(field, "hiddenField") ? true : undefined,
-          clientField: base ? undefined : type,
-        });
-      } else if (field.name.value === "action") {
+      if (field.name.value === "metaData") form.fields.push(this.formField(field, `${where} form ${queryName}`));
+      else if (field.name.value === "action") {
         form.submit = {
+          alias: alias(field) !== "createAction" ? alias(field) : undefined,
           label: input(child(field, "label")),
           icon: input(child(field, "icon")),
           actionQuery: input(child(field, "actionQuery")),
@@ -1066,7 +1154,33 @@ export class Extractor {
     return form;
   }
 
-  private operations(options: FieldNode | undefined, where: string): Operation[] {
+  /** One form field: its widget, validation and hidden flag. */
+  private formField(field: FieldNode, where: string): FormField {
+    const widget = child(field, "inputField");
+    const type = widget ? (str(widget, "type") ?? "baseTextField") : "baseTextField";
+    const base = BASE_FIELDS[type];
+    const key = input(child(field, "key")) ?? alias(field);
+    const multilingual = input(child(field, "isMultilingual")) === "true";
+    const validation = this.validation(child(widget, "validation"), `${where} field ${key}`);
+    return {
+      key,
+      alias: alias(field) !== key ? alias(field) : undefined,
+      label: input(child(field, "label")),
+      editor: multilingual ? (base?.editor === "shui:TextAreaEditor" ? "shui:TextAreaWithLangEditor" : "shui:TextFieldWithLangEditor") : base?.editor,
+      datatype: base?.datatype,
+      single: true,
+      required: validation.required,
+      validationRule: validation.rule,
+      validationValue: validation.value,
+      validationRelationType: validation.relationType,
+      validationAmount: validation.amount,
+      validationExact: validation.exact,
+      hidden: child(field, "hiddenField") ? true : undefined,
+      clientField: base ? undefined : type,
+    };
+  }
+
+  private operations(options: FieldNode | undefined, where: string, entity: Entity): Operation[] {
     const result: Operation[] = [];
     for (const entry of list(options ? argument(options, "input") : undefined)) {
       if (entry.kind !== Kind.OBJECT) continue;
@@ -1101,15 +1215,17 @@ export class Extractor {
         const forms = objectField(modal, "formQueries") ?? objectField(modal, "formQuery");
         if (objectField(modal, "formQuery")) this.note(`${where}: a bulk operation modal uses formQuery (singular), the old form; declared as a form reference`);
         const close = scalar(objectField(modal, "askForCloseConfirmation"));
+        const pickerList = scalar(objectField(modal, "customQueryEntityPickerList"));
         operation.modal = {
           kind: this.instance("ModalKind", scalar(objectField(modal, "typeModal")), `${where} bulk operation`),
           form: scalar(list(forms)[0]),
           relationType: scalar(objectField(modal, "formRelationType")),
           closeConfirmation: close === undefined ? undefined : close === "true",
           permission: this.instance("Permission", scalar(objectField(modal, "neededPermission")), `${where} bulk operation`),
+          pickerNode: pickerList ? this.picker(pickerList, scalar(objectField(modal, "customQueryEntityPickerListFilters")), `${where} bulk operation`, entity) : undefined,
         };
         for (const f of modal.fields)
-          if (!["typeModal", "formQueries", "formQuery", "formRelationType", "askForCloseConfirmation", "neededPermission"].includes(f.name.value))
+          if (!["typeModal", "formQueries", "formQuery", "formRelationType", "askForCloseConfirmation", "neededPermission", "customQueryEntityPickerList", "customQueryEntityPickerListFilters"].includes(f.name.value))
             this.note(`${where}: bulk operation modal field ${f.name.value} has no term; left out`);
       }
       result.push(operation);
@@ -1267,6 +1383,7 @@ export class Extractor {
       if (op.modal.relationType) modal.push(`      elody:formRelationType ${q(op.modal.relationType)} ;`);
       if (op.modal.closeConfirmation !== undefined) modal.push(`      elody:closeConfirmation ${op.modal.closeConfirmation} ;`);
       if (op.modal.permission) modal.push(`      elody:permission ${op.modal.permission} ;`);
+      if (op.modal.pickerNode) modal.push(`      elody:picker ui:${op.modal.pickerNode} ;`);
       modal[modal.length - 1] = modal[modal.length - 1].replace(/ ;$/, " ] ;");
       lines.push(`    elody:modal`, ...modal);
     }
@@ -1303,6 +1420,74 @@ export class Extractor {
     return l.join("\n");
   }
 
+  /** The node of one detail element (a window with its panels, a list, ...), numbered in its column or fragment. */
+  private elementNode(element: Element, e: number, name: string, panelNodes: string[], panelIds: Set<string>): string {
+          if (element.kind === "window") {
+      const panels = element.panels.map((panel) => {
+        let id = `ui:${name}Ui-${panel.alias}`;
+        // two windows may both hold an unaliased panel: the second gets a numbered id
+        for (let n = 2; panelIds.has(id); n++) id = `ui:${name}Ui-${panel.alias}-${n}`;
+        panelIds.add(id);
+        const p: string[] = [`${id}`, `  a elody:Panel ;`, `  rdfs:label ${q(panel.label ?? "")} ;`, `  sh:order 1 ;`, `  elody:alias ${q(panel.alias)} ;`];
+        p.push(`  elody:collapsed ${panel.collapsed} ;`);
+        if (!panel.editable) p.push(`  dash:readOnly true ;`);
+        if (panel.multipleColumns !== undefined) p.push(`  elody:multipleColumns ${panel.multipleColumns} ;`);
+        if (panel.can) p.push(`  elody:can ${q(panel.can)} ;`);
+        for (const s of panel.spreads) p.push(`  elody:spread ${q(s)} ;`);
+        p.push(`  elody:panelKind ${panel.kind ?? "elody:MetadataPanel"} ;`);
+        if (panel.fields.length) p.push(`  elody:field ${panel.fields.map((f) => `em:${f}`).join(" , ")} ;`);
+        if (panel.elements.length)
+          p.push(`  elody:element`, panel.elements.map((element, i) => (element.kind === "list" ? this.listElementNode(element, i + 1, "    ") : "")).filter(Boolean).join(" ,\n") + " ;");
+        p[p.length - 1] = p[p.length - 1].replace(/ ;$/, " .");
+        panelNodes.push(p.join("\n"));
+        return id;
+      });
+      const w = [`      [ a elody:WindowElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`];
+      if (element.alias) w.push(`      elody:alias ${q(element.alias)} ;`);
+      if (element.expandButton !== undefined) w.push(`      elody:expandButton ${element.expandButton} ;`);
+      if (element.editButton) w.push(`      elody:editButton true ;`);
+      if (element.hideInHistory) w.push(`      elody:hideInHistory true ;`);
+      if (panels.length) w.push(`      elody:panel ${panels.join(" , ")} ;`);
+      w[w.length - 1] = w[w.length - 1].replace(/ ;$/, " ]");
+      return w.join("\n");
+    }
+    if (element.kind === "shaclShape") {
+      const s = [`      [ a elody:ShaclShapeElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ;`];
+      if (element.fieldsKey) s.push(`      elody:fieldsKey ${q(element.fieldsKey)} ;`);
+      s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
+      return s.join("\n");
+    }
+    if (element.kind === "markdown") {
+      const s = [`      [ a elody:MarkdownElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ;`];
+      if (element.metadataKey) s.push(`      elody:metadataKey ${q(element.metadataKey)} ;`);
+      s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
+      return s.join("\n");
+    }
+    return this.listElementNode(element, e + 1, "      ");
+  }
+
+  /** The property shape of one form field. */
+  private formFieldNode(field: FormField, i: number): string {
+        const s = [`      [ sh:path em:${field.key} ;`];
+    if (field.label) s.push(`      sh:name ${q(field.label.split(".").pop() ?? field.key)}@en ;`);
+    s.push(`      sh:order ${i + 1} ;`);
+    if (field.alias) s.push(`      elody:alias ${q(field.alias)} ;`);
+    if (field.datatype) s.push(`      sh:datatype ${field.datatype} ;`);
+    s.push(`      sh:maxCount 1 ;`);
+    if (field.required) s.push(`      sh:minCount 1 ;`);
+    if (field.validationRule) s.push(`      elody:validationRule ${q(field.validationRule)} ;`);
+    if (field.validationValue !== undefined) s.push(`      elody:validationValue ${q(field.validationValue)} ;`);
+    if (field.validationRelationType) s.push(`      elody:validationRelationType ${q(field.validationRelationType)} ;`);
+    if (field.validationAmount !== undefined) s.push(`      elody:validationAmount ${field.validationAmount} ;`);
+    if (field.validationExact !== undefined) s.push(`      elody:validationExact ${field.validationExact} ;`);
+    if (field.hidden) s.push(`      dash:hidden true ;`);
+    if (field.editor) s.push(`      shui:editor ${field.editor} ;`);
+    if (field.clientField) s.push(`      elody:clientInputField ${q(field.clientField)} ;`);
+    if (field.label) s.push(`      elody:labelKey ${q(field.label)} ;`);
+    s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
+    return s.join("\n");
+  }
+
   private writeEntity(entity: Entity, formNodes: Set<string>): string {
     const name = entity.documentName;
     const node = `ui:${name}Ui`;
@@ -1313,7 +1498,9 @@ export class Extractor {
     if (entity.typePills) out.push(`  elody:typePills true ;`);
     if (entity.relationValues !== undefined) out.push(`  elody:relationValues ${entity.relationValues} ;`);
     if (entity.readsPermissions) out.push(`  elody:readsPermissions true ;`);
+    if (entity.interface) out.push(`  elody:interface true ;`);
     if (entity.listingCore) out.push(`  elody:listingCore true ;`);
+    if (entity.entityListQueries.length) out.push(`  elody:listQuery ${entity.entityListQueries.map((n) => `ui:${n}`).join(" , ")} ;`);
     if (entity.deleteOptions) {
       const d = entity.deleteOptions;
       const parts = [
@@ -1351,56 +1538,24 @@ export class Extractor {
     // the detail layout
     const panelNodes: string[] = [];
     const panelIds = new Set<string>();
+    // the fragments the file holds for other types
+    for (const fragment of entity.fieldsFragments) {
+      const shapes = fragment.fields.map((field, i) => this.formFieldNode(field, i));
+      out.push(`  elody:fieldsFragment`, `    [ elody:fragmentName ${q(fragment.name)} ;`, `    elody:shape`, ...(shapes.length ? [`      [ sh:property`, shapes.join(" ,\n").replace(/^/gm, "  ") + " ] ] ;"] : ["      [ ] ] ;"]));
+    }
+    for (const fragment of entity.elementsFragments) {
+      const nodes = fragment.elements.map((element, e) => this.elementNode(element, e, name, panelNodes, panelIds));
+      out.push(`  elody:elementsFragment`, `    [ elody:fragmentName ${q(fragment.name)} ;`, `    elody:element`, nodes.join(" ,\n") + " ] ;");
+    }
+    for (const fragment of entity.valuesFragments)
+      out.push(`  elody:valuesFragment`, `    [ elody:fragmentName ${q(fragment.name)} ;${fragment.cardName ? ` elody:cardFragmentName ${q(fragment.cardName)} ;` : ""} elody:field ${fragment.fields.map((f) => `em:${f}`).join(" , ")} ] ;`);
     if (entity.columns.length) {
       const columns = entity.columns.map((column, c) => {
         const lines = [`    [ sh:order ${c + 1} ;`];
         if (column.alias) lines.push(`    elody:alias ${q(column.alias)} ;`);
         if (column.size) lines.push(`    elody:size ${column.size} ;`);
         for (const spread of column.elementSpreads) lines.push(`    elody:elementSpread ${q(spread)} ;`);
-        const elements = column.elements.map((element, e) => {
-          if (element.kind === "window") {
-            const panels = element.panels.map((panel) => {
-              let id = `ui:${name}Ui-${panel.alias}`;
-              // two windows may both hold an unaliased panel: the second gets a numbered id
-              for (let n = 2; panelIds.has(id); n++) id = `ui:${name}Ui-${panel.alias}-${n}`;
-              panelIds.add(id);
-              const p: string[] = [`${id}`, `  a elody:Panel ;`, `  rdfs:label ${q(panel.label ?? "")} ;`, `  sh:order 1 ;`, `  elody:alias ${q(panel.alias)} ;`];
-              p.push(`  elody:collapsed ${panel.collapsed} ;`);
-              if (!panel.editable) p.push(`  dash:readOnly true ;`);
-              if (panel.multipleColumns !== undefined) p.push(`  elody:multipleColumns ${panel.multipleColumns} ;`);
-              if (panel.can) p.push(`  elody:can ${q(panel.can)} ;`);
-              for (const s of panel.spreads) p.push(`  elody:spread ${q(s)} ;`);
-              p.push(`  elody:panelKind ${panel.kind ?? "elody:MetadataPanel"} ;`);
-              if (panel.fields.length) p.push(`  elody:field ${panel.fields.map((f) => `em:${f}`).join(" , ")} ;`);
-              if (panel.elements.length)
-                p.push(`  elody:element`, panel.elements.map((element, i) => (element.kind === "list" ? this.listElementNode(element, i + 1, "    ") : "")).filter(Boolean).join(" ,\n") + " ;");
-              p[p.length - 1] = p[p.length - 1].replace(/ ;$/, " .");
-              panelNodes.push(p.join("\n"));
-              return id;
-            });
-            const w = [`      [ a elody:WindowElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`];
-            if (element.alias) w.push(`      elody:alias ${q(element.alias)} ;`);
-            if (element.expandButton !== undefined) w.push(`      elody:expandButton ${element.expandButton} ;`);
-            if (element.editButton) w.push(`      elody:editButton true ;`);
-            if (element.hideInHistory) w.push(`      elody:hideInHistory true ;`);
-            if (panels.length) w.push(`      elody:panel ${panels.join(" , ")} ;`);
-            w[w.length - 1] = w[w.length - 1].replace(/ ;$/, " ]");
-            return w.join("\n");
-          }
-          if (element.kind === "shaclShape") {
-            const s = [`      [ a elody:ShaclShapeElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ;`];
-            if (element.fieldsKey) s.push(`      elody:fieldsKey ${q(element.fieldsKey)} ;`);
-            s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
-            return s.join("\n");
-          }
-          if (element.kind === "markdown") {
-            const s = [`      [ a elody:MarkdownElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ;`];
-            if (element.metadataKey) s.push(`      elody:metadataKey ${q(element.metadataKey)} ;`);
-            s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
-            return s.join("\n");
-          }
-          return this.listElementNode(element, e + 1, "      ");
-        });
+        const elements = column.elements.map((element, e) => this.elementNode(element, e, name, panelNodes, panelIds));
         if (elements.length) lines.push(`    elody:element`, elements.join(" ,\n") + " ]");
         else lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " ]");
         return lines.join("\n");
@@ -1496,29 +1651,11 @@ export class Extractor {
         ];
         lines.push(`  elody:copyFromParent [ ${parts.join(" ; ")} ] ;`);
       }
-      const shapeFields = f.fields.map((field, i) => {
-        const s = [`      [ sh:path em:${field.key} ;`];
-        if (field.label) s.push(`      sh:name ${q(field.label.split(".").pop() ?? field.key)}@en ;`);
-        s.push(`      sh:order ${i + 1} ;`);
-        if (field.alias) s.push(`      elody:alias ${q(field.alias)} ;`);
-        if (field.datatype) s.push(`      sh:datatype ${field.datatype} ;`);
-        s.push(`      sh:maxCount 1 ;`);
-        if (field.required) s.push(`      sh:minCount 1 ;`);
-        if (field.validationRule) s.push(`      elody:validationRule ${q(field.validationRule)} ;`);
-        if (field.validationValue !== undefined) s.push(`      elody:validationValue ${q(field.validationValue)} ;`);
-        if (field.validationRelationType) s.push(`      elody:validationRelationType ${q(field.validationRelationType)} ;`);
-        if (field.validationAmount !== undefined) s.push(`      elody:validationAmount ${field.validationAmount} ;`);
-        if (field.validationExact !== undefined) s.push(`      elody:validationExact ${field.validationExact} ;`);
-        if (field.hidden) s.push(`      dash:hidden true ;`);
-        if (field.editor) s.push(`      shui:editor ${field.editor} ;`);
-        if (field.clientField) s.push(`      elody:clientInputField ${q(field.clientField)} ;`);
-        if (field.label) s.push(`      elody:labelKey ${q(field.label)} ;`);
-        s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
-        return s.join("\n");
-      });
+      const shapeFields = f.fields.map((field, i) => this.formFieldNode(field, i));
       lines.push(`  elody:shape`, ...(shapeFields.length ? [`    [ sh:property`, shapeFields.join(" ,\n") + " ] ;"] : ["    [ ] ;"]));
       if (f.submit) {
         const s = [`    [ rdfs:label ${q(f.submit.label ?? "")} ;`];
+        if (f.submit.alias) s.push(`    elody:alias ${q(f.submit.alias)} ;`);
         if (f.submit.actionQuery) s.push(`    elody:actionQuery ${q(f.submit.actionQuery)} ;`);
         if (f.submit.creationType) s.push(`    elody:creationType ${q(f.submit.creationType)} ;`);
         if (f.submit.icon) s.push(`    elody:icon ${q(f.submit.icon)} ;`);

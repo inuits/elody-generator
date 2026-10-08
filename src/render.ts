@@ -378,6 +378,8 @@ export function renderBulkOperationOptions(operations: M.UiBulkOperation[], inde
       if (operation.modal.closeConfirmation !== undefined)
         lines.push(`${pad(indent + 10)}askForCloseConfirmation: ${operation.modal.closeConfirmation}`);
       if (operation.modal.permission) lines.push(`${pad(indent + 10)}neededPermission: ${operation.modal.permission}`);
+      if (operation.modal.pickerList) lines.push(`${pad(indent + 10)}customQueryEntityPickerList: "${operation.modal.pickerList}"`);
+      if (operation.modal.pickerFilters) lines.push(`${pad(indent + 10)}customQueryEntityPickerListFilters: "${operation.modal.pickerFilters}"`);
       lines.push(`${pad(indent + 8)}}`);
     }
     lines.push(`${pad(indent + 6)}}`);
@@ -418,23 +420,46 @@ function renderCopyFromParent(copy: M.UiCreateForm["copyFromParent"]): string[] 
   return [`        copyFromParent(input: { ${parts.join(", ")} }) {`, "          ...copyFromParent", "        }"];
 }
 
+/** One form field (metaData with its input field, validation and hidden flag) at an indentation. */
+export function renderFormField(field: M.UiCreateFormField, indent: number): string {
+  const lines = [
+    `${pad(indent)}${field.alias ?? field.key}: metaData {`,
+    `${pad(indent + 2)}label(input: "${field.label ?? field.key}")`,
+    `${pad(indent + 2)}key(input: "${field.key}")`,
+    ...(field.multilingual ? [`${pad(indent + 2)}isMultilingual(input: true)`] : []),
+    ...(field.languageIn.length ? [`${pad(indent + 2)}languageIn(input: ${stringList(field.languageIn)})`] : []),
+    `${pad(indent + 2)}inputField(type: ${field.inputType}) {`,
+    `${pad(indent + 4)}...inputfield`,
+  ];
+  lines.push(...renderValidation(field, indent + 4));
+  lines.push(`${pad(indent + 2)}}`);
+  if (field.hidden) lines.push(`${pad(indent + 2)}hiddenField(input: { hidden: true }) {`, `${pad(indent + 4)}...hiddenField`, `${pad(indent + 2)}}`);
+  lines.push(`${pad(indent)}}`);
+  return lines.join("\n");
+}
+
+/** The fragments a type's file holds for its subtypes: on FormFields, on EntityViewElements, on IntialValues (and teaserMetadata). */
+export function renderSharedFragments(entity: M.UiEntity): string[] {
+  const fragments: string[] = [];
+  for (const fragment of entity.fieldsFragments)
+    fragments.push([`  fragment ${fragment.name} on FormFields {`, ...fragment.fields.map((field) => renderFormField(field, 4)), "  }"].join("\n"));
+  const renderElement = elementRenderer(entity);
+  for (const fragment of entity.elementsFragments)
+    fragments.push([`  fragment ${fragment.name} on EntityViewElements {`, ...fragment.elements.map((element) => renderElement(element, 4)), "  }"].join("\n"));
+  for (const fragment of entity.valuesFragments) {
+    const subset = fragment.fields.map((key) => entity.properties.find((property) => property.key === key)).filter((p): p is M.UiProperty => p !== undefined);
+    const values = renderInitialValues({ ...entity, properties: subset.map((p) => ({ ...p, listingOnly: false, detailOnly: false })), readsPermissions: false }, 4, true, false);
+    fragments.push([`  fragment ${fragment.name} on IntialValues {`, values, "  }"].join("\n"));
+    if (fragment.cardName) {
+      const card = renderTeaserFields({ ...entity, properties: subset.map((p) => ({ ...p, teaser: true })), thumbnail: undefined }, 4);
+      fragments.push([`  fragment ${fragment.cardName} on teaserMetadata {`, card, "  }"].join("\n"));
+    }
+  }
+  return fragments;
+}
+
 export function renderCreateForm(form: M.UiCreateForm): string {
-  const fieldBlocks = form.fields.map((field) => {
-    const lines = [
-      `          ${field.alias ?? field.key}: metaData {`,
-      `            label(input: "${field.label ?? field.key}")`,
-      `            key(input: "${field.key}")`,
-      ...(field.multilingual ? ["            isMultilingual(input: true)"] : []),
-      ...(field.languageIn.length ? [`            languageIn(input: ${stringList(field.languageIn)})`] : []),
-      `            inputField(type: ${field.inputType}) {`,
-      "              ...inputfield",
-    ];
-    lines.push(...renderValidation(field, 14));
-    lines.push("            }");
-    if (field.hidden) lines.push("            hiddenField(input: { hidden: true }) {", "              ...hiddenField", "            }");
-    lines.push("          }");
-    return lines.join("\n");
-  });
+  const fieldBlocks = form.fields.map((field) => renderFormField(field, 10));
 
   // consecutive fields of one sh:PropertyGroup are wrapped in a form section; shared fragments come first
   const fields: string[] = (form.fieldsSpreads ?? []).map((spread) => `          ...${spread}`);
@@ -464,9 +489,9 @@ export function renderCreateForm(form: M.UiCreateForm): string {
 
   const submit = form.submit
     ? [
-        "          createAction: action {",
+        `          ${form.submit.alias ?? "createAction"}: action {`,
         `            label(input: "${form.submit.label ?? ""}")`,
-        `            icon(input: ${form.submit.icon ?? "NoIcon"})`,
+        ...(form.submit.icon !== undefined ? [`            icon(input: ${form.submit.icon})`] : []),
         "            actionType(input: submit)",
         ...(form.submit.actionQuery !== undefined ? [`            actionQuery(input: "${form.submit.actionQuery}")`] : []),
         ...(form.submit.creationType ? [`            creationType(input: ${form.submit.creationType})`] : []),
@@ -602,10 +627,8 @@ export function renderListFilters(picker: M.UiPicker): string {
   return [`  query ${picker.filtersQueryName}($entityType: String!) {`, "    EntityTypeFilters(type: $entityType) {", ...filters, "    }", "  }"].join("\n");
 }
 
-export function renderDetailView(entity: M.UiEntity, indent: number): string {
-  const detail = entity.detail;
-  if (!detail || detail.columns.length === 0) return "";
-
+/** The renderer of one detail element of the type (a window with its panels, a list, ...), at a depth. */
+export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, depth: number) => string {
   // a panel shows a field once, under its key: the shape without an alias describes it, an aliased twin only reads it
   const propertyByKey = new Map<string, M.UiProperty>();
   for (const property of [...entity.properties.filter((p) => !p.alias), ...entity.properties.filter((p) => p.alias)])
@@ -714,6 +737,14 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
     lines.push(`${pad(depth)}}`);
     return lines.join("\n");
   };
+
+  return renderElement;
+}
+
+export function renderDetailView(entity: M.UiEntity, indent: number): string {
+  const detail = entity.detail;
+  if (!detail || detail.columns.length === 0) return "";
+  const renderElement = elementRenderer(entity);
 
   const columns = detail.columns.map((column, index) => {
     const alias = column.alias ? (column.alias === "column" ? "column" : `${column.alias}: column`) : index === 0 ? "column" : `column${index + 1}: column`;
@@ -857,13 +888,15 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
     if (teaserFields) card.push(teaserFields);
     card.push("    }");
   }
-  if (entity.listingCore) {
+  if (entity.interface) {
+    // an interface the subtypes share: no listing fragment of its own
+  } else if (entity.listingCore) {
     // the values and the card in a core other listings of the type reuse; the listing spreads it and adds the view modes
     fragments.push([`  fragment minimal${type}Core on ${onType} {`, ...head, ...values, ...card, "    ...minimalBaseEntity", "  }"].join("\n"));
     fragments.push([`  fragment minimal${type} on ${onType} {`, `    ...minimal${type}Core`, ...relation, ...modes, "  }"].join("\n"));
   } else fragments.push([`  fragment minimal${type} on ${onType} {`, ...head, ...values, ...relation, ...modes, ...card, "    ...minimalBaseEntity", "  }"].join("\n"));
 
-  if (entity.detail) {
+  if (entity.detail && !entity.interface) {
     const full: string[] = [`  fragment full${type} on ${onType} {`];
     if (entity.detail.shapeDriven) full.push("    shapeFields");
     // no block when nothing is read on the detail page (an empty selection set is not GraphQL)
@@ -893,6 +926,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
     fragments.push(
       [`  fragment ${low}BulkOperations on ${onType} {`, renderBulkOperationOptions(entity.bulkOperations, 4), "  }"].join("\n"),
     );
+  fragments.push(...renderSharedFragments(entity));
 
   const documents: string[] = [];
   if (entity.documents.includes("entities"))

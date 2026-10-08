@@ -139,6 +139,9 @@ export type UiBulkOpModal = {
   /** askForCloseConfirmation, only when declared */
   closeConfirmation?: boolean;
   permission?: string;
+  /** elody:picker on the modal: the entity picker it opens (customQueryEntityPickerList / ...Filters) */
+  pickerList?: string;
+  pickerFilters?: string;
 };
 
 export type UiBulkOperation = {
@@ -187,7 +190,8 @@ export type UiCreateForm = {
   copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string }[] };
   /** the form tab's GraphQL alias (elody:alias on the form); default "name" */
   tabAlias?: string;
-  submit?: { label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors?: boolean };
+  /** the submit action; elody:alias names it (default createAction) */
+  submit?: { alias?: string; label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors?: boolean };
 };
 
 export type UiRepetitiveStep = {
@@ -299,6 +303,13 @@ export type UiDeleteOptions = {
   blockingRelationsLabel?: string;
 };
 
+/** elody:FieldsFragment: a named fragment on FormFields */
+export type UiFieldsFragment = { name: string; fields: UiCreateFormField[] };
+/** elody:ElementsFragment: a named fragment on EntityViewElements */
+export type UiElementsFragment = { name: string; elements: UiElement[] };
+/** elody:ValuesFragment: a named fragment on IntialValues over some of the type's properties, with an optional card twin */
+export type UiValuesFragment = { name: string; cardName?: string; fields: string[] };
+
 export type UiFormSource = { queryName: string; field: string; withParent: boolean };
 
 export type UiEntity = {
@@ -326,6 +337,12 @@ export type UiEntity = {
   listingCore?: boolean;
   /** elody:deleteOptions: the deleteQueryOptions block of the detail fragment */
   deleteOptions?: UiDeleteOptions;
+  /** elody:interface: a GraphQL interface the subtypes share: no listing or detail fragment, only the shared ones */
+  interface?: boolean;
+  /** the fragments the type's file holds for its subtypes to spread */
+  fieldsFragments: UiFieldsFragment[];
+  elementsFragments: UiElementsFragment[];
+  valuesFragments: UiValuesFragment[];
   /** elody:thumbnail: the card's picture, from an initial value or the primary media file; sh:order places it among the card's fields */
   thumbnail?: { key?: string; fromMediafile?: boolean; order?: number };
   /** hand-written shared fragments spread into a block (elody:listingValuesSpread & co) */

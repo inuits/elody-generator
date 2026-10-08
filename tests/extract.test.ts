@@ -289,3 +289,69 @@ describe("extract: vlacc constructs", () => {
     expect(ttl).toContain('elody:validationRule "has_required_relation" ;\n      elody:validationRelationType "refWork" ;\n      elody:validationAmount 1 ;');
   });
 });
+
+describe("extract: an interface and the fragments its file holds", () => {
+  it("declares the interface from its filters, the fields, elements and values fragments, and the subtype apart", () => {
+    const files = [
+      { path: "queries/entities/works/work.queries.ts", source: `import { gql } from "graphql-modules";\nexport const work = gql\`
+  fragment workSortOptions on Work { sortOptions { options(input: [{ icon: NoIcon, label: "metadata.labels.title", value: "title" }]) { icon label value } } }
+  fragment filtersForWork on Work { advancedFilters { title: advancedFilter(type: text key: ["vlacc:1|metadata.title.value"] label: "metadata.labels.title" isDisplayedByDefault: true) { type key label isDisplayedByDefault } } }
+  fragment basicCreateWorkFields on FormFields {
+    original_headtitle: metaData { label(input: "metadata.labels.headtitle") key(input: "original_headtitle") inputField(type: baseTextField) { ...inputfield validation(input: { value: required }) { ...validation } } }
+  }
+  fragment workTitleDataIntialValues on IntialValues {
+    refUniformTitles: keyValue(key: "refUniformTitles", source: relations, metadataKeyAsLabel: "title")
+    parallel_title_group: keyValue(key: "parallel_title_group", source: metadata)
+  }
+  fragment workTitleDataTeaserMetadata on teaserMetadata {
+    refUniformTitles: metaData { label(input: "metadata.labels.uniform-title") key(input: "refUniformTitles") }
+    parallel_title_group: metaData { label(input: "metadata.labels.parallel-title") key(input: "parallel_title_group") }
+  }
+  fragment workTitleDataWindowElement on EntityViewElements {
+    titleData: windowElement { label(input: "window-element-labels.title-data") titleData: panels { panelHeaderContent(panelHeaderContentInput: { label: "panel-labels.title-data" }) { label } panelType(input: metadata) isCollapsed(input: false) isEditable(input: false)
+      refUniformTitles: metaData { label(input: "metadata.labels.uniform-title") key(input: "refUniformTitles") }
+      parallel_title_group: metaData { label(input: "metadata.labels.parallel-title") key(input: "parallel_title_group") } } }
+  }
+\`;\n` },
+      { path: "queries/entities/works/workWord.queries.ts", source: `import { gql } from "graphql-modules";\nexport const workWord = gql\`
+  fragment minimalWorkWord on WorkWord { intialValues { title: keyValue(key: "title", source: metadata) } teaserMetadata { title: metaData { label(input: "metadata.labels.title") key(input: "title") } } ...minimalBaseEntity }
+  fragment fullWorkWord on WorkWord { intialValues { title: keyValue(key: "title", source: metadata) ...workTitleDataIntialValues } relationValues entityView { column { elements { ...workTitleDataWindowElement } } } }
+  query GetFullWorkWordCreateForm { GetDynamicForm { label(input: "navigation.create-work") Work: formTab { formFields { ...basicCreateWorkFields createAction: action { label(input: "actions.labels.create") icon(input: Create) actionType(input: submit) actionQuery(input: "CreateEntity") creationType(input: work_word) } } } } }
+\`;\n` },
+    ];
+    const { ttl, notes, types } = extractDeclaration(files, { namespace: "urn:ui:" });
+    expect(notes, ttl).toEqual([]);
+    expect(types.sort()).toEqual(["Work", "WorkWord"]);
+    expect(ttl).toContain("elody:interface true");
+    expect(ttl).toContain('elody:fragmentName "basicCreateWorkFields" ;');
+    expect(ttl).toMatch(/elody:elementsFragment\n    \[ elody:fragmentName "workTitleDataWindowElement" ;\n    elody:element\n      \[ a elody:WindowElement/);
+    expect(ttl).toContain('[ elody:fragmentName "workTitleDataIntialValues" ; elody:cardFragmentName "workTitleDataTeaserMetadata" ; elody:field em:refUniformTitles , em:parallel_title_group ]');
+    expect(ttl).toContain('elody:fieldsSpread "basicCreateWorkFields"');
+    expect(ttl).toContain('elody:elementSpread "workTitleDataWindowElement"');
+    expect(ttl).toContain('elody:detailValuesSpread "workTitleDataIntialValues"');
+  });
+
+  it("declares a custom bulk operations set two types' elements name once, with a modal picker and the delete flow's filters", () => {
+    const list = (type: string) => `fragment minimal${type} on ${type} { intialValues { title: keyValue(key: "title", source: metadata) } teaserMetadata { title: metaData { label(input: "l") key(input: "title") } } ...minimalBaseEntity }
+  fragment full${type} on ${type} { intialValues { title: keyValue(key: "title", source: metadata) }
+    deleteQueryOptions { deleteEntityLabel(input: "d") customQueryDeleteRelations(input: "GetAuthorsInWorkDeleteQuery") customQueryDeleteRelationsFilters(input: "GetAuthorsInDetailFilters") }
+    relationValues entityView { column { elements { Subjects: entityListElement { label(input: "s") isCollapsed(input: false) entityTypes(input: [person]) customQuery(input: "GetSubjects") customBulkOperations(input: "GetBulkOperationsForSubjectsInWork") } } } } }`;
+    const files = [
+      { path: "queries/entities/works/work.queries.ts", source: `import { gql } from "graphql-modules";\nexport const work = gql\`
+  query GetBulkOperationsForSubjectsInWork { CustomBulkOperations { bulkOperationOptions { options(input: [
+    { icon: PlusCircle, label: "add", value: "addRelation", primary: true, bulkOperationModal: { typeModal: EntityPicker, customQueryEntityPickerList: "GetEntityPickerListForSubjectsInWork", customQueryEntityPickerListFilters: "GetEntityPickerFiltersForSubjectsInWork" } }
+    { icon: Minus, label: "remove", value: "removeRelation" } ]) { icon label value } } } }
+  query GetEntityPickerFiltersForSubjectsInWork($entityType: String!) { EntityTypeFilters(type: $entityType) { advancedFilters { type: advancedFilter(type: type) { type defaultValue(value: "person") hidden(value: true) } } } }
+  query GetAuthorsInDetailFilters($entityType: String!) { EntityTypeFilters(type: $entityType) { advancedFilters { type: advancedFilter(type: type) { type defaultValue(value: "person") hidden(value: true) } } } }
+\`;\n` },
+      { path: "queries/entities/works/workWord.queries.ts", source: `import { gql } from "graphql-modules";\nexport const a = gql\`\n${list("WorkWord")}\n\`;\n` },
+      { path: "queries/entities/works/workMap.queries.ts", source: `import { gql } from "graphql-modules";\nexport const b = gql\`\n${list("WorkMap")}\n\`;\n` },
+    ];
+    const { ttl } = extractDeclaration(files, { namespace: "urn:ui:" });
+    expect(ttl.match(/^ui:GetBulkOperationsForSubjectsInWork$/gm)?.length).toBe(1);
+    expect(ttl.match(/elody:primary true/g)?.length).toBe(1);
+    expect(ttl).toContain("elody:picker ui:GetEntityPickerListForSubjectsInWork ;");
+    expect(ttl).toContain("elody:listQuery ui:GetAuthorsInWorkDeleteQuery ;");
+    expect(ttl.match(/^ui:GetAuthorsInWorkDeleteQuery$/gm)?.length).toBe(1);
+  });
+});

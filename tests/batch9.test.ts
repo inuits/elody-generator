@@ -31,6 +31,9 @@ describe("several create forms per type", () => {
     const file = renderEntityFile(entities[0], "x");
     expect(file).toContain('  query GetFullWorkCreateForm {\n    GetDynamicForm {\n      label(input: "navigation.create-work")\n      Work: formTab {\n        formFields {\n          ...basicCreateWorkFields\n          record_type: metaData {');
     expect(file).toContain("  query GetBasicWorkCreateForm {\n    GetDynamicForm {\n      Work: formTab {\n        formFields {\n          ...basicCreateWorkFields\n          createAction: action {");
+    // the submit action under an alias of its own
+    const { entities: aliased } = await readUiDeclaration(`${prefixes}\nui:WorkUi a elody:EntityUi ; elody:graphqlType "Work" ; elody:emit "file" ; sh:property ${label} ; elody:form ui:F .\nui:F a elody:Form ; elody:queryName "GetAuthorsInWorkRelationMetadataFieldsForm" ; elody:alias "Fields" ; elody:submit [ elody:alias "confirmAction" ; rdfs:label "actions.labels.confirm" ; elody:actionQuery "CreateEntity" ] ; elody:shape [ sh:property [ sh:path em:role ; sh:order 1 ; sh:datatype xsd:string ] ] .`);
+    expect(renderEntityFile(aliased[0], "x")).toContain("          confirmAction: action {");
   });
 });
 

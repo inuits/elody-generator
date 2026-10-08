@@ -232,13 +232,11 @@ class Parse {
    * read-only property (dash:readOnly) none. Only those: a widget is also a
    * generated custom input field the client registers.
    */
-  private withEditWidgets(detail: M.UiDetail | undefined, parsed: { node: string; property: M.UiProperty }[]): M.UiDetail | undefined {
-    if (!detail) return detail;
-    const edited = new Set(
-      detail.columns.flatMap((column) =>
-        column.elements.flatMap((element) => element.panels.filter((panel) => panel.editable).flatMap((panel) => panel.fields)),
-      ),
-    );
+  private withEditWidgets(detail: M.UiDetail | undefined, parsed: { node: string; property: M.UiProperty }[], fragments: M.UiElementsFragment[] = []): M.UiDetail | undefined {
+    // the panels of the detail columns and of the elements fragments the file holds
+    const elements = [...(detail?.columns.flatMap((column) => column.elements) ?? []), ...fragments.flatMap((fragment) => fragment.elements)];
+    if (!elements.length) return detail;
+    const edited = new Set(elements.flatMap((element) => element.panels.filter((panel) => panel.editable).flatMap((panel) => panel.fields)));
     for (const { node, property } of parsed)
       if (edited.has(property.key) && !property.readOnly && !property.panelElement) property.editInputType = this.editWidget(node);
     return detail;
@@ -750,6 +748,18 @@ class Parse {
       else this.ungroupedFields.push(property.key);
     }
 
+    const elementsFragments: M.UiElementsFragment[] = r
+      .nodes(subject, elody("elementsFragment"))
+      .map((node) => ({ node, name: String(r.value(node, elody("fragmentName")) ?? "") }))
+      .filter(({ name }) => this.emitsOnce(`fragment:${name}`))
+      .map(({ node, name }) => ({ name, elements: r.byOrder(r.nodes(node, elody("element"))).map((element) => this.element(element, pathToKey)) }));
+    // the list queries the type names without a list element (the delete flow's documents)
+    for (const node of r.nodes(subject, elody("listQuery")))
+      if (!this.emittedListQueries.has(node)) {
+        this.emittedListQueries.add(node);
+        this.listQueries.set(node, this.picker(node));
+      }
+
     return {
       iri: subject,
       graphqlType: String(r.value(subject, elody("graphqlType")) ?? ""),
@@ -766,6 +776,26 @@ class Parse {
       readsPermissions: r.literal(subject, elody("readsPermissions")) === true,
       listingCore: r.literal(subject, elody("listingCore")) === true,
       deleteOptions: this.deleteOptions(r.node(subject, elody("deleteOptions"))),
+      interface: r.literal(subject, elody("interface")) === true,
+      fieldsFragments: r
+        .nodes(subject, elody("fieldsFragment"))
+        .map((node) => ({ node, name: String(r.value(node, elody("fragmentName")) ?? "") }))
+        .filter(({ name }) => this.emitsOnce(`fragment:${name}`))
+        .map(({ node, name }) => ({ name, fields: this.formFields(r.nodes(r.node(node, elody("shape")) ?? "", sh("property"))) })),
+      elementsFragments,
+      valuesFragments: r
+        .nodes(subject, elody("valuesFragment"))
+        .map((node) => ({ node, name: String(r.value(node, elody("fragmentName")) ?? "") }))
+        .filter(({ name }) => this.emitsOnce(`fragment:${name}`))
+        .map(({ node, name }) => ({
+          name,
+          cardName: r.value(node, elody("cardFragmentName")) || undefined,
+          fields: r.nodes(node, elody("field")).map((path) => {
+            const key = pathToKey.get(path);
+            if (!key) throw new Error(`values fragment "${name}" references ${compact(path)}, which no property shape declares as sh:path`);
+            return key;
+          }),
+        })),
       spreads: {
         listingValues: r.literals(subject, elody("listingValuesSpread")),
         detailValues: r.literals(subject, elody("detailValuesSpread")),
@@ -780,7 +810,7 @@ class Parse {
       properties,
       filters: r.byOrder(r.nodes(subject, elody("filter"))).map((node) => this.filter(node)),
       contextMenu: this.contextMenu(r.node(subject, elody("contextMenu"))),
-      detail: this.withEditWidgets(this.detail(r.node(subject, elody("detail")), pathToKey), parsed),
+      detail: this.withEditWidgets(this.detail(r.node(subject, elody("detail")), pathToKey), parsed, elementsFragments),
       formSources: r.nodes(subject, elody("formSource")).map((node) => this.formSource(node)),
       bulkOperations: r.byOrder(r.nodes(subject, elody("bulkOperation"))).map((node) => this.bulkOperation(node)),
       customBulkOperations: r.nodes(subject, elody("customBulkOperations")).filter((node) => this.emitsOnce(`custom:${this.queryNameOf(node, "custom bulk operations set")}`)).map((node) => ({
@@ -1020,6 +1050,7 @@ class Parse {
             formRelationType: r.value(modalNode, elody("formRelationType")),
             closeConfirmation: this.optionalFlag(modalNode, elody("closeConfirmation")),
             permission: this.enumValue(modalNode, elody("permission"), elody("Permission")),
+            ...(r.node(modalNode, elody("picker")) ? (({ list, filters }) => ({ pickerList: list, pickerFilters: filters }))(this.pickerNames(r.node(modalNode, elody("picker"))!)) : {}),
           }
         : undefined,
     };
@@ -1104,6 +1135,7 @@ class Parse {
     if (!node) return undefined;
     const r = this.r;
     return {
+      alias: r.value(node, elody("alias")) || undefined,
       label: r.value(node, rdfs("label")),
       icon: r.value(node, elody("icon")),
       actionQuery: r.value(node, elody("actionQuery")),
