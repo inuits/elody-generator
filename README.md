@@ -176,6 +176,14 @@ Whatever Elody cannot render is listed as a gap on the field.
 - A type may declare no `elody:viewMode`: no `allowedViewModes` block.
 - A selection filter renders `elody:parentFilterKey`, `elody:showTooltip` and
   an empty default list (`elody:defaultValueAsList true` without values).
+- A list element declares the documents it loads with `elody:listQuery`: an
+  `elody:ListQuery` with `elody:queryName`, the result fragment per type
+  (`elody:result`) and the scoping filters; the generator emits the entities
+  document (like a picker's) and the filters document (`elody:filtersQuery`,
+  default the query name with `Filters`) and sets `customQuery` and
+  `customQueryFilters`. Without results only the filters document is emitted:
+  the entities document stays hand-written. A list query two types share is
+  emitted with the first. A filter without `elody:alias` is emitted unaliased.
 
 The vocabulary is read from `ELODY_ONTOLOGY` when set, else from the installed
 package or the checkout next to this one, whichever is the newer version

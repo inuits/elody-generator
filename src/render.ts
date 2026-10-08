@@ -163,9 +163,10 @@ export function renderFilters(entity: M.UiEntity, indent: number): string {
 
 export function renderFilterList(filters: M.UiFilter[], indent: number): string {
   const entries = filters.map((filter) => {
+    const aliased = filter.alias ? `${filter.alias}: ` : "";
     if (filter.kind === "type")
       return [
-        `${pad(indent + 2)}${filter.alias}: advancedFilter(type: type) {`,
+        `${pad(indent + 2)}${aliased}advancedFilter(type: type) {`,
         `${pad(indent + 4)}type`,
         `${pad(indent + 4)}defaultValue(value: ${filterDefaultLiteral(filter)})`,
         `${pad(indent + 4)}hidden(value: ${filter.hidden})`,
@@ -184,7 +185,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number): string 
         ...(filter.hidden ? ["hidden(value: true)"] : []),
       ];
       return [
-        `${pad(indent + 2)}${filter.alias}: advancedFilter(type: selection${parent}, key: ${key}) {`,
+        `${pad(indent + 2)}${aliased}advancedFilter(type: selection${parent}, key: ${key}) {`,
         ...selection.map((field) => `${pad(indent + 4)}${field}`),
         `${pad(indent + 2)}}`,
       ].join("\n");
@@ -206,7 +207,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number): string 
       ...(filter.hidden ? ["hidden(value: true)"] : []),
     ];
     return [
-      `${pad(indent + 2)}${filter.alias}: advancedFilter(`,
+      `${pad(indent + 2)}${aliased}advancedFilter(`,
       ...args.map((argument) => `${pad(indent + 4)}${argument}`),
       `${pad(indent + 2)}) {`,
       ...selection.map((field) => `${pad(indent + 4)}${field}`),
@@ -417,7 +418,17 @@ export function renderRepetitiveForm(form: M.UiRepetitiveForm): string {
   ].join("\n");
 }
 
+/** The entities document of a picker or a list query (its results per type), and its filters document. */
 export function renderPicker(picker: M.UiPicker): string {
+  return `${renderListQuery(picker)}\n\n${renderListFilters(picker)}`;
+}
+
+/** The documents of a list element's list query: the entities document only when it declares results. */
+export function renderListQueryDocuments(picker: M.UiPicker): string[] {
+  return [...(picker.results.length ? [renderListQuery(picker)] : []), renderListFilters(picker)];
+}
+
+export function renderListQuery(picker: M.UiPicker): string {
   const results = picker.results
     .map((result) => [`        ... on ${result.type} {`, `          ...${result.fragment}`, "        }"].join("\n"))
     .join("\n");
@@ -454,15 +465,17 @@ export function renderPicker(picker: M.UiPicker): string {
     "  }",
   ].join("\n");
 
-  const filters = [
+  return list;
+}
+
+export function renderListFilters(picker: M.UiPicker): string {
+  return [
     `  query ${picker.filtersQueryName}($entityType: String!) {`,
     "    EntityTypeFilters(type: $entityType) {",
     renderFilterList(picker.filters, 6),
     "    }",
     "  }",
   ].join("\n");
-
-  return `${list}\n\n${filters}`;
 }
 
 export function renderDetailView(entity: M.UiEntity, indent: number): string {
@@ -785,6 +798,8 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   for (const form of entity.repetitiveForms) documents.push(renderRepetitiveForm(form));
 
   for (const picker of entity.pickers) documents.push(renderPicker(picker));
+
+  for (const listQuery of entity.listQueries) documents.push(...renderListQueryDocuments(listQuery));
 
   for (const property of entity.properties)
     if (property.panelElement?.kind === "list") documents.push(renderPanelListFilters(entity, property));

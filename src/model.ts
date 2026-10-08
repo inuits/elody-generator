@@ -230,4 +230,6 @@ export type UiEntity = {
   createForms: UiCreateForm[];
   repetitiveForms: UiRepetitiveForm[];
   pickers: UiPicker[];
+  /** the list queries (elody:listQuery) this type's file emits: entities document (when it has results) and filters document */
+  listQueries: UiPicker[];
 };

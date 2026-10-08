@@ -99,6 +99,10 @@ class Parse {
   readonly translations: Translations = {};
   readonly inputFields: Record<string, InputFieldDefinition> = {};
   private groupFields = new Map<string, string[]>();
+  /** the list queries the entity being parsed emits, by node */
+  private listQueries = new Map<string, M.UiPicker>();
+  /** list queries already emitted by an earlier type: a shared one is emitted once */
+  private readonly emittedListQueries = new Set<string>();
   /** keys of the entity's properties without sh:group, in the spec's order */
   private ungroupedFields: string[] = [];
   /** lower-cased GraphQL type of the entity being parsed, for minted label keys */
@@ -663,6 +667,8 @@ class Parse {
 
   private pickerNames(node: string): { list: string; filters: string } {
     const list = this.queryNameOf(node, "picker");
+    const declared = this.r.value(node, elody("filtersQuery"));
+    if (declared) return { list, filters: declared };
     if (this.r.has(node, elody("filtersQueryName"))) {
       this.retired(node, elody("filtersQueryName"));
       return { list, filters: this.r.value(node, elody("filtersQueryName"))! };
@@ -697,6 +703,7 @@ class Parse {
 
   entity(subject: string): M.UiEntity {
     const r = this.r;
+    this.listQueries = new Map();
     this.type = lowerFirst(String(r.value(subject, elody("documentName")) ?? r.value(subject, elody("graphqlType")) ?? ""));
     const nodes = r.nodes(subject, sh("property"));
     const parsed = nodes.map((node) => ({ node, property: this.property(node) }));
@@ -741,6 +748,7 @@ class Parse {
       createForms: this.createForms(subject),
       repetitiveForms: this.guidedFlows(subject),
       pickers: r.byOrder(r.nodes(subject, elody("picker"))).map((node) => this.picker(node)),
+      listQueries: [...this.listQueries.values()],
     };
   }
 
@@ -1183,6 +1191,20 @@ class Parse {
       customBulkOperations = customTerm.value;
     } else if (customTerm) customBulkOperations = this.queryNameOf(customTerm.value, "custom bulk operations set");
 
+    // the declared documents the list loads (G-014 / G-015): customQuery and customQueryFilters come from them
+    let customQuery = r.value(element, elody("customQuery"));
+    let customQueryFilters = r.value(element, elody("customQueryFilters"));
+    const listQueryNode = r.node(element, elody("listQuery"));
+    if (listQueryNode) {
+      const names = this.pickerNames(listQueryNode);
+      customQuery ??= names.list;
+      customQueryFilters ??= names.filters;
+      if (!this.emittedListQueries.has(listQueryNode)) {
+        this.emittedListQueries.add(listQueryNode);
+        this.listQueries.set(listQueryNode, this.picker(listQueryNode));
+      }
+    }
+
     let pickerList: string | undefined;
     let pickerFilters: string | undefined;
     const pickerNode = r.node(element, elody("picker"));
@@ -1201,8 +1223,8 @@ class Parse {
       label: r.value(element, rdfs("label")),
       entityTypes: r.literals(element, elody("entityTypes")),
       relationType: r.value(element, elody("relationType")),
-      customQuery: r.value(element, elody("customQuery")),
-      customQueryFilters: r.value(element, elody("customQueryFilters")),
+      customQuery,
+      customQueryFilters,
       searchInputType: this.enumValue(element, elody("searchInput"), elody("SearchInputKind"), elody("searchInputType")),
       customBulkOperations,
       pickerList,
