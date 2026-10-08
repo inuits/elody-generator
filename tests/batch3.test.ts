@@ -205,6 +205,12 @@ describe("a selection filter that fetches its options", () => {
     expect(filters).toContain('            distinct_by: "metadata.access.value"\n          }');
     expect(filters).not.toContain("match_exact: ");
     expect(filters).toContain("          match_exact\n");
+    const plain = await render(
+      entity(`sh:property ${label} ; elody:filter
+        [ rdfs:label "metadata.labels.id" ; sh:order 1 ; elody:alias "id" ; elody:key "aicap:1|id" ; elody:displayedByDefault true ;
+          elody:optionsType "site" ; elody:optionsKey "aicap:1|id" ; elody:filterKind elody:SelectionFilter ]`),
+    );
+    expect(fragment(plain, "filtersForKeyword")).not.toContain("match_exact");
   });
 
   it("places the thumbnail among the card's fields by sh:order", async () => {

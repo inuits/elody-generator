@@ -183,11 +183,12 @@ function renderFilterOptions(options: NonNullable<M.UiFilter["options"]>, indent
   ];
   // the inputs asked back: clients that search with distinct_by write type, key, value, distinct_by, match_exact;
   // the plain search is written type, value, key, match_exact (vliz, the most of them)
+  // match_exact is asked back when it is passed, or when the search is made distinct (those clients ask it back regardless)
   const fields = [
     `${pad(indent)}advancedFilterInputForRetrievingOptions {`,
     `${pad(indent + 2)}type`,
     ...(options.distinctBy ? [`${pad(indent + 2)}key`, `${pad(indent + 2)}value`, `${pad(indent + 2)}distinct_by`] : [`${pad(indent + 2)}value`, `${pad(indent + 2)}key`]),
-    `${pad(indent + 2)}match_exact`,
+    ...(options.matchExact !== undefined || options.distinctBy ? [`${pad(indent + 2)}match_exact`] : []),
     `${pad(indent)}}`,
   ];
   return { args, fields };
