@@ -680,6 +680,23 @@ class Parse {
     return { list, filters: pickerFiltersNameFor(list) };
   }
 
+  /** elody:deleteOptions: the deleteQueryOptions block. */
+  private deleteOptions(node: string | undefined): M.UiDeleteOptions | undefined {
+    if (!node) return undefined;
+    const r = this.r;
+    return {
+      deleteEntityLabel: r.value(node, elody("deleteEntityLabel")) || undefined,
+      deleteRelationsQuery: r.value(node, elody("deleteRelationsQuery")) || undefined,
+      deleteRelationsFilters: r.value(node, elody("deleteRelationsFilters")) || undefined,
+      deleteRelationsTypes: r.list(r.node(node, elody("deleteRelationsTypes"))),
+      deleteRelationsLabel: r.value(node, elody("deleteRelationsLabel")) || undefined,
+      blockingRelationsQuery: r.value(node, elody("blockingRelationsQuery")) || undefined,
+      blockingRelationsFilters: r.value(node, elody("blockingRelationsFilters")) || undefined,
+      blockingRelationsTypes: r.list(r.node(node, elody("blockingRelationsTypes"))),
+      blockingRelationsLabel: r.value(node, elody("blockingRelationsLabel")) || undefined,
+    };
+  }
+
   /** elody:thumbnail: the card's picture, read from an initial value (elody:key) or the primary media file. */
   private thumbnail(node: string | undefined): M.UiEntity["thumbnail"] {
     if (!node) return undefined;
@@ -738,6 +755,8 @@ class Parse {
       excludeBaseSortOptions: r.literal(subject, elody("excludeBaseSortOptions")) === true,
       filtersFragmentName: r.value(subject, elody("filtersFragmentName")) || undefined,
       readsPermissions: r.literal(subject, elody("readsPermissions")) === true,
+      listingCore: r.literal(subject, elody("listingCore")) === true,
+      deleteOptions: this.deleteOptions(r.node(subject, elody("deleteOptions"))),
       spreads: {
         listingValues: r.literals(subject, elody("listingValuesSpread")),
         detailValues: r.literals(subject, elody("detailValuesSpread")),
@@ -828,6 +847,14 @@ class Parse {
       required: Number(r.value(node, sh("minCount")) ?? 0) >= 1,
       validationRule: r.value(node, elody("validationRule")) || undefined,
       validationValue: r.value(node, elody("validationValue")) || undefined,
+      cardKey: r.value(node, elody("cardKey")) || undefined,
+      detailLabelKey: r.value(node, elody("detailLabelKey")) || undefined,
+      sortPrimary: r.literal(node, elody("sortPrimary")) === true,
+      listingFormatter: this.optionalFlag(node, elody("listingFormatter")),
+      repeatableMetadataKey: r.value(node, elody("repeatableMetadataKey")) || undefined,
+      parentRelationType: r.value(node, elody("parentRelationType")) || undefined,
+      containsRelationPropertyKey: r.value(node, elody("containsRelationPropertyKey")) || undefined,
+      containsRelationPropertyValue: r.value(node, elody("containsRelationPropertyValue")),
       panelElement,
     };
   }
@@ -905,6 +932,8 @@ class Parse {
             distinctBy: r.value(node, elody("optionsDistinctBy")) || undefined,
           }
         : undefined,
+      selectionSpread: r.value(node, elody("selectionSpread")) || undefined,
+      keys: r.node(node, elody("keys")) ? r.list(r.node(node, elody("keys"))) : undefined,
       staticOptions: r.nodes(node, elody("option")).length
         ? r.byOrder(r.nodes(node, elody("option"))).map((option) => ({ label: String(r.value(option, elody("labelKey")) ?? ""), value: String(r.value(option, elody("value")) ?? ""), order: r.order(option) }))
         : undefined,
@@ -953,10 +982,15 @@ class Parse {
         this.retired(contextNode, elody("tooltip"));
         tooltip = r.value(contextNode, elody("tooltip"));
       }
+      const minItems = r.literal(contextNode, elody("minSelectedItems"));
+      const maxItems = r.literal(contextNode, elody("maxSelectedItems"));
       context = {
-        activeViewMode: this.enumValue(contextNode, elody("activeViewMode"), elody("InteractionMode")) ?? "",
+        activeViewMode: this.enumValue(contextNode, elody("activeViewMode"), elody("InteractionMode")),
         selection: this.enumValue(contextNode, elody("selection"), elody("SelectionState")) ?? "",
         tooltip: tooltip ?? "",
+        requiresSameType: this.optionalFlag(contextNode, elody("requiresSameType")),
+        minSelectedItems: typeof minItems === "number" ? minItems : undefined,
+        maxSelectedItems: typeof maxItems === "number" ? maxItems : undefined,
       };
     }
     return {
@@ -1217,6 +1251,7 @@ class Parse {
         order: r.order(column),
         alias: r.value(column, elody("alias")) || undefined,
         size: this.enumValue(column, elody("size"), elody("ColumnSize")),
+        elementSpreads: r.literals(column, elody("elementSpread")),
         elements: r.byOrder(r.nodes(column, elody("element"))).map((element) => this.element(element, pathToKey)),
       })),
     };
@@ -1280,6 +1315,10 @@ class Parse {
       listViewMode: r.value(element, elody("listViewMode")) || undefined,
       can: r.literals(element, elody("can")),
       editButton: r.literal(element, elody("editButton")) === true,
+      hideInHistory: r.literal(element, elody("hideInHistory")) === true,
+      disableLibraryBar: r.literal(element, elody("disableLibraryBar")) === true,
+      enableNavigation: this.optionalFlag(element, elody("enableNavigation")),
+      libraryMode: r.value(element, elody("libraryMode")) || undefined,
       mediaKind: this.enumValue(element, elody("mediaKind"), elody("MediaElementKind")),
       customQueryFilters,
       searchInputType: this.enumValue(element, elody("searchInput"), elody("SearchInputKind"), elody("searchInputType")),
@@ -1289,7 +1328,7 @@ class Parse {
       fieldsKey: r.value(element, elody("fieldsKey")),
       metadataKey: r.value(element, elody("metadataKey")),
       collapsed: r.literal(element, elody("collapsed")) === true,
-      expandButton: r.literal(element, elody("expandButton")) === true,
+      expandButton: this.optionalFlag(element, elody("expandButton")),
       panels: r.byOrder(r.nodes(element, elody("panel"))).map((panel) => this.panel(panel, pathToKey)),
     };
   }
@@ -1318,6 +1357,7 @@ class Parse {
           ...(this.groupFields.get(panel) ?? []),
           ...(r.literal(panel, elody("showsUngrouped")) === true ? this.ungroupedFields : []),
         ],
+        elements: r.byOrder(r.nodes(panel, elody("element"))).map((element) => this.element(element, pathToKey)),
       };
 
     const fields = r.quadsOf(panel)
@@ -1344,6 +1384,7 @@ class Parse {
       can: r.value(panel, elody("can")) || undefined,
       spreads: r.literals(panel, elody("spread")),
       fields,
+      elements: r.byOrder(r.nodes(panel, elody("element"))).map((element) => this.element(element, pathToKey)),
     };
   }
 }

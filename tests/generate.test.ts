@@ -81,3 +81,22 @@ ex:DrugShape a sh:NodeShape ; sh:targetClass ex:Drug ;
   });
 });
 export { cpSync };
+
+describe("translation bundles", () => {
+  it("warns instead of failing when a label key collides with a text in the bundle", async () => {
+    const root = client(false);
+    mkdirSync(join(root, "src", "ui"));
+    mkdirSync(join(root, "src", "translations"));
+    writeFileSync(join(root, "src", "translations", "en.json"), JSON.stringify({ en: { metadata: { labels: { user: "User" } } } }));
+    writeFileSync(
+      join(root, "src", "ui", "x.ui.ttl"),
+      `@prefix elody: <https://elody.eu/ns/ui#> . @prefix sh: <http://www.w3.org/ns/shacl#> . @prefix shui: <http://www.w3.org/ns/shacl-ui/> .
+       @prefix em: <https://elody.io/ns/metadata#> . @prefix ui: <urn:ui:> .
+       ui:UserUi a elody:EntityUi ; elody:graphqlType "User" ; elody:emit "file" ;
+         sh:property [ sh:path em:name ; sh:name "Name"@en ; sh:order 1 ; shui:propertyRole shui:LabelRole ; elody:labelKey "metadata.labels.user.name" ] .`,
+    );
+    const result = await generate({ root });
+    expect(result.warnings.map((w) => w.message)).toEqual(["translation key metadata.labels.user.name collides with the text at user; left out of the bundle"]);
+    expect(JSON.parse(readFileSync(join(root, "src", "translations", "en.json"), "utf-8"))).toEqual({ en: { metadata: { labels: { user: "User" } } } });
+  });
+});

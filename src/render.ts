@@ -31,16 +31,23 @@ export function renderInitialValues(entity: M.UiEntity, indent: number, withForm
     .map((property) => {
       const alias = property.alias ?? property.key;
       const index = property.index !== undefined ? `, index: ${property.index}` : "";
-      const formatter = withFormatters && property.formatter ? `, formatter: "${property.formatter}"` : "";
+      const formatter = withFormatters && property.formatter && !(listing && property.listingFormatter === false) ? `, formatter: "${property.formatter}"` : "";
       // elody:valueLabelKey "" reads the relation without a label key
       const labelKey = property.valueLabelRootKey
         ? `, rootKeyAsLabel: "${property.valueLabelRootKey}"`
         : property.valueLabelKey === ""
           ? ""
           : `, metadataKeyAsLabel: "${property.valueLabelKey ?? DEFAULT_VALUE_LABEL_KEY}"`;
+      // what the value is read with beyond its key: the key inside a repeatable group, the parent's relation, a relation property
+      const extras = [
+        property.repeatableMetadataKey !== undefined ? `, repeatableMetadataKey: "${property.repeatableMetadataKey}"` : "",
+        property.parentRelationType ? `, parentRelations: [{ relationType: "${property.parentRelationType}" }]` : "",
+        property.containsRelationPropertyKey ? `, containsRelationPropertyKey: "${property.containsRelationPropertyKey}"` : "",
+        property.containsRelationPropertyValue !== undefined ? `, containsRelationPropertyValue: "${property.containsRelationPropertyValue}"` : "",
+      ].join("");
       if (property.relationType)
-        return `${pad(indent)}${alias}: keyValue(key: "${property.relationType}", source: relations${labelKey}${index}${formatter})`;
-      return `${pad(indent)}${alias}: keyValue(key: "${property.key}", source: ${property.source ?? "metadata"}${index}${formatter})`;
+        return `${pad(indent)}${alias}: keyValue(key: "${property.relationType}", source: relations${labelKey}${extras}${index}${formatter})`;
+      return `${pad(indent)}${alias}: keyValue(key: "${property.key}", source: ${property.source ?? "metadata"}${extras}${index}${formatter})`;
     });
   return [...permissions, ...values].join("\n");
 }
@@ -78,7 +85,7 @@ export function renderTeaserFields(entity: M.UiEntity, indent: number): string {
       const lines = [
         `${pad(indent)}${property.alias ?? property.key}: metaData {`,
         `${pad(indent + 2)}label(input: "${property.label ?? property.key}")`,
-        `${pad(indent + 2)}key(input: "${property.alias ?? property.key}")`,
+        `${pad(indent + 2)}key(input: "${property.cardKey ?? property.alias ?? property.key}")`,
       ];
       if (property.multilingual) lines.push(`${pad(indent + 2)}isMultilingual(input: true)`);
       if (property.languageIn.length) lines.push(`${pad(indent + 2)}languageIn(input: ${stringList(property.languageIn)})`);
@@ -145,6 +152,7 @@ export function renderSortOptions(entity: M.UiEntity, indent: number): string {
         `${pad(indent + 8)}icon: NoIcon`,
         `${pad(indent + 8)}label: "${property.sortLabelKey ?? property.label ?? property.key}"`,
         `${pad(indent + 8)}value: "${property.alias ?? property.key}"`,
+        ...(property.sortPrimary ? [`${pad(indent + 8)}primary: true`] : []),
         `${pad(indent + 6)}}`,
       ].join("\n"),
     )
@@ -223,8 +231,8 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ].join("\n");
 
     // a scoping selection filter (no label, no option search) is compact; a visible one reads like the other kinds
-    if (filter.kind === "selection" && !filter.label && !filter.options && !filter.staticOptions && !filter.lookup && !filter.matchersType) {
-      const key = filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`;
+    if (filter.kind === "selection" && !filter.label && !filter.options && !filter.staticOptions && !filter.lookup && !filter.matchersType && !filter.selectionSpread) {
+      const key = filter.keys ? `[${filter.keys.map((k) => `"${k}"`).join(", ")}]` : filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`;
       const parent = filter.parentKey ? `, parentKey: "${filter.parentKey}"` : "";
       const operator = filter.operator ? `, operator: ${filter.operator}` : "";
       const selection = [
@@ -271,7 +279,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       `${pad(indent + 4)}type: ${filter.kind}`,
       ...(filter.matchersType ? [`${pad(indent + 4)}matchersType: ${filter.matchersType}`] : []),
       ...(filter.parentKey ? [`${pad(indent + 4)}parentKey: "${filter.parentKey}"`] : []),
-      ...(filter.key ? [`${pad(indent + 4)}key: ${filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`}`] : []),
+      ...(filter.keys ? [`${pad(indent + 4)}key: [${filter.keys.map((k) => `"${k}"`).join(", ")}]`] : filter.key ? [`${pad(indent + 4)}key: ${filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`}`] : []),
       ...(filter.operator ? [`${pad(indent + 4)}operator: ${filter.operator}`] : []),
       ...(filter.label ? [`${pad(indent + 4)}label: "${filter.label}"`] : []),
       ...(filter.selectionOption ? [`${pad(indent + 4)}selectionOption: ${filter.selectionOption}`] : []),
@@ -284,12 +292,13 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(options ? options.args : []),
     ];
     const fetchesOptions = filter.kind === "selection" && Boolean(options);
-    const selection = [
+    // the fields asked back, or the shared fragment that asks them; the fields with arguments follow either way
+    const askedBack = [
       ...lookupFields,
       `${pad(indent + 4)}type`,
       ...(filter.matchersType ? [`${pad(indent + 4)}matchersType`] : []),
       ...(filter.parentKey ? [`${pad(indent + 4)}parentKey`] : []),
-      ...(filter.key ? [`${pad(indent + 4)}key`] : []),
+      ...(filter.key || filter.keys ? [`${pad(indent + 4)}key`] : []),
       ...(filter.operator ? [`${pad(indent + 4)}operator`] : []),
       ...(filter.label ? [`${pad(indent + 4)}label`] : []),
       // a filter that fetches its options asks the option settings back whether declared or not: what is asked back more is harmless
@@ -299,6 +308,9 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(mapping.length || fetchesOptions ? [`${pad(indent + 4)}filterOptionsMapping {`, `${pad(indent + 6)}label`, `${pad(indent + 6)}value`, `${pad(indent + 4)}}`] : []),
       ...(filter.staticOptions?.length ? [`${pad(indent + 4)}options {`, `${pad(indent + 6)}label`, `${pad(indent + 6)}value`, `${pad(indent + 4)}}`] : []),
       ...(options ? options.fields : []),
+    ];
+    const selection = [
+      ...(filter.selectionSpread ? [`${pad(indent + 4)}...${filter.selectionSpread}`] : askedBack),
       ...(filter.tooltip ? [`${pad(indent + 4)}tooltip(value: true)`] : []),
       ...(filter.defaultValues.length > 0 || filter.defaultValueAsList ? [`${pad(indent + 4)}defaultValue(value: ${filterDefaultLiteral(filter)})`] : []),
       ...(filter.hidden ? [`${pad(indent + 4)}hidden(value: true)`] : []),
@@ -344,8 +356,11 @@ export function renderBulkOperationOptions(operations: M.UiBulkOperation[], inde
       lines.push(`${pad(indent + 8)}can: [${operation.can.map((entry) => `"${entry}"`).join(", ")}]`);
     if (operation.context) {
       lines.push(`${pad(indent + 8)}actionContext: {`);
-      lines.push(`${pad(indent + 10)}activeViewMode: ${operation.context.activeViewMode}`);
+      if (operation.context.activeViewMode) lines.push(`${pad(indent + 10)}activeViewMode: ${operation.context.activeViewMode}`);
       lines.push(`${pad(indent + 10)}entitiesSelectionType: ${operation.context.selection}`);
+      if (operation.context.requiresSameType !== undefined) lines.push(`${pad(indent + 10)}requiresSameType: ${operation.context.requiresSameType}`);
+      if (operation.context.minSelectedItems !== undefined) lines.push(`${pad(indent + 10)}minSelectedItems: ${operation.context.minSelectedItems}`);
+      if (operation.context.maxSelectedItems !== undefined) lines.push(`${pad(indent + 10)}maxSelectedItems: ${operation.context.maxSelectedItems}`);
       lines.push(`${pad(indent + 10)}labelForTooltip: "${operation.context.tooltip}"`);
       lines.push(`${pad(indent + 8)}}`);
     }
@@ -519,6 +534,7 @@ export function renderListQueryDocuments(picker: M.UiPicker): string[] {
 
 export function renderListQuery(picker: M.UiPicker): string {
   const results = picker.results
+    .filter((result) => result.fragment)
     .map((result) => [`        ... on ${result.type} {`, `          ...${result.fragment}`, "        }"].join("\n"))
     .join("\n");
 
@@ -594,7 +610,7 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
         continue;
       }
       lines.push(`${pad(depth + 2)}${property.alias ?? key}: metaData {`);
-      lines.push(`${pad(depth + 4)}label(input: "${property.label ?? property.key}")`);
+      lines.push(`${pad(depth + 4)}label(input: "${property.detailLabelKey ?? property.label ?? property.key}")`);
       lines.push(`${pad(depth + 4)}key(input: "${key}")`);
       if (property.unit) lines.push(`${pad(depth + 4)}unit(input: ${property.unit})`);
       if (property.multilingual) lines.push(`${pad(depth + 4)}isMultilingual(input: true)`);
@@ -609,6 +625,7 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
       }
       lines.push(`${pad(depth + 2)}}`);
     }
+    for (const element of panel.elements) lines.push(renderElement(element, depth + 2));
     for (const spread of panel.spreads) lines.push(`${pad(depth + 2)}...${spread}`);
     lines.push(`${pad(depth)}}`);
     return lines.join("\n");
@@ -623,6 +640,10 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
         ...(element.mediaKind ? [`${pad(depth + 2)}type(input: ${element.mediaKind})`] : []),
         `${pad(depth + 2)}isCollapsed(input: ${element.collapsed ?? false})`,
       ];
+      if (element.enableNavigation !== undefined) lines.push(`${pad(depth + 2)}enableNavigation(input: ${element.enableNavigation})`);
+      if (element.disableLibraryBar) lines.push(`${pad(depth + 2)}disableLibraryBar(input: true)`);
+      if (element.hideInHistory) lines.push(`${pad(depth + 2)}hideInHistory(input: true)`);
+      if (element.libraryMode) lines.push(`${pad(depth + 2)}baseLibraryMode(input: ${element.libraryMode})`);
       if (element.entityTypes.length > 0) lines.push(`${pad(depth + 2)}entityTypes(input: [${element.entityTypes.join(", ")}])`);
       if (element.relationType) lines.push(`${pad(depth + 2)}relationType: label(input: "${element.relationType}")`);
       if (element.listViewMode) lines.push(`${pad(depth + 2)}viewMode(input: ${element.listViewMode})`);
@@ -662,23 +683,25 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
       lines.push(`${pad(depth + 4)}...editMetadataButton`);
       lines.push(`${pad(depth + 2)}}`);
     }
-    if (element.expandButton) {
+    if (element.expandButton !== undefined) {
       lines.push(`${pad(depth + 2)}expandButtonOptions {`);
-      lines.push(`${pad(depth + 4)}shown(input: true)`);
+      lines.push(`${pad(depth + 4)}shown(input: ${element.expandButton})`);
       lines.push(`${pad(depth + 2)}}`);
     }
+    if (element.hideInHistory) lines.push(`${pad(depth + 2)}hideInHistory(input: true)`);
     for (const panel of element.panels) lines.push(renderPanel(panel, depth + 2));
     lines.push(`${pad(depth)}}`);
     return lines.join("\n");
   };
 
   const columns = detail.columns.map((column, index) => {
-    const alias = column.alias ? `${column.alias}: column` : index === 0 ? "column" : `column${index + 1}: column`;
+    const alias = column.alias ? (column.alias === "column" ? "column" : `${column.alias}: column`) : index === 0 ? "column" : `column${index + 1}: column`;
     return [
       `${pad(indent + 2)}${alias} {`,
       ...(column.size ? [`${pad(indent + 4)}size(size: ${column.size})`] : []),
       `${pad(indent + 4)}elements {`,
       ...column.elements.map((element) => renderElement(element, indent + 6)),
+      ...column.elementSpreads.map((spread) => `${pad(indent + 6)}...${spread}`),
       `${pad(indent + 4)}}`,
       `${pad(indent + 2)}}`,
     ].join("\n");
@@ -752,6 +775,28 @@ function renderPanelListFilters(entity: M.UiEntity, property: M.UiProperty): str
   ].join("\n");
 }
 
+/** The deleteQueryOptions block of the detail fragment. */
+export function renderDeleteOptions(options: M.UiDeleteOptions, indent: number): string {
+  const lines = [`${pad(indent)}deleteQueryOptions {`];
+  const field = (name: string, value: string | undefined) => {
+    if (value !== undefined) lines.push(`${pad(indent + 2)}${name}(input: "${value}")`);
+  };
+  const types = (name: string, values: string[]) => {
+    if (values.length) lines.push(`${pad(indent + 2)}${name}(input: [${values.join(", ")}])`);
+  };
+  field("deleteEntityLabel", options.deleteEntityLabel);
+  field("customQueryDeleteRelations", options.deleteRelationsQuery);
+  field("customQueryDeleteRelationsFilters", options.deleteRelationsFilters);
+  types("customQueryEntityTypes", options.deleteRelationsTypes);
+  field("deleteRelationsLabel", options.deleteRelationsLabel);
+  field("customQueryBlockingRelations", options.blockingRelationsQuery);
+  field("customQueryBlockingRelationsFilters", options.blockingRelationsFilters);
+  types("customQueryBlockingEntityTypes", options.blockingRelationsTypes);
+  field("blockingRelationsLabel", options.blockingRelationsLabel);
+  lines.push(`${pad(indent)}}`);
+  return lines.join("\n");
+}
+
 export function renderEntityFile(entity: M.UiEntity, declaration: string): string {
   const onType = entity.graphqlType;
   // fragment and document names: elody:documentName when several declarations share a GraphQL type
@@ -759,31 +804,43 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   const low = lowerFirst(type);
   const fragments: string[] = [];
 
-  const minimal: string[] = [`  fragment minimal${type} on ${onType} {`];
+  const head: string[] = [];
   if (entity.dynamicFormConfigField)
-    minimal.push(
+    head.push(
       entity.dynamicFormConfigField === "dynamicFormConfig"
         ? "    dynamicFormConfig"
         : `    dynamicFormConfig: ${entity.dynamicFormConfigField}`,
     );
-  if (entity.portsField) minimal.push(entity.portsField === "ports" ? "    ports" : `    ports: ${entity.portsField}`);
-  minimal.push("    intialValues {");
-  if (entity.typePills) minimal.push("      ...typePillsIntialValues");
-  for (const spread of entity.spreads.listingValues) minimal.push(`      ...${spread}`);
-  minimal.push(renderInitialValues(entity, 6, true, true));
-  minimal.push("    }");
-  if (readsRelationValues(entity, "listing")) minimal.push("    relationValues");
-  if (entity.viewModes.length > 0) minimal.push(renderViewModes(entity, 4));
-  minimal.push("    teaserMetadata {");
-  if (entity.typePills) minimal.push("      ...typePillsTeaserMetadata");
-  for (const spread of entity.spreads.card) minimal.push(`      ...${spread}`);
+  if (entity.portsField) head.push(entity.portsField === "ports" ? "    ports" : `    ports: ${entity.portsField}`);
+  // no block when nothing is read in the listing (an empty selection set is not GraphQL)
+  const values: string[] = [];
+  const listingValues = renderInitialValues(entity, 6, true, true);
+  if (listingValues || entity.typePills || entity.spreads.listingValues.length) {
+    values.push("    intialValues {");
+    if (entity.typePills) values.push("      ...typePillsIntialValues");
+    for (const spread of entity.spreads.listingValues) values.push(`      ...${spread}`);
+    if (listingValues) values.push(listingValues);
+    values.push("    }");
+  }
+  const relation = readsRelationValues(entity, "listing") ? ["    relationValues"] : [];
+  const modes = entity.viewModes.length > 0 ? [renderViewModes(entity, 4)] : [];
+  // the card: no block either when nothing is shown
+  const card: string[] = [];
   const contextMenu = renderContextMenu(entity, 6);
-  if (contextMenu) minimal.push(contextMenu);
-  minimal.push(renderTeaserFields(entity, 6));
-  minimal.push("    }");
-  minimal.push("    ...minimalBaseEntity");
-  minimal.push("  }");
-  fragments.push(minimal.join("\n"));
+  const teaserFields = renderTeaserFields(entity, 6);
+  if (teaserFields || contextMenu || entity.typePills || entity.spreads.card.length) {
+    card.push("    teaserMetadata {");
+    if (entity.typePills) card.push("      ...typePillsTeaserMetadata");
+    for (const spread of entity.spreads.card) card.push(`      ...${spread}`);
+    if (contextMenu) card.push(contextMenu);
+    if (teaserFields) card.push(teaserFields);
+    card.push("    }");
+  }
+  if (entity.listingCore) {
+    // the values and the card in a core other listings of the type reuse; the listing spreads it and adds the view modes
+    fragments.push([`  fragment minimal${type}Core on ${onType} {`, ...head, ...values, ...card, "    ...minimalBaseEntity", "  }"].join("\n"));
+    fragments.push([`  fragment minimal${type} on ${onType} {`, `    ...minimal${type}Core`, ...relation, ...modes, "  }"].join("\n"));
+  } else fragments.push([`  fragment minimal${type} on ${onType} {`, ...head, ...values, ...relation, ...modes, ...card, "    ...minimalBaseEntity", "  }"].join("\n"));
 
   if (entity.detail) {
     const full: string[] = [`  fragment full${type} on ${onType} {`];
@@ -796,6 +853,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
       if (detailValues) full.push(detailValues);
       full.push("    }");
     }
+    if (entity.deleteOptions) full.push(renderDeleteOptions(entity.deleteOptions, 4));
     if (readsRelationValues(entity, "detail")) full.push("    relationValues");
     for (const field of entity.detail.fragmentFields) full.push(`    ${field}`);
     full.push(renderDetailView(entity, 4));

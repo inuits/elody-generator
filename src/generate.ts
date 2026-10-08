@@ -55,14 +55,18 @@ export const fileTargetFor = (graphqlType: string): string =>
   `src/queries/entities/${lowerFirst(graphqlType)}.queries.ts`;
 
 /** Set `value` at a dotted key inside a nested translation object; true when it changed. */
-function setNested(target: Record<string, unknown>, dotted: string, value: string): boolean {
+/** Sets a dotted key in a nested bundle; a key whose prefix is already a text cannot be set and is reported. */
+function setNested(target: Record<string, unknown>, dotted: string, value: string, warn: (message: string) => void): boolean {
   const parts = dotted.split(".");
   let node = target;
   for (const part of parts.slice(0, -1)) {
     const next = node[part];
     if (next === undefined) node = node[part] = {} as Record<string, unknown>;
     else if (typeof next === "object" && next !== null) node = next as Record<string, unknown>;
-    else throw new Error(`translation key ${dotted} collides with the text at ${part}`);
+    else {
+      warn(`translation key ${dotted} collides with the text at ${part}; left out of the bundle`);
+      return false;
+    }
   }
   const last = parts[parts.length - 1];
   if (node[last] === value) return false;
@@ -126,7 +130,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
     const bundle = existsSync(path) ? JSON.parse(readFileSync(path, "utf-8")) : { [language]: {} };
     bundle[language] ??= {};
     let changedBundle = false;
-    for (const [key, text] of Object.entries(entries)) changedBundle = setNested(bundle[language], key, text) || changedBundle;
+    for (const [key, text] of Object.entries(entries)) changedBundle = setNested(bundle[language], key, text, (message) => warnings.push({ message })) || changedBundle;
     if (changedBundle) apply(file, JSON.stringify(bundle, null, 2) + "\n");
   }
 

@@ -47,6 +47,19 @@ export type UiProperty = {
   editInputType?: string;
   /** sh:minCount 1: required when edited */
   required: boolean;
+  /** elody:sortPrimary: the primary sort option; elody:listingFormatter false: the listing reads the value without its formatter */
+  sortPrimary?: boolean;
+  listingFormatter?: boolean;
+  /** elody:detailLabelKey: the panel's label key when it differs from the card's */
+  detailLabelKey?: string;
+  /** elody:cardKey: the key the card field reads under when neither the key nor the alias (typePill) */
+  cardKey?: string;
+  /** elody:repeatableMetadataKey (source repeatableMetadata), elody:parentRelationType (source parentRoot) */
+  repeatableMetadataKey?: string;
+  parentRelationType?: string;
+  /** elody:containsRelationPropertyKey / Value: only the relations whose property holds the value */
+  containsRelationPropertyKey?: string;
+  containsRelationPropertyValue?: string;
   /** elody:validationRule / elody:validationValue: a validation beyond required (url, customValue "min_value:1") */
   validationRule?: string;
   validationValue?: string;
@@ -73,6 +86,10 @@ export type UiFilter = {
   parentKey?: string;
   /** elody:optionsType & co: a selection filter fetches its options from the entities of a type */
   options?: { type: string; key?: string; matchExact?: boolean; distinctBy?: string };
+  /** elody:keys: several keys, in order (key: ["a", "b"]) */
+  keys?: string[];
+  /** elody:selectionSpread: a shared fragment as the filter's selection set (...advancedFilter) */
+  selectionSpread?: string;
   /** elody:option: fixed options (options: [{ label, value }]) */
   staticOptions?: { label: string; value: string; order: number }[];
   /** elody:optionsLabel / elody:optionsValue: filterOptionsMapping */
@@ -109,7 +126,7 @@ export type UiAction = {
 
 export type UiContextMenu = { forceShow: boolean; includeBasicActions: boolean; actions: UiAction[] };
 
-export type UiBulkOpContext = { activeViewMode: string; selection: string; tooltip: string };
+export type UiBulkOpContext = { activeViewMode?: string; selection: string; tooltip: string; requiresSameType?: boolean; minSelectedItems?: number; maxSelectedItems?: number };
 
 export type UiBulkOpModal = {
   typeModal: string;
@@ -208,6 +225,8 @@ export type UiPanel = {
   /** elody:spread: hand-written fragments on WindowElementPanel spread after the fields */
   spreads: string[];
   fields: string[];
+  /** elody:element on the panel: list elements shown after the fields */
+  elements: UiElement[];
 };
 
 export type UiElementKind = "shaclShape" | "window" | "list" | "markdown";
@@ -236,15 +255,32 @@ export type UiElement = {
   can: string[];
   /** elody:editButton on a window: the edit-metadata button */
   editButton?: boolean;
+  /** elody:hideInHistory, elody:disableLibraryBar, elody:enableNavigation, elody:libraryMode */
+  hideInHistory?: boolean;
+  disableLibraryBar?: boolean;
+  enableNavigation?: boolean;
+  libraryMode?: string;
   searchInputType?: string;
   customBulkOperations?: string;
   pickerList?: string;
   pickerFilters?: string;
 };
 
-export type UiColumn = { order: number; alias?: string; size?: string; elements: UiElement[] };
+export type UiColumn = { order: number; alias?: string; size?: string; elements: UiElement[]; /** elody:elementSpread: shared elements spread in the column */ elementSpreads: string[] };
 
 export type UiDetail = { shapeDriven: boolean; fragmentFields: string[]; columns: UiColumn[] };
+
+export type UiDeleteOptions = {
+  deleteEntityLabel?: string;
+  deleteRelationsQuery?: string;
+  deleteRelationsFilters?: string;
+  deleteRelationsTypes: string[];
+  deleteRelationsLabel?: string;
+  blockingRelationsQuery?: string;
+  blockingRelationsFilters?: string;
+  blockingRelationsTypes: string[];
+  blockingRelationsLabel?: string;
+};
 
 export type UiFormSource = { queryName: string; field: string; withParent: boolean };
 
@@ -269,6 +305,10 @@ export type UiEntity = {
   filtersFragmentName?: string;
   /** elody:readsPermissions: the detail values read canUpdate and canDelete */
   readsPermissions?: boolean;
+  /** elody:listingCore: the listing fragment is split into minimal<Type>Core (values, card) and minimal<Type> (spread + view modes) */
+  listingCore?: boolean;
+  /** elody:deleteOptions: the deleteQueryOptions block of the detail fragment */
+  deleteOptions?: UiDeleteOptions;
   /** elody:thumbnail: the card's picture, from an initial value or the primary media file; sh:order places it among the card's fields */
   thumbnail?: { key?: string; fromMediafile?: boolean; order?: number };
   /** hand-written shared fragments spread into a block (elody:listingValuesSpread & co) */

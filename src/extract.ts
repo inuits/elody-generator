@@ -84,6 +84,14 @@ type Property = {
   required: boolean;
   validationRule?: string;
   validationValue?: string;
+  cardKey?: string;
+  detailLabelKey?: string;
+  sortPrimary?: boolean;
+  listingFormatter?: boolean;
+  repeatableMetadataKey?: string;
+  parentRelationType?: string;
+  containsRelationPropertyKey?: string;
+  containsRelationPropertyValue?: string;
   clientField?: string;
   readOnly: boolean;
   labelRole: boolean;
@@ -91,9 +99,9 @@ type Property = {
   multilingual?: boolean;
 };
 
-type Panel = { alias: string; label?: string; kind?: string; collapsed: boolean; editable: boolean; multipleColumns?: boolean; can?: string; fields: string[]; spreads: string[] };
+type Panel = { alias: string; label?: string; kind?: string; collapsed: boolean; editable: boolean; multipleColumns?: boolean; can?: string; fields: string[]; spreads: string[]; elements: Element[] };
 type Element =
-  | { kind: "window"; alias?: string; label?: string; expandButton: boolean; editButton?: boolean; panels: Panel[] }
+  | { kind: "window"; alias?: string; label?: string; expandButton?: boolean; editButton?: boolean; hideInHistory?: boolean; panels: Panel[] }
   | { kind: "shaclShape"; label?: string; fieldsKey?: string; collapsed: boolean }
   | { kind: "markdown"; label?: string; metadataKey?: string; collapsed: boolean }
   | {
@@ -104,6 +112,10 @@ type Element =
       customQueryRelationType?: string;
       listViewMode?: string;
       can?: string[];
+      hideInHistory?: boolean;
+      disableLibraryBar?: boolean;
+      enableNavigation?: boolean;
+      libraryMode?: string;
       collapsed: boolean;
       entityTypes: string[];
       relationType?: string;
@@ -115,13 +127,25 @@ type Element =
       /** the declared list query node this element loads, when these files hold its documents */
       listQuery?: string;
     };
-type Column = { alias?: string; size?: string; elements: Element[] };
+type Column = { alias?: string; size?: string; elements: Element[]; elementSpreads: string[] };
+type DeleteOptions = {
+  deleteEntityLabel?: string;
+  deleteRelationsQuery?: string;
+  deleteRelationsFilters?: string;
+  deleteRelationsTypes: string[];
+  deleteRelationsLabel?: string;
+  blockingRelationsQuery?: string;
+  blockingRelationsFilters?: string;
+  blockingRelationsTypes: string[];
+  blockingRelationsLabel?: string;
+};
 
 type Filter = {
   order?: number;
   alias?: string;
   kind: string;
   key?: string;
+  keys?: string[];
   keyAsList: boolean;
   parentKey?: string;
   label?: string;
@@ -132,6 +156,7 @@ type Filter = {
   hidden: boolean;
   options?: { type: string; key?: string; matchExact?: boolean; distinctBy?: string };
   staticOptions?: { label: string; value: string }[];
+  selectionSpread?: string;
   optionsLabel?: string;
   optionsValue?: string;
   selectionOption?: string;
@@ -151,7 +176,7 @@ type Operation = {
   kind?: string;
   primary?: boolean;
   can: string[];
-  context?: { mode?: string; selection?: string; tooltip?: string };
+  context?: { mode?: string; selection?: string; tooltip?: string; requiresSameType?: boolean; minSelectedItems?: number; maxSelectedItems?: number };
   modal?: { kind?: string; form?: string; relationType?: string; closeConfirmation?: boolean; permission?: string };
 };
 
@@ -168,6 +193,9 @@ type Entity = {
   spreads: { listingValues: string[]; detailValues: string[]; card: string[]; filters: string[] };
   relationValues?: boolean;
   readsPermissions?: boolean;
+  /** the listing is split: minimal<X> spreads minimal<X>Core */
+  listingCore?: boolean;
+  deleteOptions?: DeleteOptions;
   detailFormatters?: boolean;
   excludeBaseSortOptions?: boolean;
   filtersFragmentName?: string;
@@ -249,13 +277,19 @@ export class Extractor {
     return [...this.definitions.values()]
       .filter((d) => d.kind === "fragment" && d.name.startsWith("minimal") && d.name !== "minimalBaseEntity" && !d.name.startsWith("minimalLinked"))
       .map((d) => d.name.slice("minimal".length))
-      .filter((name) => (this.fragment(`minimal${name}`)?.typeCondition.name.value ?? "").length > 0);
+      .filter((name) => (this.fragment(`minimal${name}`)?.typeCondition.name.value ?? "").length > 0)
+      // a listing core (minimal<X>Core) belongs to the type that spreads it, not a type of its own
+      .filter((name) => !(name.endsWith("Core") && this.fragment(`minimal${name.slice(0, -"Core".length)}`)));
   }
 
   entity(name: string): Entity {
     const minimal = this.fragment(`minimal${name}`)!;
     const full = this.fragment(`full${name}`);
     const graphqlType = minimal.typeCondition.name.value;
+    // a split listing: minimal<X> spreads minimal<X>Core, which holds the values and the card
+    const coreName = `minimal${name}Core`;
+    const core = spreads(minimal.selectionSet).includes(coreName) ? this.fragment(coreName) : undefined;
+    const listing = core ?? minimal;
     const entity: Entity = {
       documentName: name,
       graphqlType,
@@ -276,7 +310,8 @@ export class Extractor {
     const where = name;
 
     // initial values: the detail fragment's order, the listing's values first when the detail lacks them
-    const minimalValues = child(minimal, "intialValues");
+    const minimalValues = child(listing, "intialValues");
+    if (core) entity.listingCore = true;
     const fullValues = full ? child(full, "intialValues") : undefined;
     const byAlias = new Map<string, Property>();
     const add = (field: FieldNode, listing: boolean) => {
@@ -312,6 +347,16 @@ export class Extractor {
       }
       const formatter = str(field, "formatter");
       if (formatter) property.formatter = formatter;
+      // what the value is read with beyond its key
+      const repeatable = str(field, "repeatableMetadataKey");
+      if (repeatable !== undefined) property.repeatableMetadataKey = repeatable;
+      const parent = list(argument(field, "parentRelations"))[0];
+      if (parent?.kind === Kind.OBJECT) property.parentRelationType = scalar(objectField(parent, "relationType"));
+      const containsKey = str(field, "containsRelationPropertyKey");
+      if (containsKey !== undefined) {
+        property.containsRelationPropertyKey = containsKey;
+        property.containsRelationPropertyValue = str(field, "containsRelationPropertyValue");
+      }
       if (listing) {
         property.inListing = true;
         if (formatter) listingFormatted.add(a);
@@ -331,6 +376,11 @@ export class Extractor {
         else this.note(`${where}: detail value ${alias(field)} is not a keyValue; left out`);
       }
     for (const a of listingFormatted) if (byAlias.get(a)?.inDetail && !detailFormatted.has(a)) entity.detailFormatters = false;
+    // the reverse: a formatter on the detail page only
+    for (const a of detailFormatted) {
+      const property = byAlias.get(a);
+      if (property?.inListing && !listingFormatted.has(a)) property.listingFormatter = false;
+    }
     for (const field of fields(minimalValues?.selectionSet)) if (field.name.value !== "keyValue") this.note(`${where}: initial value ${alias(field)} is not a keyValue; left out`);
     // (a value read in the listing only is said with elody:listingOnly; a value read on the detail page only with elody:detailOnly)
     entity.spreads.listingValues = spreads(minimalValues?.selectionSet).filter((s) => s !== "typePillsIntialValues");
@@ -338,7 +388,7 @@ export class Extractor {
     entity.typePills = spreads(minimalValues?.selectionSet).includes("typePillsIntialValues");
 
     // the card
-    const teaser = child(minimal, "teaserMetadata");
+    const teaser = child(listing, "teaserMetadata");
     const cardIndex = new Map<Property, number>();
     for (const field of fields(teaser?.selectionSet)) {
       if (field.name.value === "metaData") {
@@ -351,7 +401,8 @@ export class Extractor {
           this.note(`${where}: card field ${alias(field)} reads no initial value; left out`);
           continue;
         }
-        if (alias(field) !== (property.alias ?? property.key)) this.note(`${where}: card field ${alias(field)} shows the value ${key}; the card will show it under ${property.alias ?? property.key}`);
+        // the card reads under a key of its own (typePill, a raw key under a title alias)
+        if (key !== (property.alias ?? property.key)) property.cardKey = key;
         property.teaser = true;
         if (!cardIndex.has(property)) cardIndex.set(property, cardIndex.size);
         property.labelKey = input(child(field, "label"));
@@ -382,7 +433,7 @@ export class Extractor {
       return ia - ib;
     });
 
-    for (const field of fields(minimal.selectionSet)) {
+    for (const field of [...fields(listing.selectionSet), ...(core ? fields(minimal.selectionSet) : [])]) {
       if (["intialValues", "relationValues", "allowedViewModes", "teaserMetadata"].includes(field.name.value)) continue;
       if (alias(field) === "dynamicFormConfig") entity.dynamicFormConfig = field.name.value;
       else if (alias(field) === "ports") entity.ports = field.name.value;
@@ -403,11 +454,12 @@ export class Extractor {
 
     // the detail layout
     const view = full ? child(full, "entityView") : undefined;
-    for (const column of fields(view?.selectionSet)) {
-      if (column.name.value !== "column") continue;
+    for (const [columnIndex, column] of fields(view?.selectionSet).filter((f) => f.name.value === "column").entries()) {
       const size = this.instance("ColumnSize", scalar(child(column, "size") ? argument(child(column, "size")!, "size") : undefined), `${where} column`);
       // a column alias of its own (tipsColumn); column, column2, ... are what the generator names them
-      const columnAlias = column.alias?.value && !/^column\d*$/.test(column.alias.value) ? column.alias.value : undefined;
+      const positional = columnIndex === 0 ? "column" : `column${columnIndex + 1}`;
+      const given = column.alias?.value ?? "column";
+      const columnAlias = given !== positional ? given : undefined;
       const elements: Element[] = [];
       for (const element of fields(child(column, "elements")?.selectionSet)) {
         if (element.name.value === "windowElement") elements.push(this.window(element, where, entity, byAlias));
@@ -419,19 +471,21 @@ export class Extractor {
           elements.push({ kind: "markdown", label: input(child(element, "label")), metadataKey: content ? str(content, "metadataKey") : undefined, collapsed: input(child(element, "isCollapsed")) === "true" });
         } else this.note(`${where}: detail element ${element.name.value} is not rendered by the generator; left out`);
       }
-      if (elements.length) entity.columns.push({ alias: columnAlias, size, elements });
+      const elementSpreads = spreads(child(column, "elements")?.selectionSet);
+      if (elements.length || elementSpreads.length) entity.columns.push({ alias: columnAlias, size, elements, elementSpreads });
       else this.note(`${where}: a column holds nothing the generator renders; left out`);
     }
     if (full)
       for (const field of fields(full.selectionSet)) {
         if (["intialValues", "relationValues", "entityView"].includes(field.name.value)) continue;
         if (field.name.value === "shapeFields") entity.shapeDriven = true;
+        else if (field.name.value === "deleteQueryOptions") entity.deleteOptions = this.deleteOptions(field, where);
         else entity.fragmentFields.push(alias(field));
       }
 
     // relationValues: the generator derives them for the detail page (a relation, a list, a context menu), never for the
     // listing; say it when the client has them elsewhere
-    const listingHas = fields(minimal.selectionSet).some((f) => f.name.value === "relationValues");
+    const listingHas = [...fields(listing.selectionSet), ...fields(minimal.selectionSet)].some((f) => f.name.value === "relationValues");
     const detailHas = full ? fields(full.selectionSet).some((f) => f.name.value === "relationValues") : false;
     if (listingHas) {
       entity.relationValues = true;
@@ -454,6 +508,7 @@ export class Extractor {
         byAlias.set(value, property);
       }
       property.sortable = true;
+      if (scalar(objectField(entry, "primary")) === "true") property.sortPrimary = true;
       if (label && label !== property.labelKey) property.sortLabelKey = label;
       sortedAliases.push(value);
       position += 1;
@@ -461,7 +516,7 @@ export class Extractor {
     if (options && scalar(argument(options, "excludeBaseSortOptions")) === "true") entity.excludeBaseSortOptions = true;
     for (const entry of list(options ? argument(options, "input") : undefined))
       if (entry.kind === Kind.OBJECT)
-        for (const extra of entry.fields.map((f) => f.name.value).filter((n) => !["icon", "label", "value"].includes(n)))
+        for (const extra of entry.fields.map((f) => f.name.value).filter((n) => !["icon", "label", "value", "primary"].includes(n)))
           this.note(`${where}: sort option field ${extra} has no term; left out`);
     const direction = input(child(child(sort, "sortOptions"), "isAsc"));
     if (direction && sortedAliases.length) {
@@ -555,7 +610,7 @@ export class Extractor {
     const panels: Panel[] = [];
     for (const panel of fields(element.selectionSet)) {
       if (panel.name.value !== "panels") {
-        if (!["label", "expandButtonOptions", "editMetadataButton"].includes(panel.name.value)) this.note(`${where}: window element field ${panel.name.value} has no term; left out`);
+        if (!["label", "expandButtonOptions", "editMetadataButton", "hideInHistory"].includes(panel.name.value)) this.note(`${where}: window element field ${panel.name.value} has no term; left out`);
         continue;
       }
       const header = child(panel, "panelHeaderContent");
@@ -571,8 +626,14 @@ export class Extractor {
         multipleColumns: input(child(panel, "canBeMultipleColumns")) === undefined ? undefined : input(child(panel, "canBeMultipleColumns")) === "true",
         fields: [],
         spreads: spreads(panel.selectionSet),
+        elements: [],
       };
       for (const field of fields(panel.selectionSet)) {
+        if (field.name.value === "entityListElement") {
+          // a list of related entities among the panel's fields
+          result.elements.push(this.list(field, where, entity));
+          continue;
+        }
         if (field.name.value !== "metaData") {
           if (!["panelHeaderContent", "label", "panelType", "isCollapsed", "isEditable", "canBeMultipleColumns", "can"].includes(field.name.value))
             this.note(`${where}: panel ${alias(panel)} field ${alias(field)} (${field.name.value}) has no term; left out`);
@@ -593,7 +654,7 @@ export class Extractor {
         if (unit && !property.unit) property.unit = this.instance("Unit", unit, `${where} ${key}`);
         const label = input(child(field, "label"));
         if (label && !property.labelKey) property.labelKey = label;
-        else if (label && property.labelKey && label !== property.labelKey) this.note(`${where}: panel field ${key} is labelled ${label}, the card ${property.labelKey}; the card's label is kept`);
+        else if (label && property.labelKey && label !== property.labelKey) property.detailLabelKey = label;
         const widget = child(field, "inputField");
         if (widget) {
           const type = str(widget, "type") ?? "baseTextField";
@@ -614,11 +675,20 @@ export class Extractor {
       }
       panels.push(result);
     }
-    return { kind: "window", alias: element.alias?.value, label: input(child(element, "label")), expandButton: child(element, "expandButtonOptions") !== undefined, editButton: child(element, "editMetadataButton") !== undefined, panels };
+    const shown = input(child(child(element, "expandButtonOptions"), "shown"));
+    return {
+      kind: "window",
+      alias: element.alias?.value,
+      label: input(child(element, "label")),
+      expandButton: child(element, "expandButtonOptions") ? shown !== "false" : undefined,
+      editButton: child(element, "editMetadataButton") !== undefined,
+      hideInHistory: input(child(element, "hideInHistory")) === "true",
+      panels,
+    };
   }
 
   private list(element: FieldNode, where: string, entity: Entity): Element {
-    const known = ["label", "isCollapsed", "type", "entityTypes", "relationType", "searchInputType", "customQuery", "customQueryRelationType", "customQueryFilters", "customBulkOperations", "customQueryEntityPickerList", "customQueryEntityPickerListFilters", "viewMode", "can"];
+    const known = ["label", "isCollapsed", "type", "entityTypes", "relationType", "searchInputType", "customQuery", "customQueryRelationType", "customQueryFilters", "customBulkOperations", "customQueryEntityPickerList", "customQueryEntityPickerListFilters", "viewMode", "can", "hideInHistory", "disableLibraryBar", "enableNavigation", "baseLibraryMode"];
     for (const field of fields(element.selectionSet))
       if (!known.includes(alias(field)) && !known.includes(field.name.value)) this.note(`${where}: list element ${alias(element)} field ${alias(field)} has no term; left out`);
     const types = child(element, "entityTypes");
@@ -642,6 +712,10 @@ export class Extractor {
       customQueryRelationType: scoped ? input(scoped) : undefined,
       listViewMode: input(child(element, "viewMode")),
       can: list(child(element, "can") ? argument(child(element, "can")!, "input") : undefined).map((v) => scalar(v) ?? ""),
+      hideInHistory: input(child(element, "hideInHistory")) === "true",
+      disableLibraryBar: input(child(element, "disableLibraryBar")) === "true",
+      enableNavigation: input(child(element, "enableNavigation")) === undefined ? undefined : input(child(element, "enableNavigation")) === "true",
+      libraryMode: input(child(element, "baseLibraryMode")),
       collapsed: input(child(element, "isCollapsed")) === "true",
       entityTypes: list(types ? argument(types, "input") : undefined).map((v) => scalar(v) ?? ""),
       relationType: relation ? input(relation) : undefined,
@@ -661,8 +735,11 @@ export class Extractor {
     const query = this.operation(name);
     const results: Picker["results"] = [];
     const entities = query ? fields(query.selectionSet).find((f) => f.name.value === "Entities") : undefined;
-    for (const on of child(entities, "results")?.selectionSet?.selections ?? [])
-      if (on.kind === Kind.INLINE_FRAGMENT) results.push({ type: on.typeCondition?.name.value ?? "", fragment: spreads(on.selectionSet)[0] ?? "" });
+    const inline = (child(entities, "results")?.selectionSet?.selections ?? []).filter((s): s is InlineFragmentNode => s.kind === Kind.INLINE_FRAGMENT);
+    // results selected inline (fields, not a fragment spread) cannot be declared: the list document stays hand-written
+    if (inline.every((on) => spreads(on.selectionSet).length > 0))
+      for (const on of inline) results.push({ type: on.typeCondition?.name.value ?? "", fragment: spreads(on.selectionSet)[0] ?? "" });
+    else if (query) this.note(`${where}: picker ${name} selects its results inline; only its filters document is declared`);
     if (!query) this.note(`${where}: picker ${name} is not in these files; declared without results`);
     const filters = filtersName ? this.operation(filtersName) : undefined;
     const { block, filtersType } = this.advancedFiltersOf(filters);
@@ -740,6 +817,7 @@ export class Extractor {
         alias: field.alias?.value,
         kind,
         key: keyValue ? (scalar(keyValue) ?? scalar(list(keyValue)[0])) : undefined,
+        keys: keyValue?.kind === Kind.LIST && keyValue.values.length > 1 ? keyValue.values.map((v) => scalar(v) ?? "") : undefined,
         keyAsList: keyValue?.kind === Kind.LIST,
         parentKey: str(field, "parentKey"),
         label: str(field, "label"),
@@ -781,6 +859,10 @@ export class Extractor {
           };
         else this.note(`${where}: filter ${alias(field)} fetches its options in a way the vocabulary cannot say (no type input); its option source is left out`);
       }
+      // a shared fragment as the selection set (...advancedFilter)
+      const selectionSpreads = spreads(field.selectionSet);
+      if (selectionSpreads.length) filter.selectionSpread = selectionSpreads[0];
+      if (selectionSpreads.length > 1) this.note(`${where}: filter ${alias(field)} spreads ${selectionSpreads.join(", ")}; only the first is declared`);
       const fixed = argument(field, "options");
       if (fixed)
         filter.staticOptions = list(fixed)
@@ -792,6 +874,25 @@ export class Extractor {
       result.push(filter);
     }
     return result;
+  }
+
+  /** deleteQueryOptions: the labels and documents of the delete flow. */
+  private deleteOptions(block: FieldNode, where: string): DeleteOptions {
+    const value = (name: string) => input(child(block, name));
+    const types = (name: string) => list(child(block, name) ? argument(child(block, name)!, "input") : undefined).map((v) => scalar(v) ?? "");
+    const known = ["deleteEntityLabel", "customQueryDeleteRelations", "customQueryDeleteRelationsFilters", "customQueryEntityTypes", "deleteRelationsLabel", "customQueryBlockingRelations", "customQueryBlockingRelationsFilters", "customQueryBlockingEntityTypes", "blockingRelationsLabel"];
+    for (const field of fields(block.selectionSet)) if (!known.includes(field.name.value)) this.note(`${where}: deleteQueryOptions field ${field.name.value} has no term; left out`);
+    return {
+      deleteEntityLabel: value("deleteEntityLabel"),
+      deleteRelationsQuery: value("customQueryDeleteRelations"),
+      deleteRelationsFilters: value("customQueryDeleteRelationsFilters"),
+      deleteRelationsTypes: types("customQueryEntityTypes"),
+      deleteRelationsLabel: value("deleteRelationsLabel"),
+      blockingRelationsQuery: value("customQueryBlockingRelations"),
+      blockingRelationsFilters: value("customQueryBlockingRelationsFilters"),
+      blockingRelationsTypes: types("customQueryBlockingEntityTypes"),
+      blockingRelationsLabel: value("blockingRelationsLabel"),
+    };
   }
 
   /** A form without a field the vocabulary knows (an upload container only) cannot be declared: it stays hand-written. */
@@ -858,11 +959,19 @@ export class Extractor {
       if (context?.kind === Kind.OBJECT) {
         const mode = objectField(context, "activeViewMode");
         if (mode?.kind === Kind.LIST) this.note(`${where}: a bulk operation's activeViewMode is a list; the first one is declared`);
+        const same = scalar(objectField(context, "requiresSameType"));
+        const minItems = scalar(objectField(context, "minSelectedItems"));
+        const maxItems = scalar(objectField(context, "maxSelectedItems"));
         operation.context = {
           mode: this.instance("InteractionMode", scalar(list(mode)[0]), `${where} bulk operation`),
           selection: this.instance("SelectionState", scalar(objectField(context, "entitiesSelectionType")), `${where} bulk operation`),
           tooltip: scalar(objectField(context, "labelForTooltip")),
+          requiresSameType: same === undefined ? undefined : same === "true",
+          minSelectedItems: minItems === undefined ? undefined : Number(minItems),
+          maxSelectedItems: maxItems === undefined ? undefined : Number(maxItems),
         };
+        for (const extra of context.fields.map((f) => f.name.value).filter((n) => !["activeViewMode", "entitiesSelectionType", "labelForTooltip", "requiresSameType", "minSelectedItems", "maxSelectedItems"].includes(n)))
+          this.note(`${where}: bulk operation context field ${extra} has no term; left out`);
       }
       const modal = objectField(entry, "bulkOperationModal");
       if (modal?.kind === Kind.OBJECT) {
@@ -926,6 +1035,14 @@ export class Extractor {
     if (p.valueLabelRootKey) lines.push(`    elody:valueLabelRootKey ${q(p.valueLabelRootKey)} ;`);
     if (p.editor || p.datatype || p.clientField) lines.push(`    sh:maxCount 1 ;`);
     if (p.required) lines.push(`    sh:minCount 1 ;`);
+    if (p.cardKey) lines.push(`    elody:cardKey ${q(p.cardKey)} ;`);
+    if (p.detailLabelKey) lines.push(`    elody:detailLabelKey ${q(p.detailLabelKey)} ;`);
+    if (p.sortPrimary) lines.push(`    elody:sortPrimary true ;`);
+    if (p.listingFormatter === false) lines.push(`    elody:listingFormatter false ;`);
+    if (p.repeatableMetadataKey !== undefined) lines.push(`    elody:repeatableMetadataKey ${q(p.repeatableMetadataKey)} ;`);
+    if (p.parentRelationType) lines.push(`    elody:parentRelationType ${q(p.parentRelationType)} ;`);
+    if (p.containsRelationPropertyKey) lines.push(`    elody:containsRelationPropertyKey ${q(p.containsRelationPropertyKey)} ;`);
+    if (p.containsRelationPropertyValue !== undefined) lines.push(`    elody:containsRelationPropertyValue ${q(p.containsRelationPropertyValue)} ;`);
     if (p.validationRule) lines.push(`    elody:validationRule ${q(p.validationRule)} ;`);
     if (p.validationValue !== undefined) lines.push(`    elody:validationValue ${q(p.validationValue)} ;`);
     if (p.labelRole) lines.push(`    shui:propertyRole shui:LabelRole ;`);
@@ -965,7 +1082,8 @@ export class Extractor {
     if (f.label) lines.push(`    rdfs:label ${q(f.label)} ;`);
     lines.push(`    sh:order ${f.order} ;`);
     if (f.alias) lines.push(`    elody:alias ${q(f.alias)} ;`);
-    if (f.key !== undefined) lines.push(`    elody:key ${q(f.key)} ;`);
+    if (f.keys) lines.push(`    elody:keys ( ${f.keys.map(q).join(" ")} ) ;`);
+    else if (f.key !== undefined) lines.push(`    elody:key ${q(f.key)} ;`);
     if (f.parentKey) lines.push(`    elody:parentFilterKey ${q(f.parentKey)} ;`);
     if (f.hidden) lines.push(`    dash:hidden true ;`);
     for (const value of f.defaults) lines.push(`    sh:defaultValue ${q(value)} ;`);
@@ -979,6 +1097,7 @@ export class Extractor {
     if (f.matchersType) lines.push(`    elody:matchersType ${q(f.matchersType)} ;`);
     if (f.lookup)
       lines.push(`    elody:lookup [ elody:lookupFrom ${q(f.lookup.from)} ; elody:lookupLocalField ${q(f.lookup.localField)} ; elody:lookupForeignField ${q(f.lookup.foreignField)} ; elody:lookupAs ${q(f.lookup.as)} ] ;`);
+    if (f.selectionSpread) lines.push(`    elody:selectionSpread ${q(f.selectionSpread)} ;`);
     for (const [i, option] of (f.staticOptions ?? []).entries())
       lines.push(`    elody:option [ sh:order ${i + 1} ; elody:labelKey ${q(option.label)} ; elody:value ${q(option.value)} ] ;`);
     if (f.options) {
@@ -988,7 +1107,7 @@ export class Extractor {
       if (f.options.distinctBy) lines.push(`    elody:optionsDistinctBy ${q(f.options.distinctBy)} ;`);
     }
     lines.push(`    elody:filterKind ${f.kind} ;`);
-    if (!f.keyAsList && f.key !== undefined) lines.push(`    elody:keyAsList false ;`);
+    if (!f.keyAsList && f.key !== undefined && !f.keys) lines.push(`    elody:keyAsList false ;`);
     if (f.tooltip) lines.push(`    elody:showTooltip true ;`);
     lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " ]");
     lines[0] = `    [ ${lines[1].trim()}`;
@@ -1007,8 +1126,10 @@ export class Extractor {
     if (op.context)
       lines.push(
         `    elody:context`,
-        `      [ elody:activeViewMode ${op.context.mode ?? "elody:ReadMode"} ;`,
-        `      elody:selection ${op.context.selection ?? "elody:NoneSelected"} ;`,
+        `      [ ${op.context.mode ? `elody:activeViewMode ${op.context.mode} ; ` : ""}elody:selection ${op.context.selection ?? "elody:NoneSelected"} ;`,
+        ...(op.context.requiresSameType !== undefined ? [`      elody:requiresSameType ${op.context.requiresSameType} ;`] : []),
+        ...(op.context.minSelectedItems !== undefined ? [`      elody:minSelectedItems ${op.context.minSelectedItems} ;`] : []),
+        ...(op.context.maxSelectedItems !== undefined ? [`      elody:maxSelectedItems ${op.context.maxSelectedItems} ;`] : []),
         `      elody:tooltipLabel ${q(op.context.tooltip ?? "")} ] ;`,
       );
     if (op.modal) {
@@ -1028,6 +1149,33 @@ export class Extractor {
     return lines.join("\n");
   }
 
+  /** The node of a list element (in a column or a panel), at the given indentation. */
+  private listElementNode(element: Extract<Element, { kind: "list" }>, order: number, pad: string): string {
+    const l = [`${pad}[ a elody:ListElement ;`, `${pad}rdfs:label ${q(element.label ?? "")} ;`, `${pad}sh:order ${order} ;`];
+    if (element.alias) l.push(`${pad}elody:alias ${q(element.alias)} ;`);
+    if (element.mediaKind) l.push(`${pad}elody:mediaKind ${element.mediaKind} ;`);
+    l.push(`${pad}elody:collapsed ${element.collapsed} ;`);
+    for (const type of element.entityTypes) l.push(`${pad}elody:entityTypes ${q(type)} ;`);
+    if (element.relationType) l.push(`${pad}elody:relationType ${q(element.relationType)} ;`);
+    if (element.customQueryRelationType) l.push(`${pad}elody:customQueryRelationType ${q(element.customQueryRelationType)} ;`);
+    if (element.listViewMode) l.push(`${pad}elody:listViewMode ${q(element.listViewMode)} ;`);
+    for (const can of element.can ?? []) l.push(`${pad}elody:can ${q(can)} ;`);
+    if (element.hideInHistory) l.push(`${pad}elody:hideInHistory true ;`);
+    if (element.disableLibraryBar) l.push(`${pad}elody:disableLibraryBar true ;`);
+    if (element.enableNavigation !== undefined) l.push(`${pad}elody:enableNavigation ${element.enableNavigation} ;`);
+    if (element.libraryMode) l.push(`${pad}elody:libraryMode ${q(element.libraryMode)} ;`);
+    if (element.searchInput) l.push(`${pad}elody:searchInput ${element.searchInput} ;`);
+    if (element.listQuery) l.push(`${pad}elody:listQuery ui:${element.listQuery} ;`);
+    else {
+      if (element.customQuery) l.push(`${pad}elody:customQuery ${q(element.customQuery)} ;`);
+      if (element.customQueryFilters) l.push(`${pad}elody:customQueryFilters ${q(element.customQueryFilters)} ;`);
+    }
+    if (element.customBulkOperations) l.push(`${pad}elody:customBulkOperations ui:${element.customBulkOperations} ;`);
+    if (element.picker) l.push(`${pad}elody:picker ui:${element.picker} ;`);
+    l[l.length - 1] = l[l.length - 1].replace(/ ;$/, " ]");
+    return l.join("\n");
+  }
+
   private writeEntity(entity: Entity, formNodes: Set<string>): string {
     const name = entity.documentName;
     const node = `ui:${name}Ui`;
@@ -1038,6 +1186,22 @@ export class Extractor {
     if (entity.typePills) out.push(`  elody:typePills true ;`);
     if (entity.relationValues !== undefined) out.push(`  elody:relationValues ${entity.relationValues} ;`);
     if (entity.readsPermissions) out.push(`  elody:readsPermissions true ;`);
+    if (entity.listingCore) out.push(`  elody:listingCore true ;`);
+    if (entity.deleteOptions) {
+      const d = entity.deleteOptions;
+      const parts = [
+        ...(d.deleteEntityLabel !== undefined ? [`elody:deleteEntityLabel ${q(d.deleteEntityLabel)}`] : []),
+        ...(d.deleteRelationsQuery ? [`elody:deleteRelationsQuery ${q(d.deleteRelationsQuery)}`] : []),
+        ...(d.deleteRelationsFilters ? [`elody:deleteRelationsFilters ${q(d.deleteRelationsFilters)}`] : []),
+        ...(d.deleteRelationsTypes.length ? [`elody:deleteRelationsTypes ( ${d.deleteRelationsTypes.map(q).join(" ")} )`] : []),
+        ...(d.deleteRelationsLabel !== undefined ? [`elody:deleteRelationsLabel ${q(d.deleteRelationsLabel)}`] : []),
+        ...(d.blockingRelationsQuery ? [`elody:blockingRelationsQuery ${q(d.blockingRelationsQuery)}`] : []),
+        ...(d.blockingRelationsFilters ? [`elody:blockingRelationsFilters ${q(d.blockingRelationsFilters)}`] : []),
+        ...(d.blockingRelationsTypes.length ? [`elody:blockingRelationsTypes ( ${d.blockingRelationsTypes.map(q).join(" ")} )`] : []),
+        ...(d.blockingRelationsLabel !== undefined ? [`elody:blockingRelationsLabel ${q(d.blockingRelationsLabel)}`] : []),
+      ];
+      out.push(`  elody:deleteOptions`, `    [ ${parts.join(" ;\n      ")} ] ;`);
+    }
     if (entity.detailFormatters === false) out.push(`  elody:detailFormatters false ;`);
     if (entity.excludeBaseSortOptions) out.push(`  elody:excludeBaseSortOptions true ;`);
     if (entity.filtersFragmentName) out.push(`  elody:filtersFragmentName ${q(entity.filtersFragmentName)} ;`);
@@ -1059,15 +1223,20 @@ export class Extractor {
 
     // the detail layout
     const panelNodes: string[] = [];
+    const panelIds = new Set<string>();
     if (entity.columns.length) {
       const columns = entity.columns.map((column, c) => {
         const lines = [`    [ sh:order ${c + 1} ;`];
         if (column.alias) lines.push(`    elody:alias ${q(column.alias)} ;`);
         if (column.size) lines.push(`    elody:size ${column.size} ;`);
+        for (const spread of column.elementSpreads) lines.push(`    elody:elementSpread ${q(spread)} ;`);
         const elements = column.elements.map((element, e) => {
           if (element.kind === "window") {
             const panels = element.panels.map((panel) => {
-              const id = `ui:${name}Ui-${panel.alias}`;
+              let id = `ui:${name}Ui-${panel.alias}`;
+              // two windows may both hold an unaliased panel: the second gets a numbered id
+              for (let n = 2; panelIds.has(id); n++) id = `ui:${name}Ui-${panel.alias}-${n}`;
+              panelIds.add(id);
               const p: string[] = [`${id}`, `  a elody:Panel ;`, `  rdfs:label ${q(panel.label ?? "")} ;`, `  sh:order 1 ;`, `  elody:alias ${q(panel.alias)} ;`];
               p.push(`  elody:collapsed ${panel.collapsed} ;`);
               if (!panel.editable) p.push(`  dash:readOnly true ;`);
@@ -1076,14 +1245,17 @@ export class Extractor {
               for (const s of panel.spreads) p.push(`  elody:spread ${q(s)} ;`);
               p.push(`  elody:panelKind ${panel.kind ?? "elody:MetadataPanel"} ;`);
               if (panel.fields.length) p.push(`  elody:field ${panel.fields.map((f) => `em:${f}`).join(" , ")} ;`);
+              if (panel.elements.length)
+                p.push(`  elody:element`, panel.elements.map((element, i) => (element.kind === "list" ? this.listElementNode(element, i + 1, "    ") : "")).filter(Boolean).join(" ,\n") + " ;");
               p[p.length - 1] = p[p.length - 1].replace(/ ;$/, " .");
               panelNodes.push(p.join("\n"));
               return id;
             });
             const w = [`      [ a elody:WindowElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`];
             if (element.alias) w.push(`      elody:alias ${q(element.alias)} ;`);
-            if (element.expandButton) w.push(`      elody:expandButton true ;`);
+            if (element.expandButton !== undefined) w.push(`      elody:expandButton ${element.expandButton} ;`);
             if (element.editButton) w.push(`      elody:editButton true ;`);
+            if (element.hideInHistory) w.push(`      elody:hideInHistory true ;`);
             if (panels.length) w.push(`      elody:panel ${panels.join(" , ")} ;`);
             w[w.length - 1] = w[w.length - 1].replace(/ ;$/, " ]");
             return w.join("\n");
@@ -1100,27 +1272,10 @@ export class Extractor {
             s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
             return s.join("\n");
           }
-          const l = [`      [ a elody:ListElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`];
-          if (element.alias) l.push(`      elody:alias ${q(element.alias)} ;`);
-          if (element.mediaKind) l.push(`      elody:mediaKind ${element.mediaKind} ;`);
-          l.push(`      elody:collapsed ${element.collapsed} ;`);
-          for (const type of element.entityTypes) l.push(`      elody:entityTypes ${q(type)} ;`);
-          if (element.relationType) l.push(`      elody:relationType ${q(element.relationType)} ;`);
-          if (element.customQueryRelationType) l.push(`      elody:customQueryRelationType ${q(element.customQueryRelationType)} ;`);
-          if (element.listViewMode) l.push(`      elody:listViewMode ${q(element.listViewMode)} ;`);
-          for (const can of element.can ?? []) l.push(`      elody:can ${q(can)} ;`);
-          if (element.searchInput) l.push(`      elody:searchInput ${element.searchInput} ;`);
-          if (element.listQuery) l.push(`      elody:listQuery ui:${element.listQuery} ;`);
-          else {
-            if (element.customQuery) l.push(`      elody:customQuery ${q(element.customQuery)} ;`);
-            if (element.customQueryFilters) l.push(`      elody:customQueryFilters ${q(element.customQueryFilters)} ;`);
-          }
-          if (element.customBulkOperations) l.push(`      elody:customBulkOperations ui:${element.customBulkOperations} ;`);
-          if (element.picker) l.push(`      elody:picker ui:${element.picker} ;`);
-          l[l.length - 1] = l[l.length - 1].replace(/ ;$/, " ]");
-          return l.join("\n");
+          return this.listElementNode(element, e + 1, "      ");
         });
-        lines.push(`    elody:element`, elements.join(" ,\n") + " ]");
+        if (elements.length) lines.push(`    elody:element`, elements.join(" ,\n") + " ]");
+        else lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " ]");
         return lines.join("\n");
       });
       const detail = [`    [ elody:column`, columns.join(" ,\n").replace(/^/gm, "  ")];

@@ -179,3 +179,88 @@ describe("extract: askforceone constructs", () => {
     expect(ttl).toContain('elody:filtersType "BadgeInstance"');
   });
 });
+
+describe("extract: vlacc constructs", () => {
+  const file = (body: string) => [{ path: "queries/entities/work.queries.ts", source: `import { gql } from "graphql-modules";\nexport const work = gql\`\n${body}\n\`;\n` }];
+
+  it("reads a split listing, a home-page listing of its own, card keys, value extras, selection and element spreads", () => {
+    const files = file(`
+  fragment minimalWorkCore on Work {
+    intialValues {
+      ...typePillsIntialValues
+      typePillLabel: keyValue(key: "type", source: typePillLabel, index: 0, formatter: "pill|auto")
+      title: keyValue(key: "title", source: metadata)
+      isbns: keyValue(key: "isbn_group", source: repeatableMetadata, repeatableMetadataKey: "isbn")
+      navigate_to_id: keyValue(key: "id", source: parentRoot, parentRelations: [{ relationType: "refParentEntity" }])
+      refAuthors: keyValue(key: "refAuthors", source: relations, metadataKeyAsLabel: "name", containsRelationPropertyKey: "main_author", containsRelationPropertyValue: "true")
+    }
+    teaserMetadata {
+      ...typePillsTeaserMetadata
+      typePillLabel: metaData { label(input: "metadata.labels.type") key(input: "typePill") }
+      title: metaData { label(input: "metadata.labels.title") key(input: "title") }
+    }
+    ...minimalBaseEntity
+  }
+  fragment minimalWork on Work {
+    ...minimalWorkCore
+    allowedViewModes { viewModes(input: [{ viewMode: Table }]) { ...viewModes } }
+  }
+  fragment minimalWorkInHomeScreen on Work {
+    intialValues { title: keyValue(key: "title", source: metadata) }
+    allowedViewModes { viewModes(input: [{ viewMode: ViewModesList }]) { ...viewModes } }
+    teaserMetadata { title: metaData { label(input: "metadata.labels.title") key(input: "title") } }
+    ...minimalBaseEntity
+  }
+  fragment fullWork on Work {
+    intialValues { title: keyValue(key: "title", source: metadata) }
+    deleteQueryOptions {
+      deleteEntityLabel(input: "d.work")
+      customQueryDeleteRelations(input: "GetAuthorsInWorkDeleteQuery")
+      customQueryDeleteRelationsFilters(input: "GetAuthorsInDetailFilters")
+      customQueryEntityTypes(input: [person, corporation])
+      deleteRelationsLabel(input: "d.authors")
+    }
+    relationValues
+    entityView { column2: column { size(size: fifty) elements {
+      windowElement { label(input: "w") hideInHistory(input: true) expandButtonOptions { shown(input: false) } panels { panelType(input: metadata) isCollapsed(input: true) Awards: entityListElement { isCollapsed(input: false) entityTypes(input: [award]) relationType: label(input: "refAwards") customQuery(input: "GetAwardsInDetail") customQueryFilters(input: "GetAwardsInEntityFilters") } } }
+      other: windowElement { label(input: "o") panels { panelType(input: metadata) isCollapsed(input: false) title: metaData { label(input: "metadata.labels.title") key(input: "title") } } }
+      windowElement { label(input: "w") info: panels { panelHeaderContent(panelHeaderContentInput: { label: "p" }) { label } panelType(input: metadata) isCollapsed(input: false) isEditable(input: true) title: metaData { label(input: "metadata.labels.title") key(input: "title") } } }
+      ...entityHistoryVersionList
+    } } }
+  }
+  fragment filtersForWork on Work {
+    advancedFilters {
+      title: advancedFilter(type: text key: ["vlacc:1|metadata.title.value"] label: "metadata.labels.title" isDisplayedByDefault: true) { ...advancedFilter }
+    }
+  }
+  fragment workBulkOperations on Work {
+    bulkOperationOptions { options(input: [{ icon: Edit, label: "bulk-operations.edit", value: "edit", actionContext: { entitiesSelectionType: someSelected, labelForTooltip: "t", requiresSameType: true, minSelectedItems: 2, maxSelectedItems: 2 } }]) { icon label value } }
+  }
+  fragment workSortOptions on Work {
+    sortOptions { options(input: [{ icon: NoIcon, label: "metadata.labels.title", value: "title", primary: true }]) { icon label value } isAsc(input: asc) }
+  }`);
+    const { ttl, notes, types } = extractDeclaration(files, { namespace: "urn:ui:" });
+    expect(types.sort()).toEqual(["Work", "WorkInHomeScreen"]);
+    expect(notes, ttl).toEqual([]);
+    expect(ttl).toContain("elody:listingCore true");
+    expect(ttl).toContain('elody:documentName "WorkInHomeScreen"');
+    expect(ttl).toContain('elody:cardKey "typePill"');
+    expect(ttl).toContain('elody:source elody:RepeatableMetadataSource ;');
+    expect(ttl).toContain('elody:repeatableMetadataKey "isbn"');
+    expect(ttl).toContain('elody:source elody:ParentRootSource');
+    expect(ttl).toContain('elody:parentRelationType "refParentEntity"');
+    expect(ttl).toContain('elody:containsRelationPropertyKey "main_author" ;\n    elody:containsRelationPropertyValue "true"');
+    expect(ttl).toContain('elody:selectionSpread "advancedFilter"');
+    expect(ttl).toContain('elody:elementSpread "entityHistoryVersionList"');
+    expect(ttl).toContain('elody:alias "column2"');
+    expect(ttl).toContain("ui:WorkUi-panels\n"); expect(ttl).toContain("ui:WorkUi-panels-2\n");
+    expect(ttl).toMatch(/ui:WorkUi-panels\n(?:.*\n)*?  elody:element\n    \[ a elody:ListElement ;(?:.*\n)*?    elody:alias "Awards"/);
+    expect(ttl).toContain("elody:hideInHistory true");
+    expect(ttl).toContain("elody:expandButton false");
+    expect(ttl).toContain('[ elody:deleteEntityLabel "d.work" ;\n      elody:deleteRelationsQuery "GetAuthorsInWorkDeleteQuery" ;\n      elody:deleteRelationsFilters "GetAuthorsInDetailFilters" ;\n      elody:deleteRelationsTypes ( "person" "corporation" ) ;\n      elody:deleteRelationsLabel "d.authors" ]');
+    expect(ttl).toContain("[ elody:selection elody:SomeSelected ;");
+    expect(ttl).not.toContain("elody:activeViewMode");
+    expect(ttl).toContain("elody:requiresSameType true ;\n      elody:minSelectedItems 2 ;\n      elody:maxSelectedItems 2 ;");
+    expect(ttl).toContain("elody:sortPrimary true");
+  });
+});
