@@ -5,10 +5,12 @@
  * elody-ui migrate  FILE [--out FILE] [--translations DIR]  retired dialect -> 0.1; label texts from the client bundles
  * elody-ui compare  DECLARATION CLIENT_SRC [--scope FILE] [--json FILE] [--name NAME]
  *                                                        the generated GraphQL against the client's, per definition
+ * elody-ui extract  CLIENT_SRC --out FILE [--namespace IRI] a declaration proposal from the client's GraphQL
  */
 import { readdirSync, readFileSync, writeFileSync } from "fs";
 import { basename, join } from "path";
-import { compareClient, formatCompareReport } from "./compare.js";
+import { compareClient, formatCompareReport, readQueryFiles } from "./compare.js";
+import { extractDeclaration } from "./extract.js";
 import { findDeclaration, generate } from "./generate.js";
 import { migrateDeclaration } from "./migrate.js";
 import { formatIssue, validateDeclaration } from "./validate.js";
@@ -18,7 +20,8 @@ const usage = `usage:
   elody-ui check    [--root DIR] [--declaration FILE]
   elody-ui validate FILE
   elody-ui migrate  FILE [--out FILE] [--translations DIR]
-  elody-ui compare  DECLARATION CLIENT_SRC [--scope FILE] [--json FILE] [--name NAME]`;
+  elody-ui compare  DECLARATION CLIENT_SRC [--scope FILE] [--json FILE] [--name NAME]
+  elody-ui extract  CLIENT_SRC --out FILE [--namespace IRI]`;
 
 function option(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(name);
@@ -100,6 +103,17 @@ export async function main(argv: string[]): Promise<number> {
     console.log(formatCompareReport(report));
     const { summary } = report;
     return summary.differs + summary.missing + summary.extra === 0 && report.errors.length === 0 ? 0 : 1;
+  }
+
+  if (command === "extract") {
+    const [clientSrc] = rest.filter((argument, index) => !argument.startsWith("--") && !rest[index - 1]?.startsWith("--"));
+    const out = option(rest, "--out");
+    if (!clientSrc || !out) throw new Error(usage);
+    const result = extractDeclaration(readQueryFiles(clientSrc), { namespace: option(rest, "--namespace"), source: clientSrc });
+    writeFileSync(out, result.ttl);
+    console.log(`${out}: ${result.types.length} type(s) extracted, ${result.notes.length} note(s)`);
+    for (const note of result.notes) console.error(`note: ${note}`);
+    return 0;
   }
 
   console.error(usage);

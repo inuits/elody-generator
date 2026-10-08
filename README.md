@@ -52,6 +52,8 @@ elody-ui validate FILE.ui.ttl      # meta-shapes only
 elody-ui migrate  FILE.ui.ttl --out NEW.ui.ttl   # retired dialect -> 0.1
 elody-ui compare  FILE.ui.ttl CLIENT/src [--scope scope.json] [--json report.json]
                                    # the generated GraphQL against the client's, per definition
+elody-ui extract  CLIENT/src --out FILE.ui.ttl [--namespace IRI]
+                                   # a declaration proposal from the client's GraphQL (the reverse)
 ```
 
 A client **without** `src/ui/*.ui.ttl` is untouched by `generate` and passes
@@ -87,6 +89,21 @@ definition of `examples/dishacled.ui.ttl` compares equal to
 `tests/golden/dishacled-example/`. The declarations of the clients, their
 scope files and the gap backlog live in
 [`elody-declarations`](../elody-declarations).
+
+## Extract: a declaration from the client's GraphQL
+
+`elody-ui extract` is the reverse of `render`: from a client's query files it
+writes an `elody:EntityUi` per `minimal<X>` fragment in the current terms:
+the properties from the initial values and the card (aliases, sources,
+viewers, detail-only, sort options), the detail layout with its panels, lists
+and pickers, the filters (option sources included), the create form, the
+bulk operations, the custom bulk operations and the list queries. What the
+vocabulary cannot say is left out and listed as a note at the top of the
+file, so the proposal validates and `compare` shows exactly what is missing.
+`tests/extract.test.ts` round-trips the dishacled golden: extracted and
+generated again, every covered document compares equal and nothing differs.
+The proposal is a starting point to read and tidy, not a result to commit as
+it comes.
 
 ## Compatibility levels (epic #165964)
 

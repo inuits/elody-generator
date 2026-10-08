@@ -28,3 +28,4 @@ export {
   type Status,
   type Summary,
 } from "./compare.js";
+export { extractDeclaration, Extractor, type ExtractOptions, type ExtractResult } from "./extract.js";

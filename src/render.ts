@@ -450,7 +450,7 @@ export function renderPicker(picker: M.UiPicker): string {
 
 /** The documents of a list element's list query: the entities document only when it declares results. */
 export function renderListQueryDocuments(picker: M.UiPicker): string[] {
-  return [...(picker.results.length ? [renderListQuery(picker)] : []), renderListFilters(picker)];
+  return [...(picker.results.length ? [renderListQuery(picker)] : []), ...(picker.filters.length ? [renderListFilters(picker)] : [])];
 }
 
 export function renderListQuery(picker: M.UiPicker): string {
