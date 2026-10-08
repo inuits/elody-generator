@@ -235,11 +235,12 @@ class Migration {
       else if (p === elody("customBulkOperations")) this.add(subject, p, this.customOps(o.value));
       else if (p === elody("createForm")) this.add(subject, elody("form"), this.form(o.value, paths));
       else if (p === elody("form") && o.termType === "NamedNode" && r.hasType(o.value, elody("Form"))) {
-        // a form already declared as a node (an earlier migration): keep it as it is
+        // a form already declared as a node (an earlier migration): keep it as it is, its submit made explicit
         this.add(subject, p, o);
         if (!this.emittedGroups.has(o.value)) {
           this.emittedGroups.add(o.value);
-          this.copyRest(o.value, o, new Set());
+          this.copySubmit(o.value, o);
+          this.copyRest(o.value, o, new Set([elody("submit")]));
         }
       }
       else if (p === elody("repetitiveForm") || p === elody("guidedFlow"))
@@ -437,17 +438,21 @@ class Migration {
       this.copyRest(field, copy, new Set([elody("inputType"), elody("required"), rdfs("label"), sh("name")]));
       this.add(shape, sh("property"), copy);
     }
-    // 0.3.0 shows form errors only when the submit says so; the legacy dialect always did
-    for (const submit of r.nodes(node, elody("submit"))) {
+    this.copySubmit(node, out);
+    this.copyRest(node, out, new Set([elody("field"), elody("submit")]));
+    return out;
+  }
+
+  /** The form's submit action, with showsFormErrors explicit: 0.3.0 shows form errors only when asked, the old generator always did. */
+  private copySubmit(from: string, to: Term) {
+    for (const submit of this.r.nodes(from, elody("submit"))) {
       const copy = this.deepCopy({ termType: "BlankNode", value: submit } as Term);
-      if (!r.has(submit, elody("showsFormErrors"))) {
+      if (!this.r.has(submit, elody("showsFormErrors"))) {
         this.add(copy, elody("showsFormErrors"), this.bool(true));
         this.note("elody:showsFormErrors true made explicit: the generator no longer emits it by default");
       }
-      this.add(out, elody("submit"), copy);
+      this.add(to, elody("submit"), copy);
     }
-    this.copyRest(node, out, new Set([elody("field"), elody("submit")]));
-    return out;
   }
 
   private flow(node: string): Term {

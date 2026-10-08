@@ -168,9 +168,15 @@ describe("forms and bulk operations", () => {
     expect(fragment(asked, "thingBulkOperations")).toContain("askForCloseConfirmation: false");
   });
 
-  it("migrate makes showsFormErrors explicit on a legacy form", () => {
+  it("migrate makes showsFormErrors explicit on a legacy form, and again on an already migrated one", () => {
     const legacy = readFileSync(join(__dirname, "fixtures", "dishacled", "dishacled.legacy.ui.ttl"), "utf-8");
-    expect(migrateDeclaration(legacy).ttl.match(/elody:showsFormErrors true/g)?.length).toBeGreaterThan(0);
+    const once = migrateDeclaration(legacy).ttl;
+    expect(once.match(/elody:showsFormErrors true/g)?.length).toBeGreaterThan(0);
+    // a declaration migrated before the term existed: the form is already an elody:Form node
+    const stripped = once.replace(/ ;\n\s*elody:showsFormErrors true(?=\s*\])/g, "").replace(/\s*elody:showsFormErrors true ;/g, "");
+    expect(stripped).not.toContain("showsFormErrors");
+    const twice = migrateDeclaration(stripped).ttl;
+    expect(twice.match(/elody:showsFormErrors true/g)?.length).toBe(once.match(/elody:showsFormErrors true/g)?.length);
   });
 });
 
