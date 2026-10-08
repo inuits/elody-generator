@@ -151,6 +151,17 @@ describe("compareDefinitions", () => {
     expect(result.path).toBe("intialValues > order: [message, created] vs [created, message]");
   });
 
+  it("says what the generated selection adds or lacks before descending into it", () => {
+    const generated = readDefinitions([
+      gqlFile(
+        "entities/alert.queries.ts",
+        "fragment minimalAlert on Alert { relationValues intialValues { message: keyValue(key: \"message\", source: metadata) } ...minimalBaseEntity }",
+      ),
+    ]).definitions;
+    const result = compareDefinitions(client, generated).definitions.find((r) => r.name === "minimalAlert")!;
+    expect(result.path).toBe("generated adds [relationValues, ...minimalBaseEntity]");
+  });
+
   it("names an argument that differs", () => {
     const generated = readDefinitions([
       gqlFile(

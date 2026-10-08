@@ -243,12 +243,20 @@ export function firstDifference(a: unknown, b: unknown, path: string[] = []): st
   if (Array.isArray(a) && Array.isArray(b)) {
     const labelsA = a.map(label);
     const labelsB = b.map(label);
-    const sameSet =
-      labelsA.every(Boolean) &&
-      labelsA.length === labelsB.length &&
-      [...labelsA].sort().join("\0") === [...labelsB].sort().join("\0") &&
-      labelsA.join("\0") !== labelsB.join("\0");
-    if (sameSet) return at(`order: [${labelsA.join(", ")}] vs [${labelsB.join(", ")}]`);
+    // both sides fully labelled (selections, arguments): say what the generated side adds or lacks, or that the order differs
+    if (labelsA.every(Boolean) && labelsB.every(Boolean) && (a.length || b.length)) {
+      const setA = new Set(labelsA);
+      const setB = new Set(labelsB);
+      const adds = labelsB.filter((item) => !setA.has(item));
+      const lacks = labelsA.filter((item) => !setB.has(item));
+      if (adds.length || lacks.length)
+        return at(
+          [adds.length ? `generated adds [${adds.join(", ")}]` : "", lacks.length ? `generated lacks [${lacks.join(", ")}]` : ""]
+            .filter(Boolean)
+            .join(", "),
+        );
+      if (labelsA.join("\0") !== labelsB.join("\0")) return at(`order: [${labelsA.join(", ")}] vs [${labelsB.join(", ")}]`);
+    }
     for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
       if (index >= a.length) return at(`generated adds ${label(b[index]) ?? `[${index}]`}`);
       if (index >= b.length) return at(`generated lacks ${label(a[index]) ?? `[${index}]`}`);
