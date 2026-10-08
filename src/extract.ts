@@ -95,6 +95,8 @@ type Element =
       kind: "list";
       alias?: string;
       label?: string;
+      mediaKind?: string;
+      customQueryRelationType?: string;
       collapsed: boolean;
       entityTypes: string[];
       relationType?: string;
@@ -259,7 +261,7 @@ export class Extractor {
           alias: undefined,
           source: source && source !== "metadata" && source !== "relations" ? source : undefined,
           relationType: source === "relations" ? key : undefined,
-          valueLabelKey: str(field, "metadataKeyAsLabel"),
+          valueLabelKey: source === "relations" ? (str(field, "metadataKeyAsLabel") ?? "") : undefined,
           index: str(field, "index") !== undefined ? Number(str(field, "index")) : undefined,
           inListing: false,
           inDetail: false,
@@ -499,12 +501,14 @@ export class Extractor {
           continue;
         }
         const key = input(child(field, "key")) ?? alias(field);
-        let property = entity.properties.find((p) => p.key === key && !p.alias) ?? byAlias.get(key);
+        // the panel edits the metadata key: the shape with that key (not an aliased shape of another key)
+        let property = entity.properties.find((p) => p.key === key && !p.alias) ?? entity.properties.find((p) => p.key === key);
         if (!property) {
           // shown in the panel, its value read by a spread (or not at all): no initial value for it
           property = { key, inListing: false, inDetail: true, readsValue: false, teaser: false, sortable: false, single: true, required: false, readOnly: false, labelRole: false };
+          if (alias(field) !== key) property.alias = alias(field);
           entity.properties.push(property);
-          byAlias.set(key, property);
+          if (!byAlias.has(alias(field))) byAlias.set(alias(field), property);
         }
         const label = input(child(field, "label"));
         if (label && !property.labelKey) property.labelKey = label;
@@ -528,7 +532,7 @@ export class Extractor {
   }
 
   private list(element: FieldNode, where: string, entity: Entity): Element {
-    const known = ["label", "isCollapsed", "entityTypes", "relationType", "searchInputType", "customQuery", "customQueryFilters", "customBulkOperations", "customQueryEntityPickerList", "customQueryEntityPickerListFilters"];
+    const known = ["label", "isCollapsed", "type", "entityTypes", "relationType", "searchInputType", "customQuery", "customQueryRelationType", "customQueryFilters", "customBulkOperations", "customQueryEntityPickerList", "customQueryEntityPickerListFilters"];
     for (const field of fields(element.selectionSet))
       if (!known.includes(alias(field)) && !known.includes(field.name.value)) this.note(`${where}: list element ${alias(element)} field ${alias(field)} has no term; left out`);
     const types = child(element, "entityTypes");
@@ -543,10 +547,13 @@ export class Extractor {
     const pickerFilters = input(child(element, "customQueryEntityPickerListFilters"));
     if (pickerList) this.picker(pickerList, pickerFilters, where, entity);
     const relation = fields(element.selectionSet).find((f) => alias(f) === "relationType");
+    const scoped = fields(element.selectionSet).find((f) => alias(f) === "customQueryRelationType");
     return {
       kind: "list",
       alias: element.alias?.value,
       label: input(child(element, "label")),
+      mediaKind: this.instance("MediaElementKind", input(child(element, "type")), `${where} list ${alias(element)}`),
+      customQueryRelationType: scoped ? input(scoped) : undefined,
       collapsed: input(child(element, "isCollapsed")) === "true",
       entityTypes: list(types ? argument(types, "input") : undefined).map((v) => scalar(v) ?? ""),
       relationType: relation ? input(relation) : undefined,
@@ -578,7 +585,8 @@ export class Extractor {
     const pair = `${name}|${filtersName ?? ""}`;
     const known = this.listQueryNodes.get(pair);
     if (known) return known;
-    const node = this.queriesWithResults.has(name) || [...this.listQueryNodes.values()].includes(name) ? (filtersName ?? `${name}_${this.listQueryNodes.size}`) : name;
+    const taken = new Set(this.listQueryNodes.values());
+    const node = !taken.has(name) ? name : filtersName && !taken.has(filtersName) ? filtersName : `${name}_${this.listQueryNodes.size}`;
     this.listQueryNodes.set(pair, node);
     const query = this.operation(name);
     const results: ListQuery["results"] = [];
@@ -772,7 +780,7 @@ export class Extractor {
     if (p.alias) lines.push(`    elody:alias ${q(p.alias)} ;`);
     if (p.datatype) lines.push(`    sh:datatype ${p.datatype} ;`);
     if (p.relationType) lines.push(`    elody:relationType ${q(p.relationType)} ;`);
-    if (p.valueLabelKey) lines.push(`    elody:valueLabelKey ${q(p.valueLabelKey)} ;`);
+    if (p.valueLabelKey !== undefined) lines.push(`    elody:valueLabelKey ${q(p.valueLabelKey)} ;`);
     if (p.editor || p.datatype || p.clientField) lines.push(`    sh:maxCount 1 ;`);
     if (p.required) lines.push(`    sh:minCount 1 ;`);
     if (p.labelRole) lines.push(`    shui:propertyRole shui:LabelRole ;`);
@@ -930,9 +938,11 @@ export class Extractor {
           }
           const l = [`      [ a elody:ListElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`];
           if (element.alias) l.push(`      elody:alias ${q(element.alias)} ;`);
+          if (element.mediaKind) l.push(`      elody:mediaKind ${element.mediaKind} ;`);
           l.push(`      elody:collapsed ${element.collapsed} ;`);
           for (const type of element.entityTypes) l.push(`      elody:entityTypes ${q(type)} ;`);
           if (element.relationType) l.push(`      elody:relationType ${q(element.relationType)} ;`);
+          if (element.customQueryRelationType) l.push(`      elody:customQueryRelationType ${q(element.customQueryRelationType)} ;`);
           if (element.searchInput) l.push(`      elody:searchInput ${element.searchInput} ;`);
           if (element.listQuery) l.push(`      elody:listQuery ui:${element.listQuery} ;`);
           else {

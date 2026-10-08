@@ -20,8 +20,10 @@ export function renderInitialValues(entity: M.UiEntity, indent: number, withForm
       const alias = property.alias ?? property.key;
       const index = property.index !== undefined ? `, index: ${property.index}` : "";
       const formatter = withFormatters && property.formatter ? `, formatter: "${property.formatter}"` : "";
+      // elody:valueLabelKey "" reads the relation without a label key
+      const labelKey = property.valueLabelKey === "" ? "" : `, metadataKeyAsLabel: "${property.valueLabelKey ?? DEFAULT_VALUE_LABEL_KEY}"`;
       if (property.relationType)
-        return `${pad(indent)}${alias}: keyValue(key: "${property.relationType}", source: relations, metadataKeyAsLabel: "${property.valueLabelKey ?? DEFAULT_VALUE_LABEL_KEY}"${index}${formatter})`;
+        return `${pad(indent)}${alias}: keyValue(key: "${property.relationType}", source: relations${labelKey}${index}${formatter})`;
       return `${pad(indent)}${alias}: keyValue(key: "${property.key}", source: ${property.source ?? "metadata"}${index}${formatter})`;
     })
     .join("\n");
@@ -39,6 +41,7 @@ export function readsRelationValues(entity: M.UiEntity, fragment: "listing" | "d
   return (
     entity.properties.some((property) => property.relationType || property.panelElement?.kind === "list") ||
     entity.contextMenu !== undefined ||
+    entity.spreads.detailValues.length > 0 ||
     (entity.detail?.columns ?? []).some((column) => column.elements.some((element) => element.kind === "list"))
   );
 }
@@ -222,7 +225,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
     const args = [
       `${pad(indent + 4)}type: ${filter.kind}`,
       ...(filter.parentKey ? [`${pad(indent + 4)}parentKey: "${filter.parentKey}"`] : []),
-      ...(filter.key ? [`${pad(indent + 4)}key: ["${filter.key}"]`] : []),
+      ...(filter.key ? [`${pad(indent + 4)}key: ${filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`}`] : []),
       ...(filter.label ? [`${pad(indent + 4)}label: "${filter.label}"`] : []),
       ...(filter.displayedByDefault ? [`${pad(indent + 4)}isDisplayedByDefault: true`] : []),
       ...(options ? options.args : []),
@@ -532,7 +535,7 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
         lines.push(renderPanelElement(entity, property, depth + 2));
         continue;
       }
-      lines.push(`${pad(depth + 2)}${key}: metaData {`);
+      lines.push(`${pad(depth + 2)}${property.alias ?? key}: metaData {`);
       lines.push(`${pad(depth + 4)}label(input: "${property.label ?? property.key}")`);
       lines.push(`${pad(depth + 4)}key(input: "${key}")`);
       if (property.multilingual) lines.push(`${pad(depth + 4)}isMultilingual(input: true)`);
@@ -562,11 +565,13 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
       const lines = [
         `${pad(depth)}${alias}entityListElement {`,
         `${pad(depth + 2)}label(input: "${element.label ?? ""}")`,
+        ...(element.mediaKind ? [`${pad(depth + 2)}type(input: ${element.mediaKind})`] : []),
         `${pad(depth + 2)}isCollapsed(input: ${element.collapsed ?? false})`,
       ];
       if (element.entityTypes.length > 0) lines.push(`${pad(depth + 2)}entityTypes(input: [${element.entityTypes.join(", ")}])`);
       if (element.relationType) lines.push(`${pad(depth + 2)}relationType: label(input: "${element.relationType}")`);
       if (element.customQuery) lines.push(`${pad(depth + 2)}customQuery(input: "${element.customQuery}")`);
+      if (element.customQueryRelationType) lines.push(`${pad(depth + 2)}customQueryRelationType: label(input: "${element.customQueryRelationType}")`);
       if (element.customQueryFilters) lines.push(`${pad(depth + 2)}customQueryFilters(input: "${element.customQueryFilters}")`);
       if (element.searchInputType) lines.push(`${pad(depth + 2)}searchInputType(input: "${element.searchInputType}")`);
       if (element.customBulkOperations)

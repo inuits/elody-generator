@@ -199,6 +199,10 @@ export type UiElement = {
   entityTypes: string[];
   relationType?: string;
   customQuery?: string;
+  /** elody:customQueryRelationType: the relation the list's document is scoped by on the related side */
+  customQueryRelationType?: string;
+  /** elody:mediaKind on a list element: a list of media files (type(input: media)) */
+  mediaKind?: string;
   customQueryFilters?: string;
   searchInputType?: string;
   customBulkOperations?: string;

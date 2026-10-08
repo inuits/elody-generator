@@ -118,6 +118,43 @@ describe("form fields and filters with an alias of their own", () => {
   });
 });
 
+describe("vliz: relations without a label key, string filter keys, media lists", () => {
+  it("reads a relation without metadataKeyAsLabel when elody:valueLabelKey is empty", async () => {
+    const file = await render(entity(`sh:property ${label} , [ sh:path em:mediafile ; sh:order 2 ; elody:relationType "hasMediafile" ; elody:valueLabelKey "" ; elody:teaser false ]`));
+    expect(fragment(file, "minimalKeyword")).toContain('mediafile: keyValue(key: "hasMediafile", source: relations)\n');
+  });
+
+  it("keeps a text filter's key a string when elody:keyAsList is false", async () => {
+    const file = await render(
+      entity(`sh:property ${label} ; elody:filter [ rdfs:label "metadata.labels.title" ; sh:order 1 ; elody:alias "title" ; elody:key "title" ; elody:keyAsList false ; elody:displayedByDefault true ; elody:filterKind elody:TextFilter ]`),
+    );
+    expect(fragment(file, "filtersForKeyword")).toContain('        key: "title"\n');
+  });
+
+  it("renders a media list with its kind and the relation its document is scoped by", async () => {
+    const file = await render(
+      entity(
+        `sh:property ${label} ; elody:detail [ elody:column [ sh:order 1 ; elody:size elody:Width70 ; elody:element [ a elody:ListElement ; sh:order 1 ; rdfs:label "element-labels.mediafiles-element" ; elody:alias "Mediafiles" ; elody:mediaKind elody:MediaKindMedia ; elody:collapsed false ; elody:entityTypes "mediafile" ; elody:relationType "hasMediafile" ; elody:customQuery "GetMediafilesInVliz" ; elody:customQueryRelationType "isMediafileFor" ; elody:customQueryFilters "GetMediafilesInEntityFilters" ] ] ]`,
+      ),
+    );
+    const full = fragment(file, "fullKeyword");
+    expect(full).toContain('label(input: "element-labels.mediafiles-element")\n            type(input: media)\n            isCollapsed(input: false)');
+    expect(full).toContain('customQuery(input: "GetMediafilesInVliz")\n            customQueryRelationType: label(input: "isMediafileFor")\n            customQueryFilters(input: "GetMediafilesInEntityFilters")');
+  });
+
+  it("reads relationValues on the detail page when a detail spread may bring relations", async () => {
+    const file = await render(entity(`elody:detailValuesSpread "vocabIntialValues" ; sh:property ${label} ; ${window("ui:Info")}`, info("", "em:title")));
+    expect(fragment(file, "fullKeyword")).toContain("    relationValues\n");
+  });
+
+  it("shows a panel field under the property's alias with its key", async () => {
+    const file = await render(
+      entity(`sh:property ${label} , [ sh:path em:base_url ; sh:order 2 ; elody:alias "baseUrl" ; elody:readsValue false ; elody:labelKey "metadata.labels.base-url" ; elody:detailOnly true ] ; ${window("ui:Info")}`, info("", "em:base_url")),
+    );
+    expect(fragment(file, "fullKeyword")).toContain('baseUrl: metaData {\n                label(input: "metadata.labels.base-url")\n                key(input: "base_url")');
+  });
+});
+
 describe("a selection filter that fetches its options", () => {
   it("renders the option search and asks the inputs back", async () => {
     const file = await render(

@@ -184,7 +184,8 @@ class Parse {
   private valueLabelKeyOf(node: string): string {
     const r = this.r;
     const explicit = r.value(node, elody("valueLabelKey"));
-    if (explicit) return explicit;
+    // an empty key reads the relation without a label key
+    if (explicit !== undefined) return explicit;
     // a resource of a linked-data source is titled by its label
     if (r.node(node, elody("optionsFrom"))) return "title";
     const cls = r.node(node, sh("class"));
@@ -1247,6 +1248,8 @@ class Parse {
       entityTypes: r.literals(element, elody("entityTypes")),
       relationType: r.value(element, elody("relationType")),
       customQuery,
+      customQueryRelationType: r.value(element, elody("customQueryRelationType")) || undefined,
+      mediaKind: this.enumValue(element, elody("mediaKind"), elody("MediaElementKind")),
       customQueryFilters,
       searchInputType: this.enumValue(element, elody("searchInput"), elody("SearchInputKind"), elody("searchInputType")),
       customBulkOperations,
