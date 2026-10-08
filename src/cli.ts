@@ -3,9 +3,12 @@
  * elody-ui check    [--root DIR] [--declaration FILE]   drift + meta-shapes + retired terms
  * elody-ui validate FILE                                 meta-shapes only
  * elody-ui migrate  FILE [--out FILE] [--translations DIR]  retired dialect -> 0.1; label texts from the client bundles
+ * elody-ui compare  DECLARATION CLIENT_SRC [--scope FILE] [--json FILE] [--name NAME]
+ *                                                        the generated GraphQL against the client's, per definition
  */
 import { readdirSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { basename, join } from "path";
+import { compareClient, formatCompareReport } from "./compare.js";
 import { findDeclaration, generate } from "./generate.js";
 import { migrateDeclaration } from "./migrate.js";
 import { formatIssue, validateDeclaration } from "./validate.js";
@@ -14,7 +17,8 @@ const usage = `usage:
   elody-ui generate [--root DIR] [--declaration FILE]
   elody-ui check    [--root DIR] [--declaration FILE]
   elody-ui validate FILE
-  elody-ui migrate  FILE [--out FILE] [--translations DIR]`;
+  elody-ui migrate  FILE [--out FILE] [--translations DIR]
+  elody-ui compare  DECLARATION CLIENT_SRC [--scope FILE] [--json FILE] [--name NAME]`;
 
 function option(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(name);
@@ -78,6 +82,24 @@ export async function main(argv: string[]): Promise<number> {
     else process.stdout.write(result.ttl);
     for (const note of result.notes) console.error(`migrated: ${note}`);
     return 0;
+  }
+
+  if (command === "compare") {
+    const [declaration, clientSrc] = rest.filter((argument, index) => !argument.startsWith("--") && !rest[index - 1]?.startsWith("--"));
+    if (!declaration || !clientSrc) throw new Error(usage);
+    const scopeFile = option(rest, "--scope");
+    const scope = scopeFile ? JSON.parse(readFileSync(scopeFile, "utf-8")) : undefined;
+    const report = await compareClient({
+      client: option(rest, "--name") ?? basename(declaration).replace(/\.ui\.ttl$/, ""),
+      declaration,
+      clientSrc,
+      scope,
+    });
+    const json = option(rest, "--json");
+    if (json) writeFileSync(json, JSON.stringify(report, null, 2) + "\n");
+    console.log(formatCompareReport(report));
+    const { summary } = report;
+    return summary.differs + summary.missing + summary.extra === 0 && report.errors.length === 0 ? 0 : 1;
   }
 
   console.error(usage);

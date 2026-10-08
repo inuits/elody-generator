@@ -50,6 +50,8 @@ elody-ui generate [--root DIR]     # src/ui/*.ui.ttl -> src/queries/entities/*.q
 elody-ui check    [--root DIR]     # drift + meta-shapes; exit 1 on either
 elody-ui validate FILE.ui.ttl      # meta-shapes only
 elody-ui migrate  FILE.ui.ttl --out NEW.ui.ttl   # retired dialect -> 0.1
+elody-ui compare  FILE.ui.ttl CLIENT/src [--scope scope.json] [--json report.json]
+                                   # the generated GraphQL against the client's, per definition
 ```
 
 A client **without** `src/ui/*.ui.ttl` is untouched by `generate` and passes
@@ -57,6 +59,32 @@ A client **without** `src/ui/*.ui.ttl` is untouched by `generate` and passes
 Per entity, `elody:emit "file"` generates the whole document and `"regions"`
 splices generated blocks between `# >>> generated:<id>` / `# <<< generated:<id>`
 markers in a hand-written file.
+
+## Compare: is the generated GraphQL the client's GraphQL?
+
+`elody-ui compare` generates the declaration into a scratch root and reads
+both sides the way the graphql-service's codegen does: every `*.queries.ts`
+below the directory, the `gql` template literals extracted and parsed with
+graphql-js. Per definition (fragment or operation, by name) the verdict is
+`equal`, `differs` (with the path to the first difference), `missing` (the
+client has it, the generator does not), `extra` (generated, no such client
+definition) or `out-of-scope` (excluded by the scope file, with the gap id
+that explains why). Whitespace, comments, `__typename` and the quoting of a
+string literal do not count; the order of fields and arguments does, because
+it drives the order in the UI. An entity that emits `regions` is generated
+into a copy of the client's file, so its hand-written parts compare equal by
+construction. The report is text on stdout and, with `--json`, the full
+result; exit 1 when anything differs, is missing or extra. The scope file:
+
+```json
+{ "outOfScope": { "getTenants": "G-003" }, "outOfScopeFiles": { "queries/flows.queries.ts": "G-007" } }
+```
+
+`tests/compare.test.ts` proves the comparer on the dishacled golden: every
+definition of `examples/dishacled.ui.ttl` compares equal to
+`tests/golden/dishacled-example/`. The declarations of the clients, their
+scope files and the gap backlog live in
+[`elody-declarations`](../elody-declarations).
 
 ## Compatibility levels (epic #165964)
 
