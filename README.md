@@ -72,9 +72,13 @@ graphql-js. Per definition (fragment or operation, by name) the verdict is
 client has it, the generator does not), `extra` (generated, no such client
 definition) or `out-of-scope` (excluded by the scope file, with the gap id
 that explains why). Whitespace, comments, `__typename` and the quoting of a
-string literal do not count, nor where a fragment is spread in a selection
-set; the order of fields and arguments does, because it drives the order in
-the UI. An entity that emits `regions` is generated
+string literal do not count, nor where a fragment is spread. The order of
+fields counts where it decides what the user sees: the fields on the card,
+in a panel, in a form, the filters, the elements of a column, the values of
+an input list (sort options, view modes, bulk operations). Where the PWA
+reads an object by name it does not: the initial values, the settings of an
+element, a panel or a filter, the fields asked back for a bulk option,
+arguments and input objects. An entity that emits `regions` is generated
 into a copy of the client's file, so its hand-written parts compare equal by
 construction. The report is text on stdout and, with `--json`, the full
 result; exit 1 when anything differs, is missing or extra. The scope file:

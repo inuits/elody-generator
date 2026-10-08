@@ -99,13 +99,25 @@ describe("normalizeDefinition", () => {
     expect(normalizeDefinition(first)).toBe(normalizeDefinition(last));
   });
 
-  it("keeps field order and argument order", () => {
-    const ab = definition("fragment a on A { x y }");
-    const ba = definition("fragment a on A { y x }");
-    expect(normalizeDefinition(ab)).not.toBe(normalizeDefinition(ba));
-    const kv = definition('fragment a on A { f(key: "k", source: metadata) }');
-    const vk = definition('fragment a on A { f(source: metadata, key: "k") }');
-    expect(normalizeDefinition(kv)).not.toBe(normalizeDefinition(vk));
+  it("keeps the order where it decides what the user sees: card, panel, form fields, filters, elements", () => {
+    const same = (a: string, b: string) => normalizeDefinition(definition(a)) === normalizeDefinition(definition(b));
+    expect(same("fragment a on A { teaserMetadata { x: metaData { key(input: \"x\") } y: metaData { key(input: \"y\") } } }", "fragment a on A { teaserMetadata { y: metaData { key(input: \"y\") } x: metaData { key(input: \"x\") } } }")).toBe(false);
+    expect(same("fragment a on A { entityView { column { elements { windowElement { label(input: \"w\") p: panels { x: metaData { key(input: \"x\") } y: metaData { key(input: \"y\") } } } } } } }", "fragment a on A { entityView { column { elements { windowElement { label(input: \"w\") p: panels { y: metaData { key(input: \"y\") } x: metaData { key(input: \"x\") } } } } } } }")).toBe(false);
+    expect(same("query F { GetDynamicForm { t: formTab { formFields { x: metaData { key(input: \"x\") } y: metaData { key(input: \"y\") } } } } }", "query F { GetDynamicForm { t: formTab { formFields { y: metaData { key(input: \"y\") } x: metaData { key(input: \"x\") } } } } }")).toBe(false);
+    expect(same("fragment a on A { advancedFilters { x: advancedFilter(type: text) { type } y: advancedFilter(type: text) { type } } }", "fragment a on A { advancedFilters { y: advancedFilter(type: text) { type } x: advancedFilter(type: text) { type } } }")).toBe(false);
+    expect(same("fragment a on A { entityView { column { elements { a: entityListElement { label(input: \"a\") } b: entityListElement { label(input: \"b\") } } } } }", "fragment a on A { entityView { column { elements { b: entityListElement { label(input: \"b\") } a: entityListElement { label(input: \"a\") } } } } }")).toBe(false);
+    // the values of an input list keep their order (sort options, view modes, bulk operations)
+    expect(same("fragment a on A { sortOptions { options(input: [{ value: \"x\" }, { value: \"y\" }]) { value } } }", "fragment a on A { sortOptions { options(input: [{ value: \"y\" }, { value: \"x\" }]) { value } } }")).toBe(false);
+  });
+
+  it("ignores the order where the PWA reads an object by name: initial values, settings, arguments, input objects", () => {
+    const same = (a: string, b: string) => normalizeDefinition(definition(a)) === normalizeDefinition(definition(b));
+    expect(same("fragment a on A { intialValues { x: keyValue(key: \"x\") y: keyValue(key: \"y\") } }", "fragment a on A { intialValues { y: keyValue(key: \"y\") x: keyValue(key: \"x\") } }")).toBe(true);
+    expect(same("fragment a on A { x: keyValue(key: \"k\", source: metadata) }", "fragment a on A { x: keyValue(source: metadata, key: \"k\") }")).toBe(true);
+    expect(same("fragment a on A { intialValues { x } relationValues entityView { column { size(size: ten) elements { e: entityListElement { label(input: \"l\") searchInputType(input: \"s\") customQuery(input: \"q\") } } } } }", "fragment a on A { relationValues intialValues { x } entityView { column { elements { e: entityListElement { label(input: \"l\") customQuery(input: \"q\") searchInputType(input: \"s\") } } size(size: ten) } } }")).toBe(true);
+    expect(same("fragment a on A { advancedFilters { t: advancedFilter(type: text) { type hidden(value: true) defaultValue(value: \"o\") } } }", "fragment a on A { advancedFilters { t: advancedFilter(type: text) { type defaultValue(value: \"o\") hidden(value: true) } } }")).toBe(true);
+    expect(same("fragment a on A { entityView { column { elements { windowElement { label(input: \"w\") p: panels { isEditable(input: true) isCollapsed(input: false) x: metaData { key(input: \"x\") } } } } } } }", "fragment a on A { entityView { column { elements { windowElement { label(input: \"w\") p: panels { isCollapsed(input: false) x: metaData { key(input: \"x\") } isEditable(input: true) } } } } } }")).toBe(true);
+    expect(same("fragment a on A { bulkOperationOptions { options(input: [{ icon: I, primary: true, label: \"l\" }]) { icon label primary } } }", "fragment a on A { bulkOperationOptions { options(input: [{ primary: true, icon: I, label: \"l\" }]) { primary icon label } } }")).toBe(true);
   });
 });
 
@@ -146,15 +158,12 @@ describe("compareDefinitions", () => {
   });
 
   it("names a reordering as such, with both orders", () => {
-    const generated = readDefinitions([
-      gqlFile(
-        "entities/alert.queries.ts",
-        "fragment minimalAlert on Alert { intialValues { created: keyValue(key: \"created\", source: metadata) message: keyValue(key: \"message\", source: metadata) } }",
-      ),
-    ]).definitions;
-    const result = compareDefinitions(client, generated).definitions.find((r) => r.name === "minimalAlert")!;
+    const card = (order: string) => gqlFile("entities/card.queries.ts", `fragment minimalCard on Card { teaserMetadata { ${order} } }`);
+    const a = readDefinitions([card('x: metaData { key(input: "x") } y: metaData { key(input: "y") }')]).definitions;
+    const b = readDefinitions([card('y: metaData { key(input: "y") } x: metaData { key(input: "x") }')]).definitions;
+    const result = compareDefinitions(a, b).definitions.find((r) => r.name === "minimalCard")!;
     expect(result.status).toBe("differs");
-    expect(result.path).toBe("intialValues > order: [message, created] vs [created, message]");
+    expect(result.path).toBe("teaserMetadata > order: [x, y] vs [y, x]");
   });
 
   it("says what the generated selection adds or lacks before descending into it", () => {

@@ -16,7 +16,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from "os";
 import { basename, dirname, join, relative } from "path";
 import { Kind, parse, print, visit } from "graphql";
-import type { ASTNode, DocumentNode, FragmentDefinitionNode, OperationDefinitionNode } from "graphql";
+import type { ASTNode, DocumentNode, FragmentDefinitionNode, OperationDefinitionNode, SelectionNode } from "graphql";
 import { generate } from "./generate.js";
 import type { Ontology } from "./ontology.js";
 import { readUiDeclaration } from "./parse.js";
@@ -186,18 +186,51 @@ export function readDefinitions(files: QueryFile[]): ReadResult {
   return { definitions, duplicates, errors };
 }
 
-/** The definition without `__typename`, comments or location, string literals unquoted the same way. */
+/**
+ * Where the order of fields decides what the user sees, it counts: the fields on the card
+ * (teaserMetadata), in a panel, in a form, the filters, the elements of a column, the
+ * columns, the context menu actions. Everywhere else the PWA reads an object by name
+ * (the initial values, the settings of an element, a panel or a filter, the fields asked
+ * back for a bulk option), so the order is the writer's and does not count.
+ */
+const ORDERED_PARENTS = new Set(["teaserMetadata", "elements", "formFields", "advancedFilters", "contextMenuActions", "entityView", "steps"]);
+/** Parents whose children are settings (free) except these content children (ordered, kept in place after the settings). */
+const CONTENT_CHILDREN: Record<string, (name: string) => boolean> = {
+  panels: (name) => !["panelHeaderContent", "label", "panelType", "isCollapsed", "isEditable", "canBeMultipleColumns", "bulkData", "can", "info", "displayCondition", "repetitionConfig"].includes(name),
+  windowElement: (name) => name === "panels",
+  column: (name) => name === "elements",
+  GetDynamicForm: (name) => name === "formTab",
+  formTab: (name) => name === "formFields",
+  GetRepetitiveForm: (name) => name === "steps",
+  PreviewElement: (name) => name === "column",
+};
+const selectionName = (selection: SelectionNode): string =>
+  selection.kind === Kind.FIELD ? (selection.alias?.value ?? selection.name.value) : selection.kind === Kind.INLINE_FRAGMENT ? `... on ${selection.typeCondition?.name.value ?? ""}` : `...${selection.name.value}`;
+const byName = (a: { name: { value: string } }, b: { name: { value: string } }) => a.name.value.localeCompare(b.name.value);
+
+/** The definition without `__typename`, comments or location, string literals unquoted the same way, named things in a fixed order. */
 export function normalizeNode<T extends ASTNode>(node: T): T {
   return visit(node, {
-    Field: (field) =>
-      field.name.value === "__typename" ? null : field.alias && field.alias.value === field.name.value ? { ...field, alias: undefined } : undefined,
-    // where a fragment is spread in a selection set does not change what the PWA receives: spreads go last
+    Field: {
+      enter: (field) =>
+        field.name.value === "__typename" ? null : field.alias && field.alias.value === field.name.value ? { ...field, alias: undefined } : undefined,
+      // arguments are named: their order does not count
+      leave: (field) => (field.arguments && field.arguments.length > 1 ? { ...field, arguments: [...field.arguments].sort(byName) } : undefined),
+    },
+    // an input object is a map: its field order does not count (the values of a list keep theirs)
+    ObjectValue: { leave: (object) => (object.fields.length > 1 ? { ...object, fields: [...object.fields].sort(byName) } : undefined) },
     SelectionSet: {
-      leave(set) {
+      leave(set, _key, parent) {
+        const parentNode = parent && !Array.isArray(parent) ? (parent as ASTNode) : undefined;
+        const parentName = parentNode?.kind === Kind.FIELD ? parentNode.name.value : "";
         const spreads = set.selections.filter((selection) => selection.kind === Kind.FRAGMENT_SPREAD);
-        if (spreads.length === 0) return undefined;
-        const rest = set.selections.filter((selection) => selection.kind !== Kind.FRAGMENT_SPREAD);
-        return { ...set, selections: [...rest, ...spreads] };
+        const fields = set.selections.filter((selection) => selection.kind !== Kind.FRAGMENT_SPREAD);
+        // spreads go last: where a fragment is spread does not change what the PWA receives
+        if (ORDERED_PARENTS.has(parentName)) return { ...set, selections: [...fields, ...spreads] };
+        const isContent = CONTENT_CHILDREN[parentName];
+        const content = isContent ? fields.filter((selection) => selection.kind === Kind.FIELD && isContent(selection.name.value)) : [];
+        const settings = fields.filter((selection) => !content.includes(selection)).sort((a, b) => selectionName(a).localeCompare(selectionName(b)));
+        return { ...set, selections: [...settings, ...content, ...spreads] };
       },
     },
     StringValue: (value) => (value.block ? { ...value, block: false } : undefined),
