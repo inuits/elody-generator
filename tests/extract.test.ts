@@ -32,11 +32,11 @@ describe("extract: the dishacled golden round trip", () => {
     expect(differs, notes.join("\n")).toEqual([]);
     expect(comparison.definitions.filter((d) => d.status === "extra").map((d) => d.name)).toEqual([]);
     const equal = comparison.definitions.filter((d) => d.status === "equal").map((d) => d.name);
-    for (const name of ["minimalAlert", "fullAlert", "minimalGithubProcessor", "fullGithubProcessor", "githubProcessorSortOptions", "filtersForGithubProcessor", "githubProcessorBulkOperations", "GetGithubProcessorEntities", "GetGithubProcessorFilters", "minimalPipeline", "fullPipeline", "pipelineBulkOperations", "GetPipelineCreateForm", "GetProcessorOnPipelineOperations", "GetEntityPickerListForProcessorsInPipeline", "GetEntityPickerFiltersForProcessorsInPipeline"])
+    for (const name of ["minimalAlert", "fullAlert", "minimalGithubProcessor", "fullGithubProcessor", "githubProcessorSortOptions", "filtersForGithubProcessor", "githubProcessorBulkOperations", "GetGithubProcessorEntities", "GetGithubProcessorFilters", "minimalPipeline", "fullPipeline", "pipelineBulkOperations", "GetPipelineCreateForm", "GetProcessorOnPipelineOperations", "GetEntityPickerListForProcessorsInPipeline", "GetEntityPickerFiltersForProcessorsInPipeline", "GetRepetitiveFormForComponent", "ProcessorRelationConfig", "ProcessorConnectionsConfig", "GetPipelineConnections", "GetPipelineValidation"])
       expect(equal, `${name} not equal; notes:\n${notes.join("\n")}`).toContain(name);
     // what is missing is what the extractor does not cover yet, and it says so
     const missing = comparison.definitions.filter((d) => d.status === "missing").map((d) => d.name);
-    for (const name of missing) expect(name, "an uncovered document").toMatch(/Picker|Repetitive|Connections|Validation|Config|ListFilters|GetAlertEntities|GetGithubProcessorEntities|GetPipelineEntities|GetGithubProcessorFilters|GetGithubProcessorSortOptions|GetGithubProcessorBulkOperations|GetPipeline|Runner|Processor/);
+    for (const name of missing) expect(name, "an uncovered document").toMatch(/Picker|ListFilters|GetAlertEntities|GetGithubProcessorEntities|GetPipelineEntities|GetGithubProcessorFilters|GetGithubProcessorSortOptions|GetGithubProcessorBulkOperations|GetPipeline|Runner|Processor/);
   });
 });
 

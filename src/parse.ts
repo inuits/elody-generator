@@ -1183,13 +1183,15 @@ class Parse {
     const r = this.r;
     const legacy = r.nodes(subject, elody("repetitiveForm"));
     if (legacy.length) this.retired(subject, elody("repetitiveForm"));
-    return [...r.nodes(subject, elody("guidedFlow")), ...legacy].map((node): M.UiRepetitiveForm => {
+    return [...r.nodes(subject, elody("guidedFlow")), ...legacy]
+      .filter((node) => this.emitsOnce(`flow:${this.queryNameOf(node, "guided flow")}`))
+      .map((node): M.UiRepetitiveForm => {
       const finalizeNode = r.node(node, elody("finalize"));
       return {
         queryName: this.queryNameOf(node, "guided flow"),
         label: r.value(node, rdfs("label")),
-        repeatable: r.literal(node, elody("repeatable")) === true,
-        refetchOnFinish: r.literal(node, elody("refetchOnFinish")) === true,
+        repeatable: this.optionalFlag(node, elody("repeatable")),
+        refetchOnFinish: this.optionalFlag(node, elody("refetchOnFinish")),
         steps: r.byOrder(r.nodes(node, elody("step"))).map((step) => this.step(step)),
         finalize: finalizeNode
           ? {

@@ -183,6 +183,21 @@ type Operation = {
   modal?: { kind?: string; form?: string; relationType?: string; closeConfirmation?: boolean; permission?: string };
 };
 
+type FlowStep = {
+  key: string;
+  label?: string;
+  entityType?: string;
+  createForm?: string;
+  /** the picker node declared for the step (its list and filters documents), when these files hold the list */
+  pickerNode?: string;
+  acceptedTypes: string[];
+  maxSelection?: number;
+  overviewFields: { key: string; label?: string }[];
+};
+type Flow = { queryName: string; label?: string; repeatable?: boolean; refetchOnFinish?: boolean; steps: FlowStep[]; finalize?: { fromStep: string; relationType: string } };
+/** an id-addressed document a modal loads by name (ProcessorConfigForm(id: $id)) */
+type FormSource = { queryName: string; field: string; withParent: boolean };
+
 type ListQuery = { node?: string; name: string; filtersName?: string; filtersType?: string; results: { type: string; fragment: string }[]; filters: Filter[] };
 type Picker = ListQuery;
 
@@ -213,6 +228,9 @@ type Entity = {
   form?: Form;
   /** the forms the bulk operations and actions open, when these files hold them */
   forms: Form[];
+  /** the guided flows (GetRepetitiveForm) and form sources in the file holding the listing fragment */
+  flows: Flow[];
+  formSources: FormSource[];
   operations?: Operation[];
   customOperations: { name: string; operations: Operation[] }[];
   listQueries: ListQuery[];
@@ -238,6 +256,8 @@ export class Extractor {
   /** list query nodes by query and filters document: one node per pair, the entities document with the first */
   private readonly listQueryNodes = new Map<string, string>();
   private readonly pickerNodes = new Map<string, string>();
+  /** the form sources found in any file: an action naming one references it as a source, not a form */
+  private readonly formSourceNames = new Set<string>();
   private readonly queriesWithResults = new Set<string>();
   /** every node minted so far: a list query, a picker, a form or a custom operations set never share a name */
   private readonly nodes = new Set<string>();
@@ -310,6 +330,8 @@ export class Extractor {
       customOperations: [],
       listQueries: [],
       forms: [],
+      flows: [],
+      formSources: [],
     };
     const where = name;
 
@@ -562,7 +584,8 @@ export class Extractor {
       }
     }
     // the type's other create forms: every Get*CreateForm dynamic form in the file that holds its listing fragment
-    const file = this.definitions.get(`minimal${name}`)?.file;
+    // (a listing variant of a type, minimal<X>InHomeScreen, leaves them to the type itself)
+    const file = entity.documentName === entity.graphqlType ? this.definitions.get(`minimal${name}`)?.file : undefined;
     for (const definition of this.definitions.values()) {
       if (definition.kind !== "query" || definition.file !== file || !/CreateForm$/.test(definition.name)) continue;
       if (definition.name === entity.form?.queryName || entity.forms.some((f) => f.queryName === definition.name)) continue;
@@ -570,6 +593,18 @@ export class Extractor {
       if (!fields(query.selectionSet).some((f) => f.name.value === "GetDynamicForm")) continue;
       const extra = this.formWithFields(this.form(query, definition.name, where), where);
       if (extra) entity.forms.push(extra);
+    }
+    // the guided flows and the form sources of the same file
+    for (const definition of this.definitions.values()) {
+      if (definition.kind !== "query" || definition.file !== file) continue;
+      const query = definition.node as OperationDefinitionNode;
+      const top = fields(query.selectionSet);
+      if (top.some((f) => f.name.value === "GetRepetitiveForm")) entity.flows.push(this.flow(query, definition.name, where, entity));
+      else if (top.length === 1 && (query.variableDefinitions ?? []).some((v) => v.variable.name.value === "id") && !top[0].selectionSet) {
+        const withParent = (query.variableDefinitions ?? []).some((v) => v.variable.name.value === "parentEntityId");
+        entity.formSources.push({ queryName: definition.name, field: top[0].name.value, withParent });
+        this.formSourceNames.add(definition.name);
+      }
     }
     for (const [suffix, document] of [["Entities", "entities"], ["Filters", "filters"], ["SortOptions", "sortOptions"], ["BulkOperations", "bulkOperations"]] as const)
       if (this.operation(`Get${name}${suffix}`)) entity.documents.push(document);
@@ -907,6 +942,43 @@ export class Extractor {
       result.push(filter);
     }
     return result;
+  }
+
+  /** A guided flow (GetRepetitiveForm): its steps, each with a form and a picker, and what finalizes it. */
+  private flow(query: OperationDefinitionNode, queryName: string, where: string, entity: Entity): Flow {
+    const root = fields(query.selectionSet).find((f) => f.name.value === "GetRepetitiveForm")!;
+    for (const field of fields(root.selectionSet))
+      if (!["label", "repeatable", "refetchOnFinish", "steps", "finalizeOnHost"].includes(field.name.value)) this.note(`${where}: guided flow ${queryName} field ${field.name.value} has no term; left out`);
+    const steps = fields(root.selectionSet)
+      .filter((f) => f.name.value === "steps")
+      .map((step): FlowStep => {
+        const known = ["key", "label", "entityType", "createForm", "pickerQuery", "pickerFiltersQuery", "acceptedTypes", "maxSelection", "overviewFields"];
+        for (const field of fields(step.selectionSet)) if (!known.includes(field.name.value)) this.note(`${where}: guided flow ${queryName} step ${alias(step)} field ${field.name.value} has no term; left out`);
+        const pickerQuery = input(child(step, "pickerQuery"));
+        const overview = child(step, "overviewFields");
+        const max = input(child(step, "maxSelection"));
+        return {
+          key: input(child(step, "key")) ?? alias(step),
+          label: input(child(step, "label")),
+          entityType: input(child(step, "entityType")),
+          createForm: input(child(step, "createForm")),
+          pickerNode: pickerQuery ? this.picker(pickerQuery, input(child(step, "pickerFiltersQuery")), `${where} ${queryName}`, entity) : undefined,
+          acceptedTypes: list(child(step, "acceptedTypes") ? argument(child(step, "acceptedTypes")!, "input") : undefined).map((v) => scalar(v) ?? ""),
+          maxSelection: max === undefined ? undefined : Number(max),
+          overviewFields: list(overview ? argument(overview, "input") : undefined)
+            .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
+            .map((entry) => ({ key: scalar(objectField(entry, "key")) ?? "", label: scalar(objectField(entry, "label")) })),
+        };
+      });
+    const finalize = child(root, "finalizeOnHost");
+    return {
+      queryName,
+      label: input(child(root, "label")),
+      repeatable: child(root, "repeatable") ? input(child(root, "repeatable")) === "true" : undefined,
+      refetchOnFinish: child(root, "refetchOnFinish") ? input(child(root, "refetchOnFinish")) === "true" : undefined,
+      steps,
+      finalize: finalize ? { fromStep: input(child(finalize, "fromStep")) ?? "", relationType: input(child(finalize, "relationType")) ?? "" } : undefined,
+    };
   }
 
   /** deleteQueryOptions: the labels and documents of the delete flow. */
@@ -1363,7 +1435,8 @@ export class Extractor {
         if (action.icon) a.push(`      elody:icon ${q(action.icon)} ;`);
         if (action.formFlow) a.push(`      elody:formFlow ${q(action.formFlow)} ;`);
         if (action.formTitle) a.push(`      elody:formTitle ${q(action.formTitle)} ;`);
-        if (action.formQuery) {
+        if (action.formQuery && this.formSourceNames.has(action.formQuery)) a.push(`      elody:formSourceRef ui:${action.formQuery} ;`);
+        else if (action.formQuery) {
           a.push(`      elody:form ui:${action.formQuery} ;`);
           this.stubs.add(action.formQuery);
         }
@@ -1381,6 +1454,34 @@ export class Extractor {
     const extra: string[] = [];
     const allForms = [...(entity.form ? [entity.form] : []), ...entity.forms];
     if (allForms.length) out.push(`  elody:form ${allForms.map((f) => `ui:${f.queryName}`).join(" , ")} ;`);
+    if (entity.flows.length) out.push(`  elody:guidedFlow ${entity.flows.map((f) => `ui:${f.queryName}`).join(" , ")} ;`);
+    if (entity.formSources.length) out.push(`  elody:formSource ${entity.formSources.map((f) => `ui:${f.queryName}`).join(" , ")} ;`);
+    for (const flow of entity.flows) {
+      const lines = [`ui:${flow.queryName}`, `  a elody:GuidedFlow ;`, ...(flow.label !== undefined ? [`  rdfs:label ${q(flow.label)} ;`] : []), `  elody:queryName ${q(flow.queryName)} ;`];
+      if (flow.repeatable !== undefined) lines.push(`  elody:repeatable ${flow.repeatable} ;`);
+      if (flow.refetchOnFinish !== undefined) lines.push(`  elody:refetchOnFinish ${flow.refetchOnFinish} ;`);
+      if (flow.finalize) lines.push(`  elody:finalize [ elody:fromStep ${q(flow.finalize.fromStep)} ; elody:relationType ${q(flow.finalize.relationType)} ] ;`);
+      const steps = flow.steps.map((step, i) => {
+        const st = [`    [ sh:order ${i + 1} ;`, `    elody:key ${q(step.key)} ;`];
+        if (step.label !== undefined) st.push(`    rdfs:label ${q(step.label)} ;`);
+        if (step.entityType) st.push(`    elody:entityType ${q(step.entityType)} ;`);
+        if (step.createForm) {
+          st.push(`    elody:form ui:${step.createForm} ;`);
+          if (!formNodes.has(step.createForm)) this.stubs.add(step.createForm);
+        }
+        if (step.pickerNode) st.push(`    elody:picker ui:${step.pickerNode} ;`);
+        for (const type of step.acceptedTypes) st.push(`    elody:acceptedTypes ${q(type)} ;`);
+        if (step.maxSelection !== undefined) st.push(`    elody:maxSelection ${step.maxSelection} ;`);
+        if (step.overviewFields.length)
+          st.push(`    elody:overviewField ${step.overviewFields.map((f, j) => `[ sh:order ${j + 1} ; elody:key ${q(f.key)}${f.label !== undefined ? ` ; rdfs:label ${q(f.label)}` : ""} ]`).join(" , ")} ;`);
+        st[st.length - 1] = st[st.length - 1].replace(/ ;$/, " ]");
+        return st.join("\n");
+      });
+      lines.push(`  elody:step`, steps.join(" ,\n") + " .");
+      extra.push(lines.join("\n"));
+    }
+    for (const source of entity.formSources)
+      extra.push([`ui:${source.queryName}`, `  a elody:FormSource ;`, `  elody:queryName ${q(source.queryName)} ;`, `  elody:resolverField ${q(source.field)} ;`, ...(source.withParent ? [`  elody:withParent true ;`] : [])].join("\n").replace(/ ;$/, " ."));
     for (const f of allForms) {
       // a form several types open is written once
       if (formNodes.has(f.queryName)) continue;

@@ -206,8 +206,9 @@ export type UiRepetitiveStep = {
 export type UiRepetitiveForm = {
   queryName: string;
   label?: string;
-  repeatable: boolean;
-  refetchOnFinish: boolean;
+  /** repeatable / refetchOnFinish; unsaid leaves the field out */
+  repeatable?: boolean;
+  refetchOnFinish?: boolean;
   steps: UiRepetitiveStep[];
   finalize?: { fromStep: string; relationType: string };
 };
