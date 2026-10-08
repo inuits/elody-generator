@@ -882,7 +882,7 @@ class Parse {
       optionsValue: r.value(node, elody("optionsValue")) || undefined,
       selectionOption: r.value(node, elody("selectionOption")) || undefined,
       operator: r.value(node, elody("filterOperator")) || undefined,
-      showTime: r.literal(node, elody("showTime")) === true,
+      showTime: this.optionalFlag(node, elody("showTime")),
       options: r.value(node, elody("optionsType"))
         ? {
             type: String(r.value(node, elody("optionsType"))),

@@ -699,7 +699,7 @@ export class Extractor {
       }
       filter.selectionOption = str(field, "selectionOption");
       filter.operator = str(field, "operator");
-      filter.showTime = str(field, "showTimeForDateFilter") === "true";
+      filter.showTime = str(field, "showTimeForDateFilter") === undefined ? undefined : str(field, "showTimeForDateFilter") === "true";
       const retrieving = argument(field, "advancedFilterInputForRetrievingOptions");
       if (retrieving) {
         const inputs = list(retrieving).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT);
@@ -734,7 +734,8 @@ export class Extractor {
   private form(query: OperationDefinitionNode, queryName: string, where: string): Form {
     const dynamic = fields(query.selectionSet).find((f) => f.name.value === "GetDynamicForm");
     const tab = fields(dynamic?.selectionSet).find((f) => f.name.value === "formTab");
-    const form: Form = { queryName, label: input(child(dynamic, "label")), tabAlias: tab?.alias?.value, fields: [] };
+    // a tab without an alias is the plain formTab field; said as the alias "formTab"
+    const form: Form = { queryName, label: input(child(dynamic, "label")), tabAlias: tab?.alias?.value ?? (tab ? "formTab" : undefined), fields: [] };
     for (const field of fields(child(tab, "formFields")?.selectionSet)) {
       if (field.name.value === "metaData") {
         const widget = child(field, "inputField");
@@ -895,7 +896,7 @@ export class Extractor {
     if (f.optionsValue) lines.push(`    elody:optionsValue ${q(f.optionsValue)} ;`);
     if (f.selectionOption) lines.push(`    elody:selectionOption ${q(f.selectionOption)} ;`);
     if (f.operator) lines.push(`    elody:filterOperator ${q(f.operator)} ;`);
-    if (f.showTime) lines.push(`    elody:showTime true ;`);
+    if (f.showTime !== undefined) lines.push(`    elody:showTime ${f.showTime} ;`);
     if (f.options) {
       lines.push(`    elody:optionsType ${q(f.options.type)} ;`, `    elody:optionsKey ${q(f.options.key)} ;`);
       if (f.options.matchExact !== undefined) lines.push(`    elody:optionsMatchExact ${f.options.matchExact} ;`);
@@ -1082,7 +1083,7 @@ export class Extractor {
       // a form several types open is written once
       if (formNodes.has(f.queryName)) continue;
       formNodes.add(f.queryName);
-      const lines = [`ui:${f.queryName}`, `  a elody:Form ;`, `  rdfs:label ${q(f.label ?? "")} ;`, `  elody:queryName ${q(f.queryName)} ;`];
+      const lines = [`ui:${f.queryName}`, `  a elody:Form ;`, ...(f.label !== undefined ? [`  rdfs:label ${q(f.label)} ;`] : []), `  elody:queryName ${q(f.queryName)} ;`];
       if (f.tabAlias && f.tabAlias !== "name") lines.push(`  elody:alias ${q(f.tabAlias)} ;`);
       const shapeFields = f.fields.map((field, i) => {
         const s = [`      [ sh:path em:${field.key} ;`];

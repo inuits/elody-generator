@@ -247,6 +247,16 @@ describe("digipolis: option mappings, selection options, operators, sort options
     expect(fragment(file, "filtersForKeyword")).toContain('relation: advancedFilter(type: selection, key: ["dams:1|relations.isAssetFor.key"], operator: or) {\n        type\n        key\n        operator\n');
   });
 
+  it("renders a form without a label and with the plain formTab field", async () => {
+    const form = `ui:Ocr a elody:Form ; elody:queryName "GetOcrForm" ; elody:alias "formTab" ;
+      elody:shape [ sh:property [ sh:path em:language ; sh:order 1 ; elody:clientInputField "languageTypeField" ; elody:labelKey "metadata.labels.language" ] ] ;
+      elody:submit [ rdfs:label "actions.labels.start-ocr" ; elody:actionQuery "GenerateOcrWithAsset" ; elody:icon "Process" ] .`;
+    const file = await render(entity(`sh:property ${label} ; elody:form ui:Ocr`, form));
+    expect(query(file, "GetOcrForm")).toContain("    GetDynamicForm {\n      formTab {\n        formFields {");
+    expect(query(file, "GetOcrForm")).not.toContain("label(input: \"\")");
+    expect(query(file, "GetOcrForm")).not.toContain("creationType");
+  });
+
   it("renders showTimeForDateFilter on a date filter", async () => {
     const file = await render(
       entity(`sh:property ${label} ; elody:filter [ rdfs:label "metadata.labels.created-at" ; sh:order 1 ; elody:alias "created_at" ; elody:key "vlacc:1|audit.created.at" ; elody:showTime true ; elody:displayedByDefault true ; elody:filterKind elody:DateFilter ; elody:showTooltip true ]`),
