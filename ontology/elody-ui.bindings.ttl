@@ -164,6 +164,7 @@ elody:RemoveFromListForm elody:queryName "GetBulkRemovingMediafilesInDetailForm"
 # -- enumeration individuals → the literal the GraphQL schema expects ------------
 elody:AddRelationOperation elody:enumValue "addRelation" .
 elody:AdvancedSearchInput elody:enumValue "AdvancedInputType" .
+elody:AdvancedMediaFilesSearchInput elody:enumValue "AdvancedInputMediaFilesType" .
 elody:Ascending elody:enumValue "asc" .
 elody:BarGraph elody:enumValue "bar" .
 elody:BoldExtension elody:enumValue "bold" .
