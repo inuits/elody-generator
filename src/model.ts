@@ -120,6 +120,9 @@ export type UiFilter = {
 export type UiAction = {
   alias: string;
   order: number;
+  /** the field the action is emitted as (elody:actionForm); default doElodyAction */
+  form?: string;
+  /** the platform action (elody:actionKind); none on a link action */
   actionType: string;
   formQuery?: string;
   formFlow?: string;
@@ -128,7 +131,8 @@ export type UiAction = {
   icon?: string;
 };
 
-export type UiContextMenu = { forceShow: boolean; includeBasicActions: boolean; actions: UiAction[] };
+/** elody:menuInButtons renders the menu as buttons { contextMenu { ... } } (the newer form) */
+export type UiContextMenu = { forceShow: boolean; includeBasicActions: boolean; inButtons?: boolean; actions: UiAction[] };
 
 export type UiBulkOpContext = { activeViewMode?: string; selection: string; tooltip: string; requiresSameType?: boolean; minSelectedItems?: number; maxSelectedItems?: number };
 
@@ -217,7 +221,8 @@ export type UiRepetitiveForm = {
   finalize?: { fromStep: string; relationType: string };
 };
 
-export type UiPickerResult = { type: string; fragment: string; order: number };
+/** A result type of a list query or picker: fragments spread on it and/or a listing rendered inline (an EntityUi with elody:emit "inline") */
+export type UiPickerResult = { type: string; fragments: string[]; listingIri?: string; listing?: UiEntity; order: number };
 
 export type UiPicker = {
   queryName: string;
@@ -227,6 +232,8 @@ export type UiPicker = {
   filters: UiFilter[];
   /** elody:filtersType: the type the filters document narrows to (... on X { advancedFilters }) */
   filtersType?: string;
+  /** elody:relationValues on the list query: relationValues read on every result */
+  relationValues?: boolean;
   /** false when an earlier type already emitted the document of that name */
   emitList?: boolean;
   emitFilters?: boolean;
@@ -318,7 +325,7 @@ export type UiEntity = {
   /** base name of the generated fragments and documents; defaults to graphqlType */
   documentName?: string;
   targetClass?: string;
-  emit: "file" | "regions";
+  emit: "file" | "regions" | "inline";
   documents: string[];
   typePills: boolean;
   /** elody:relationValues: read relationValues; undefined derives it from what the type needs */

@@ -35,6 +35,15 @@ export async function readUiDeclaration(ttl: string, ontology: Ontology = defaul
   const editors = await scoreEditors(reading);
   const parse = new Parse(reading, ontology, editors);
   const entities = reading.subjectsOfType(elody("EntityUi")).map((subject) => parse.entity(subject));
+  // a result rendered from an inline listing references that EntityUi: resolved once every type is parsed
+  const byIri = new Map(entities.map((entity) => [entity.iri, entity]));
+  for (const entity of entities)
+    for (const query of [...entity.pickers, ...entity.listQueries])
+      for (const result of query.results)
+        if (result.listingIri) {
+          result.listing = byIri.get(result.listingIri);
+          if (!result.listing) reading.warn(result.listingIri, `elody:listing references no EntityUi (result ${result.type} of ${query.queryName})`);
+        }
   const sources = Object.fromEntries(
     reading
       .subjectsOfType(elody("EntityUi"))
@@ -765,7 +774,7 @@ class Parse {
       graphqlType: String(r.value(subject, elody("graphqlType")) ?? ""),
       documentName: r.value(subject, elody("documentName")) || undefined,
       targetClass: r.value(subject, sh("targetClass")),
-      emit: r.value(subject, elody("emit")) === "file" ? "file" : "regions",
+      emit: r.value(subject, elody("emit")) === "file" ? "file" : r.value(subject, elody("emit")) === "inline" ? "inline" : "regions",
       documents: r.literals(subject, elody("documents")),
       typePills: r.literal(subject, elody("typePills")) === true,
       relationValues: this.optionalFlag(subject, elody("relationValues")) ?? (this.legacy ? true : undefined),
@@ -994,11 +1003,13 @@ class Parse {
     return {
       forceShow: r.literal(node, elody("forceShow")) === true,
       includeBasicActions: r.literal(node, elody("includeBasicActions")) === true,
+      inButtons: r.literal(node, elody("menuInButtons")) === true,
       actions: r.byOrder(r.nodes(node, elody("action"))).map((action): M.UiAction => {
         const source = r.node(action, elody("formSourceRef"));
         return {
           alias: String(r.value(action, elody("alias")) ?? ""),
           order: r.order(action),
+          form: r.value(action, elody("actionForm")) || undefined,
           actionType: this.enumValue(action, elody("actionKind"), elody("ActionKind"), elody("actionType")) ?? "",
           formQuery: source
             ? this.queryNameOf(source, "form source")
@@ -1272,8 +1283,10 @@ class Parse {
     return {
       queryName: names.list,
       filtersQueryName: names.filters,
-      emitList: this.emitsOnce(`document:${names.list}`),
-      emitFilters: this.emitsOnce(`document:${names.filters}`),
+      relationValues: r.literal(node, elody("relationValues")) === true,
+      // the document of a name goes with the first node that renders it: one with results, one with filters
+      emitList: r.nodes(node, elody("result")).length ? this.emitsOnce(`document:${names.list}`) : false,
+      emitFilters: r.nodes(node, elody("filter")).length ? this.emitsOnce(`document:${names.filters}`) : false,
       order: r.order(node),
       results: r.byOrder(r.nodes(node, elody("result"))).map((result): M.UiPickerResult => {
         let type = r.value(result, elody("graphqlType"));
@@ -1283,7 +1296,8 @@ class Parse {
         }
         return {
           type: type ?? "",
-          fragment: String(r.value(result, elody("fragment")) ?? ""),
+          fragments: r.literals(result, elody("fragment")),
+          listingIri: r.node(result, elody("listing")),
           order: r.order(result),
         };
       }),

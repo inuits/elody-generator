@@ -333,20 +333,27 @@ export function renderContextMenu(entity: M.UiEntity, indent: number): string {
 
   const lines: string[] = [];
   if (menu.forceShow) lines.push(`${pad(indent)}forceShowContextMenuActions(input: true)`);
-  lines.push(`${pad(indent)}contextMenuActions {`);
-  if (menu.includeBasicActions) lines.push(`${pad(indent + 2)}...basicContextMenuActions`);
-  for (const action of menu.actions) {
-    lines.push(`${pad(indent + 2)}${action.alias}: doElodyAction {`);
-    lines.push(`${pad(indent + 4)}action(input: ${action.actionType})`);
-    if (action.formQuery) lines.push(`${pad(indent + 4)}formQuery(input: "${action.formQuery}")`);
-    if (action.formFlow) lines.push(`${pad(indent + 4)}formFlow(input: ${action.formFlow})`);
-    if (action.formTitle) lines.push(`${pad(indent + 4)}formTitle(input: "${action.formTitle}")`);
-    if (action.label) lines.push(`${pad(indent + 4)}label(input: "${action.label}")`);
-    if (action.icon) lines.push(`${pad(indent + 4)}icon(input: "${action.icon}")`);
-    lines.push(`${pad(indent + 4)}__typename`);
-    lines.push(`${pad(indent + 2)}}`);
+  // the newer form nests the menu under buttons; an empty menu is no block at all
+  const inner = menu.inButtons ? indent + 4 : indent + 2;
+  if (menu.includeBasicActions || menu.actions.length) {
+    if (menu.inButtons) lines.push(`${pad(indent)}buttons {`, `${pad(indent + 2)}contextMenu {`);
+    else lines.push(`${pad(indent)}contextMenuActions {`);
+    if (menu.includeBasicActions) lines.push(`${pad(inner)}...basicContextMenuActions`);
+    for (const action of menu.actions) {
+      const form = action.form ?? "doElodyAction";
+      lines.push(`${pad(inner)}${action.alias === form ? form : `${action.alias}: ${form}`} {`);
+      if (action.actionType) lines.push(`${pad(inner + 2)}action(input: ${action.actionType})`);
+      if (action.formQuery) lines.push(`${pad(inner + 2)}formQuery(input: "${action.formQuery}")`);
+      if (action.formFlow) lines.push(`${pad(inner + 2)}formFlow(input: ${action.formFlow})`);
+      if (action.formTitle) lines.push(`${pad(inner + 2)}formTitle(input: "${action.formTitle}")`);
+      if (action.label) lines.push(`${pad(inner + 2)}label(input: "${action.label}")`);
+      if (action.icon) lines.push(`${pad(inner + 2)}icon(input: "${action.icon}")`);
+      lines.push(`${pad(inner + 2)}__typename`);
+      lines.push(`${pad(inner)}}`);
+    }
+    if (menu.inButtons) lines.push(`${pad(indent + 2)}}`);
+    lines.push(`${pad(indent)}}`);
   }
-  lines.push(`${pad(indent)}}`);
   return lines.join("\n");
 }
 
@@ -579,9 +586,12 @@ export function renderListQueryDocuments(picker: M.UiPicker): string[] {
 }
 
 export function renderListQuery(picker: M.UiPicker): string {
+  // a result spreads its fragments and/or renders an inline listing
   const results = picker.results
-    .filter((result) => result.fragment)
-    .map((result) => [`        ... on ${result.type} {`, `          ...${result.fragment}`, "        }"].join("\n"))
+    .filter((result) => result.fragments.length || result.listing)
+    .map((result) =>
+      [`        ... on ${result.type} {`, ...result.fragments.map((fragment) => `          ...${fragment}`), ...(result.listing ? renderListingBody(result.listing, 10) : []), "        }"].join("\n"),
+    )
     .join("\n");
 
   const list = [
@@ -609,6 +619,7 @@ export function renderListQuery(picker: M.UiPicker): string {
     "        id",
     "        uuid",
     "        type",
+    ...(picker.relationValues ? ["        relationValues"] : []),
     results,
     "      }",
     "      __typename",
@@ -849,6 +860,47 @@ export function renderDeleteOptions(options: M.UiDeleteOptions, indent: number):
   return lines.join("\n");
 }
 
+/** The pieces of a listing at an indentation: the config head, the values block, relationValues, the view modes and the card. */
+export function listingParts(entity: M.UiEntity, indent: number): { head: string[]; values: string[]; relation: string[]; modes: string[]; card: string[] } {
+  const head: string[] = [];
+  if (entity.dynamicFormConfigField)
+    head.push(entity.dynamicFormConfigField === "dynamicFormConfig" ? `${pad(indent)}dynamicFormConfig` : `${pad(indent)}dynamicFormConfig: ${entity.dynamicFormConfigField}`);
+  if (entity.portsField) head.push(entity.portsField === "ports" ? `${pad(indent)}ports` : `${pad(indent)}ports: ${entity.portsField}`);
+  // no block when nothing is read in the listing (an empty selection set is not GraphQL)
+  const values: string[] = [];
+  const listingValues = renderInitialValues(entity, indent + 2, true, true);
+  if (listingValues || entity.typePills || entity.spreads.listingValues.length) {
+    values.push(`${pad(indent)}intialValues {`);
+    if (entity.typePills) values.push(`${pad(indent + 2)}...typePillsIntialValues`);
+    for (const spread of entity.spreads.listingValues) values.push(`${pad(indent + 2)}...${spread}`);
+    if (listingValues) values.push(listingValues);
+    values.push(`${pad(indent)}}`);
+  }
+  const relation = readsRelationValues(entity, "listing") ? [`${pad(indent)}relationValues`] : [];
+  const modes = entity.viewModes.length > 0 ? [renderViewModes(entity, indent)] : [];
+  // the card: no block either when nothing is shown
+  const card: string[] = [];
+  const contextMenu = renderContextMenu(entity, indent + 2);
+  const teaserFields = renderTeaserFields(entity, indent + 2);
+  if (teaserFields || contextMenu || entity.typePills || entity.spreads.card.length) {
+    card.push(`${pad(indent)}teaserMetadata {`);
+    if (entity.typePills) card.push(`${pad(indent + 2)}...typePillsTeaserMetadata`);
+    for (const spread of entity.spreads.card) card.push(`${pad(indent + 2)}...${spread}`);
+    // the older menu form comes before the fields, the buttons form after them
+    if (contextMenu && !entity.contextMenu?.inButtons) card.push(contextMenu);
+    if (teaserFields) card.push(teaserFields);
+    if (contextMenu && entity.contextMenu?.inButtons) card.push(contextMenu);
+    card.push(`${pad(indent)}}`);
+  }
+  return { head, values, relation, modes, card };
+}
+
+/** A listing rendered inline (inside a list query's result): the same pieces, no fragment of its own. */
+export function renderListingBody(entity: M.UiEntity, indent: number): string[] {
+  const { head, values, relation, modes, card } = listingParts(entity, indent);
+  return [...head, ...values, ...relation, ...modes, ...card];
+}
+
 export function renderEntityFile(entity: M.UiEntity, declaration: string): string {
   const onType = entity.graphqlType;
   // fragment and document names: elody:documentName when several declarations share a GraphQL type
@@ -856,38 +908,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   const low = lowerFirst(type);
   const fragments: string[] = [];
 
-  const head: string[] = [];
-  if (entity.dynamicFormConfigField)
-    head.push(
-      entity.dynamicFormConfigField === "dynamicFormConfig"
-        ? "    dynamicFormConfig"
-        : `    dynamicFormConfig: ${entity.dynamicFormConfigField}`,
-    );
-  if (entity.portsField) head.push(entity.portsField === "ports" ? "    ports" : `    ports: ${entity.portsField}`);
-  // no block when nothing is read in the listing (an empty selection set is not GraphQL)
-  const values: string[] = [];
-  const listingValues = renderInitialValues(entity, 6, true, true);
-  if (listingValues || entity.typePills || entity.spreads.listingValues.length) {
-    values.push("    intialValues {");
-    if (entity.typePills) values.push("      ...typePillsIntialValues");
-    for (const spread of entity.spreads.listingValues) values.push(`      ...${spread}`);
-    if (listingValues) values.push(listingValues);
-    values.push("    }");
-  }
-  const relation = readsRelationValues(entity, "listing") ? ["    relationValues"] : [];
-  const modes = entity.viewModes.length > 0 ? [renderViewModes(entity, 4)] : [];
-  // the card: no block either when nothing is shown
-  const card: string[] = [];
-  const contextMenu = renderContextMenu(entity, 6);
-  const teaserFields = renderTeaserFields(entity, 6);
-  if (teaserFields || contextMenu || entity.typePills || entity.spreads.card.length) {
-    card.push("    teaserMetadata {");
-    if (entity.typePills) card.push("      ...typePillsTeaserMetadata");
-    for (const spread of entity.spreads.card) card.push(`      ...${spread}`);
-    if (contextMenu) card.push(contextMenu);
-    if (teaserFields) card.push(teaserFields);
-    card.push("    }");
-  }
+  const { head, values, relation, modes, card } = listingParts(entity, 4);
   if (entity.interface) {
     // an interface the subtypes share: no listing fragment of its own
   } else if (entity.listingCore) {

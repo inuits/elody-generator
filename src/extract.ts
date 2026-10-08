@@ -202,7 +202,7 @@ type FieldsFragment = { name: string; fields: FormField[] };
 type ElementsFragment = { name: string; elements: Element[] };
 type ValuesFragment = { name: string; cardName?: string; fields: string[] };
 
-type ListQuery = { node?: string; name: string; filtersName?: string; filtersType?: string; results: { type: string; fragment: string }[]; filters: Filter[] };
+type ListQuery = { node?: string; name: string; filtersName?: string; filtersType?: string; relationValues?: boolean; results: { type: string; fragments: string[]; listingNode?: string }[]; filters: Filter[] };
 type Picker = ListQuery;
 
 type Entity = {
@@ -239,6 +239,8 @@ type Entity = {
   formSources: FormSource[];
   /** a GraphQL interface the subtypes share: filters, sort options and bulk operations without a listing */
   interface?: boolean;
+  /** a listing rendered inline in a list query's results (elody:emit "inline"), not a file */
+  inline?: boolean;
   /** the fragments the file holds for the subtypes to spread */
   fieldsFragments: FieldsFragment[];
   elementsFragments: ElementsFragment[];
@@ -246,7 +248,7 @@ type Entity = {
   operations?: Operation[];
   customOperations: { name: string; operations: Operation[] }[];
   listQueries: ListQuery[];
-  contextMenu?: { forceShow: boolean; basic: boolean; actions: { alias: string; kind?: string; label?: string; icon?: string; formQuery?: string; formFlow?: string; formTitle?: string }[] };
+  contextMenu?: { forceShow: boolean; basic: boolean; inButtons?: boolean; actions: { alias: string; form?: string; kind?: string; label?: string; icon?: string; formQuery?: string; formFlow?: string; formTitle?: string }[] };
 };
 
 // -- the input field types a client uses --------------------------------------
@@ -269,6 +271,40 @@ export class Extractor {
   private readonly listQueryNodes = new Map<string, string>();
   private readonly pickerNodes = new Map<string, string>();
   private readonly declaredCustomOps = new Set<string>();
+  /** the listings synthesised for results selected inline, extracted after the file's types */
+  readonly inlineNames: string[] = [];
+  private readonly inlineSet = new Set<string>();
+
+  /**
+   * The results of a list document: per type its fragment spreads and, for fields selected inline,
+   * a listing of that document alone (minimal<Type>In<Query>, emitted inline).
+   */
+  /** Whether a list document reads relationValues on every result (outside the per-type selections). */
+  private resultsRelationValues(query: OperationDefinitionNode | undefined): boolean {
+    const entities = query ? fields(query.selectionSet).find((f) => f.name.value === "Entities") : undefined;
+    return fields(child(entities, "results")?.selectionSet).some((f) => f.name.value === "relationValues");
+  }
+
+  private resultsOf(query: OperationDefinitionNode | undefined, queryName: string, file: string): ListQuery["results"] {
+    if (!query) return [];
+    const entities = fields(query.selectionSet).find((f) => f.name.value === "Entities");
+    const inline = (child(entities, "results")?.selectionSet?.selections ?? []).filter((s): s is InlineFragmentNode => s.kind === Kind.INLINE_FRAGMENT);
+    return inline.map((on) => {
+      const type = on.typeCondition?.name.value ?? "";
+      const own = on.selectionSet.selections.filter((x) => x.kind !== Kind.FRAGMENT_SPREAD && !(x.kind === Kind.FIELD && x.name.value === "__typename"));
+      const result: ListQuery["results"][number] = { type, fragments: spreads(on.selectionSet) };
+      if (own.length) {
+        let name = `${type}In${queryName}`;
+        for (let n = 2; this.definitions.has(`minimal${name}`); n++) name = `${type}In${queryName}${n}`;
+        const node: FragmentDefinitionNode = { kind: Kind.FRAGMENT_DEFINITION, name: { kind: Kind.NAME, value: `minimal${name}` }, typeCondition: on.typeCondition!, directives: [], selectionSet: { kind: Kind.SELECTION_SET, selections: own } };
+        this.definitions.set(`minimal${name}`, { name: `minimal${name}`, kind: "fragment", file, node, normalized: "" });
+        this.inlineNames.push(name);
+        this.inlineSet.add(name);
+        result.listingNode = `${name}Ui`;
+      }
+      return result;
+    });
+  }
   /** the form sources found in any file: an action naming one references it as a source, not a form */
   private readonly formSourceNames = new Set<string>();
   private readonly queriesWithResults = new Set<string>();
@@ -374,6 +410,7 @@ export class Extractor {
     };
     const where = name;
     if (!minimal) entity.interface = true;
+    if (this.inlineSet.has(name)) entity.inline = true;
 
     // initial values: the detail fragment's order, the listing's values first when the detail lacks them
     const minimalValues = child(listing, "intialValues");
@@ -461,8 +498,14 @@ export class Extractor {
         const key = input(child(field, "key")) ?? alias(field);
         // the value read under the card field's alias, when there is one (title: metaData { key(input: "key") } shows the title alias of key)
         const candidates = entity.properties.filter((p) => p.key === key || (p.alias ?? p.key) === key);
-        const property =
+        let property =
           candidates.find((p) => p.inListing && (p.alias ?? p.key) === alias(field)) ?? candidates.find((p) => (p.alias ?? p.key) === alias(field)) ?? byAlias.get(key) ?? byAlias.get(alias(field));
+        if (!property && entity.inline) {
+          // an inline listing shows a card over values a spread fragment reads: the field is shown, its value not read here
+          property = { key, alias: alias(field) !== key ? alias(field) : undefined, inListing: true, inDetail: false, readsValue: false, teaser: true, sortable: false, single: true, required: false, readOnly: false, labelRole: false };
+          entity.properties.push(property);
+          byAlias.set(alias(field), property);
+        }
         if (!property) {
           this.note(`${where}: card field ${alias(field)} reads no initial value; left out`);
           continue;
@@ -482,6 +525,9 @@ export class Extractor {
         const before = fields(teaser?.selectionSet).slice(0, fields(teaser?.selectionSet).indexOf(field)).filter((f) => f.name.value === "metaData").length;
         entity.thumbnail = { ...(filename && scalar(argument(filename, "fromMediafile")) === "true" ? { fromMediafile: true } : { key: input(child(field, "key")) ?? "thumbnail" }), order: before };
       } else if (field.name.value === "contextMenuActions") entity.contextMenu = { ...this.contextMenu(field, where)!, forceShow: entity.contextMenu?.forceShow ?? false };
+      else if (field.name.value === "buttons" && child(field, "contextMenu"))
+        // the newer form of the card's menu: buttons { contextMenu { ... } }
+        entity.contextMenu = { ...this.contextMenu(child(field, "contextMenu")!, where)!, inButtons: true, forceShow: entity.contextMenu?.forceShow ?? false };
       else if (field.name.value === "forceShowContextMenuActions") {
         entity.contextMenu ??= { forceShow: false, basic: false, actions: [] };
         entity.contextMenu.forceShow = true;
@@ -731,13 +777,15 @@ export class Extractor {
   private contextMenu(field: FieldNode, where: string): Entity["contextMenu"] {
     const menu: NonNullable<Entity["contextMenu"]> = { forceShow: false, basic: spreads(field.selectionSet).includes("basicContextMenuActions"), actions: [] };
     for (const action of fields(field.selectionSet)) {
-      if (action.name.value !== "doElodyAction") {
+      // a link action follows the entity's link: label and icon only; general and custom actions have no terms yet
+      if (!["doElodyAction", "doLinkAction"].includes(action.name.value)) {
         if (action.name.value !== "__typename") this.note(`${where}: context menu action ${action.name.value} has no term; left out`);
         continue;
       }
       menu.actions.push({
         alias: alias(action),
-        kind: this.instance("ActionKind", input(child(action, "action")), `${where} context menu`),
+        form: action.name.value === "doLinkAction" ? "doLinkAction" : undefined,
+        kind: action.name.value === "doLinkAction" ? undefined : this.instance("ActionKind", input(child(action, "action")), `${where} context menu`),
         label: input(child(action, "label")),
         icon: input(child(action, "icon")),
         formQuery: input(child(action, "formQuery")),
@@ -899,19 +947,13 @@ export class Extractor {
     const shared = this.pickerNodes.get(`${name}|${filtersName ?? ""}`);
     if (shared) return shared;
     const query = this.operation(name);
-    const results: Picker["results"] = [];
-    const entities = query ? fields(query.selectionSet).find((f) => f.name.value === "Entities") : undefined;
-    const inline = (child(entities, "results")?.selectionSet?.selections ?? []).filter((s): s is InlineFragmentNode => s.kind === Kind.INLINE_FRAGMENT);
-    // results selected inline (fields, not a fragment spread) cannot be declared: the list document stays hand-written
-    if (inline.every((on) => on.selectionSet.selections.every((x) => x.kind === Kind.FRAGMENT_SPREAD) && spreads(on.selectionSet).length > 0))
-      for (const on of inline) results.push({ type: on.typeCondition?.name.value ?? "", fragment: spreads(on.selectionSet)[0] ?? "" });
-    else if (query) this.note(`${where}: picker ${name} selects its results inline; only its filters document is declared`);
+    const results = this.resultsOf(query, name, this.definitions.get(name)?.file ?? "");
     if (!query) this.note(`${where}: picker ${name} is not in these files; declared without results`);
     const filters = filtersName ? this.operation(filtersName) : undefined;
     const { block, filtersType } = this.advancedFiltersOf(filters);
     const node = this.mint(name, `${name}Picker`);
     this.pickerNodes.set(`${name}|${filtersName ?? ""}`, node);
-    entity.pickers.push({ node, name, filtersName, filtersType, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
+    entity.pickers.push({ node, name, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
     return node;
   }
 
@@ -933,20 +975,14 @@ export class Extractor {
     const node = this.mint(name, filtersName ?? `${name}List`);
     this.listQueryNodes.set(pair, node);
     const query = this.operation(name);
-    const results: ListQuery["results"] = [];
+    let results: ListQuery["results"] = [];
     if (query && !this.queriesWithResults.has(name)) {
-      const entities = fields(query.selectionSet).find((f) => f.name.value === "Entities");
-      const inline = (child(entities, "results")?.selectionSet?.selections ?? []).filter((s) => s.kind === Kind.INLINE_FRAGMENT);
-      const spreadOnly = inline.every((s) => s.kind === Kind.INLINE_FRAGMENT && s.selectionSet.selections.every((x) => x.kind === Kind.FRAGMENT_SPREAD));
-      if (spreadOnly && inline.length) {
-        for (const on of inline)
-          if (on.kind === Kind.INLINE_FRAGMENT) results.push({ type: on.typeCondition?.name.value ?? "", fragment: spreads(on.selectionSet)[0] ?? "" });
-        this.queriesWithResults.add(name);
-      } else this.note(`${where}: list query ${name} selects its results inline; only its filters document is declared`);
+      results = this.resultsOf(query, name, this.definitions.get(name)?.file ?? "");
+      if (results.length) this.queriesWithResults.add(name);
     }
     const filters = filtersName ? this.operation(filtersName) : undefined;
     const { block, filtersType } = this.advancedFiltersOf(filters);
-    entity.listQueries.push({ node, name, filtersName, filtersType, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
+    entity.listQueries.push({ node, name, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
     if (filtersName && !filters) this.note(`${where}: filters document ${filtersName} is not in these files; the list query declares no filters and the name stays`);
     return node;
   }
@@ -1493,7 +1529,7 @@ export class Extractor {
     const node = `ui:${name}Ui`;
     const out: string[] = [`${node}`, `  a elody:EntityUi ;`, `  elody:graphqlType ${q(entity.graphqlType)} ;`];
     if (entity.documentName !== entity.graphqlType) out.push(`  elody:documentName ${q(entity.documentName)} ;`);
-    out.push(`  elody:emit "file" ;`);
+    out.push(`  elody:emit ${entity.inline ? '"inline"' : '"file"'} ;`);
     if (entity.documents.length) out.push(`  elody:documents ${entity.documents.map(q).join(" , ")} ;`);
     if (entity.typePills) out.push(`  elody:typePills true ;`);
     if (entity.relationValues !== undefined) out.push(`  elody:relationValues ${entity.relationValues} ;`);
@@ -1530,8 +1566,8 @@ export class Extractor {
     const properties = entity.properties;
     properties.forEach((p, index) => (p.order = index + 1));
     if (!properties.length) {
-      this.note(`${name}: no initial values; a placeholder property is declared`);
-      properties.push({ key: "title", order: 1, inListing: true, inDetail: true, readsValue: true, teaser: true, sortable: false, single: true, required: false, readOnly: false, labelRole: true });
+      if (!entity.inline) this.note(`${name}: no initial values; a placeholder property is declared`);
+      properties.push({ key: "title", order: 1, inListing: true, inDetail: true, readsValue: !entity.inline, teaser: !entity.inline, sortable: false, single: true, required: false, readOnly: false, labelRole: true });
     }
     out.push(`  sh:property`, properties.map((p) => this.property(p)).join(" ,\n") + " ;");
 
@@ -1583,8 +1619,10 @@ export class Extractor {
       const menu: string[] = [];
       if (entity.contextMenu.forceShow) menu.push(`    elody:forceShow true ;`);
       if (entity.contextMenu.basic) menu.push(`    elody:includeBasicActions true ;`);
+      if (entity.contextMenu.inButtons) menu.push(`    elody:menuInButtons true ;`);
       const actions = entity.contextMenu.actions.map((action, i) => {
         const a = [`      [ sh:order ${i + 1} ;`, `      elody:alias ${q(action.alias)} ;`];
+        if (action.form) a.push(`      elody:actionForm ${q(action.form)} ;`);
         if (action.label) a.push(`      rdfs:label ${q(action.label)} ;`);
         if (action.kind) a.push(`      elody:actionKind ${action.kind} ;`);
         if (action.icon) a.push(`      elody:icon ${q(action.icon)} ;`);
@@ -1687,7 +1725,14 @@ export class Extractor {
       const lines = [`ui:${lq.node ?? lq.name}`, `  a ${"picker" in lq ? "elody:Picker" : "elody:ListQuery"} ;`, `  elody:queryName ${q(lq.name)} ;`];
       if (lq.filtersName) lines.push(`  elody:filtersQuery ${q(lq.filtersName)} ;`);
       if (lq.filtersType) lines.push(`  elody:filtersType ${q(lq.filtersType)} ;`);
-      if (lq.results.length) lines.push(`  elody:result`, lq.results.map((r, i) => `    [ elody:graphqlType ${q(r.type)} ; sh:order ${i + 1} ; elody:fragment ${q(r.fragment)} ]`).join(" ,\n") + " ;");
+      if (lq.relationValues) lines.push(`  elody:relationValues true ;`);
+      if (lq.results.length)
+        lines.push(
+          `  elody:result`,
+          lq.results
+            .map((r, i) => `    [ elody:graphqlType ${q(r.type)} ; sh:order ${i + 1}${r.fragments.map((f) => ` ; elody:fragment ${q(f)}`).join("")}${r.listingNode ? ` ; elody:listing ui:${r.listingNode}` : ""} ]`)
+            .join(" ,\n") + " ;",
+        );
       const filters = lq.filters;
       filters.forEach((f, i) => (f.order = i + 1));
       if (filters.length) lines.push(`  elody:filter`, filters.map((f) => this.filter(f)).join(" ,\n") + " ;");
@@ -1708,6 +1753,8 @@ export function extractDeclaration(files: QueryFile[], options: ExtractOptions =
   for (const error of errors) extractor.notes.push(`${error.file} does not parse: ${error.message}`);
   const types = extractor.types();
   const entities = types.map((name) => extractor.entity(name));
+  // the listings synthesised for results selected inline, declared after the types that led to them
+  for (let name = extractor.inlineNames.shift(); name !== undefined; name = extractor.inlineNames.shift()) entities.push(extractor.entity(name));
   const ttl = extractor.write(entities, options);
   return { ttl, notes: extractor.notes, types };
 }
