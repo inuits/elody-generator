@@ -460,7 +460,7 @@ export class Extractor {
       entity.spreads.filters = spreads(block?.selectionSet);
     }
     const form = this.operation(`Get${name}CreateForm`);
-    if (form) entity.form = this.form(form, `Get${name}CreateForm`, where);
+    if (form) entity.form = this.formWithFields(this.form(form, `Get${name}CreateForm`, where), where);
     const bulk = this.fragment(`${name.charAt(0).toLowerCase() + name.slice(1)}BulkOperations`);
     if (bulk) entity.operations = this.operations(child(child(bulk, "bulkOperationOptions"), "options"), where);
     // the forms the operations open: declared when these files hold them as dynamic forms
@@ -469,8 +469,10 @@ export class Extractor {
       .filter((form): form is string => form !== undefined && form !== entity.form?.queryName);
     for (const formName of new Set(opened)) {
       const query = this.operation(formName);
-      if (query && fields(query.selectionSet).some((f) => f.name.value === "GetDynamicForm") && !entity.forms.some((f) => f.queryName === formName))
-        entity.forms.push(this.form(query, formName, where));
+      if (query && fields(query.selectionSet).some((f) => f.name.value === "GetDynamicForm") && !entity.forms.some((f) => f.queryName === formName)) {
+        const opened = this.formWithFields(this.form(query, formName, where), where);
+        if (opened) entity.forms.push(opened);
+      }
     }
     for (const [suffix, document] of [["Entities", "entities"], ["Filters", "filters"], ["SortOptions", "sortOptions"], ["BulkOperations", "bulkOperations"]] as const)
       if (this.operation(`Get${name}${suffix}`)) entity.documents.push(document);
@@ -719,6 +721,14 @@ export class Extractor {
       result.push(filter);
     }
     return result;
+  }
+
+  /** A form without a field the vocabulary knows (an upload container only) cannot be declared: it stays hand-written. */
+  private formWithFields(form: Form, where: string): Form | undefined {
+    if (form.fields.length) return form;
+    this.note(`${where}: form ${form.queryName} has no field the vocabulary can declare; it stays hand-written`);
+    this.stubs.add(form.queryName);
+    return undefined;
   }
 
   private form(query: OperationDefinitionNode, queryName: string, where: string): Form {
