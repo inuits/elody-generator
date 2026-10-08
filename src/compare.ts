@@ -16,7 +16,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from "os";
 import { basename, dirname, join, relative } from "path";
 import { Kind, parse, print, visit } from "graphql";
-import type { ASTNode, DocumentNode, FragmentDefinitionNode, OperationDefinitionNode, SelectionNode } from "graphql";
+import type { ASTNode, DocumentNode, FragmentDefinitionNode, OperationDefinitionNode, SelectionNode, SelectionSetNode } from "graphql";
 import { generate } from "./generate.js";
 import type { Ontology } from "./ontology.js";
 import { readUiDeclaration } from "./parse.js";
@@ -53,6 +53,8 @@ export type DefinitionResult = {
   path?: string;
   /** out-of-scope: the gap that explains the exclusion */
   gap?: string;
+  /** equal once the fields the generated side asks back beyond the client's are left out */
+  asksMore?: boolean;
 };
 
 export type FileResult = {
@@ -246,6 +248,42 @@ export function normalizeNode<T extends ASTNode>(node: T): T {
 
 export const normalizeDefinition = (node: ExecutableDefinition): string => print(normalizeNode(node));
 
+/** The fields whose selection set asks values back: a bulk or sort option, a filter, an option search, a lookup. */
+const ASKED_BACK_PARENTS = new Set(["options", "advancedFilter", "advancedFilterInputForRetrievingOptions", "lookup", "filterOptionsMapping", "actionContext", "bulkOperationModal"]);
+
+/**
+ * What the generated document asks back beyond the client's does not count: a field without
+ * arguments in an asked-back selection set (the fields asked back for a bulk option, for a filter,
+ * for an option search) is dropped from the generated side when the client does not ask it. The
+ * PWA reads what it needs by name; what it did not ask it would otherwise get as empty. Fields
+ * with arguments configure something and always count, and so does every field elsewhere.
+ */
+export function pruneAskedBack<T extends ASTNode>(client: ASTNode, generated: T): T {
+  const walk = (own: ASTNode | undefined, other: ASTNode, askedBack: boolean): ASTNode => {
+    if (!own || own.kind !== other.kind) return other;
+    if (other.kind === Kind.SELECTION_SET && own.kind === Kind.SELECTION_SET) {
+      const byName = new Map(own.selections.map((selection) => [selectionName(selection), selection]));
+      const kept = other.selections
+        .filter((selection) => {
+          if (!askedBack || selection.kind !== Kind.FIELD || (selection.arguments && selection.arguments.length > 0)) return true;
+          return byName.has(selectionName(selection));
+        })
+        .map((selection) => walk(byName.get(selectionName(selection)), selection, askedBack) as SelectionNode);
+      return { ...other, selections: kept };
+    }
+    if (other.kind === Kind.FIELD && own.kind === Kind.FIELD) {
+      if (!other.selectionSet || !own.selectionSet) return other;
+      const name = other.name.value;
+      const inside = ORDERED_PARENTS.has(name) ? false : askedBack || ASKED_BACK_PARENTS.has(name);
+      return { ...other, selectionSet: walk(own.selectionSet, other.selectionSet, inside) as SelectionSetNode };
+    }
+    if ((other.kind === Kind.FRAGMENT_DEFINITION || other.kind === Kind.OPERATION_DEFINITION || other.kind === Kind.INLINE_FRAGMENT) && other.selectionSet && "selectionSet" in own && own.selectionSet)
+      return { ...other, selectionSet: walk(own.selectionSet, other.selectionSet, askedBack) as SelectionSetNode };
+    return other;
+  };
+  return walk(client, generated, false) as T;
+}
+
 /** A short name for an AST node on a difference path. */
 function label(node: unknown): string | undefined {
   if (!node || typeof node !== "object" || !("kind" in node)) return undefined;
@@ -340,7 +378,12 @@ export function compareDefinitions(client: Definition[], generated: Definition[]
     if (gap) results.push({ ...base, status: "out-of-scope", gap });
     else if (!other) results.push({ ...base, status: "missing" });
     else if (own.normalized === other.normalized) results.push({ ...base, status: "equal" });
-    else results.push({ ...base, status: "differs", path: firstDifference(normalizeNode(own.node), normalizeNode(other.node)) });
+    else {
+      // the generated side may ask more back than the client: pruned to the client's, it may be equal
+      const pruned = pruneAskedBack(normalizeNode(own.node), normalizeNode(other.node));
+      if (print(pruned) === own.normalized) results.push({ ...base, status: "equal", asksMore: true });
+      else results.push({ ...base, status: "differs", path: firstDifference(normalizeNode(own.node), pruned) });
+    }
   }
   const clientNames = new Set(client.map((definition) => definition.name));
   for (const own of generated) {

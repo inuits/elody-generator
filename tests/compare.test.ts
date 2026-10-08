@@ -157,6 +157,28 @@ describe("compareDefinitions", () => {
     expect(report.summary).toEqual({ total: 5, equal: 1, differs: 1, missing: 2, extra: 1, outOfScope: 0, percentEqual: 20 });
   });
 
+  it("counts a generated superset of the fields asked back as equal, not a client superset", () => {
+    const client = readDefinitions([gqlFile("entities/a.queries.ts", 'fragment aBulkOperations on A { bulkOperationOptions { options(input: [{ value: "edit" }]) { icon label value primary bulkOperationModal { ...bulkOperationModal } } } }')]).definitions;
+    const generated = readDefinitions([gqlFile("entities/a.queries.ts", 'fragment aBulkOperations on A { bulkOperationOptions { options(input: [{ value: "edit" }]) { icon label value primary can actionContext { ...actionContext } bulkOperationModal { ...bulkOperationModal } } } }')]).definitions;
+    const result = compareDefinitions(client, generated).definitions[0];
+    expect(result.status).toBe("equal");
+    expect(result.asksMore).toBe(true);
+    // the other way round the client asks more: that counts
+    expect(compareDefinitions(generated, client).definitions[0].status).toBe("differs");
+    // a field with an argument always counts
+    const tooltip = readDefinitions([gqlFile("entities/a.queries.ts", "fragment filtersForA on A { advancedFilters { t: advancedFilter(type: text) { type tooltip(value: true) } } }")]).definitions;
+    const plain = readDefinitions([gqlFile("entities/a.queries.ts", "fragment filtersForA on A { advancedFilters { t: advancedFilter(type: text) { type } } }")]).definitions;
+    expect(compareDefinitions(plain, tooltip).definitions[0].status).toBe("differs");
+    // outside an asked-back set every field counts
+    const detail = readDefinitions([gqlFile("entities/a.queries.ts", "fragment fullA on A { intialValues { title: keyValue(key: \"title\", source: metadata) } }")]).definitions;
+    const detailMore = readDefinitions([gqlFile("entities/a.queries.ts", "fragment fullA on A { intialValues { title: keyValue(key: \"title\", source: metadata) } relationValues }")]).definitions;
+    expect(compareDefinitions(detail, detailMore).definitions[0].status).toBe("differs");
+    // what is shown keeps every field: a card field the client does not show counts
+    const card = readDefinitions([gqlFile("entities/a.queries.ts", 'fragment minimalA on A { teaserMetadata { x: metaData { key(input: "x") } } }')]).definitions;
+    const more = readDefinitions([gqlFile("entities/a.queries.ts", 'fragment minimalA on A { teaserMetadata { x: metaData { key(input: "x") } y: metaData { key(input: "y") } } }')]).definitions;
+    expect(compareDefinitions(card, more).definitions[0].status).toBe("differs");
+  });
+
   it("names a reordering as such, with both orders", () => {
     const card = (order: string) => gqlFile("entities/card.queries.ts", `fragment minimalCard on Card { teaserMetadata { ${order} } }`);
     const a = readDefinitions([card('x: metaData { key(input: "x") } y: metaData { key(input: "y") }')]).definitions;

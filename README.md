@@ -78,7 +78,9 @@ in a panel, in a form, the filters, the elements of a column, the values of
 an input list (sort options, view modes, bulk operations). Where the PWA
 reads an object by name it does not: the initial values, the settings of an
 element, a panel or a filter, the fields asked back for a bulk option,
-arguments and input objects. An entity that emits `regions` is generated
+arguments and input objects. What the generated document asks back beyond
+the client's (a field without arguments in such a set) does not count
+either: the PWA reads by name what it needs. An entity that emits `regions` is generated
 into a copy of the client's file, so its hand-written parts compare equal by
 construction. The report is text on stdout and, with `--json`, the full
 result; exit 1 when anything differs, is missing or extra. The scope file:
