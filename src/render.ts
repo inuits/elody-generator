@@ -264,6 +264,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...mapping,
       ...(options ? options.args : []),
     ];
+    const fetchesOptions = filter.kind === "selection" && Boolean(options);
     const selection = [
       ...lookupFields,
       `${pad(indent + 4)}type`,
@@ -272,10 +273,11 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(filter.key ? [`${pad(indent + 4)}key`] : []),
       ...(filter.operator ? [`${pad(indent + 4)}operator`] : []),
       ...(filter.label ? [`${pad(indent + 4)}label`] : []),
-      ...(filter.selectionOption ? [`${pad(indent + 4)}selectionOption`] : []),
+      // a filter that fetches its options asks the option settings back whether declared or not: what is asked back more is harmless
+      ...(filter.selectionOption || fetchesOptions ? [`${pad(indent + 4)}selectionOption`] : []),
       ...(filter.showTime !== undefined ? [`${pad(indent + 4)}showTimeForDateFilter`] : []),
       ...(filter.displayedByDefault ? [`${pad(indent + 4)}isDisplayedByDefault`] : []),
-      ...(mapping.length ? [`${pad(indent + 4)}filterOptionsMapping {`, `${pad(indent + 6)}label`, `${pad(indent + 6)}value`, `${pad(indent + 4)}}`] : []),
+      ...(mapping.length || fetchesOptions ? [`${pad(indent + 4)}filterOptionsMapping {`, `${pad(indent + 6)}label`, `${pad(indent + 6)}value`, `${pad(indent + 4)}}`] : []),
       ...(options ? options.fields : []),
       ...(filter.tooltip ? [`${pad(indent + 4)}tooltip(value: true)`] : []),
       ...(filter.defaultValues.length > 0 || filter.defaultValueAsList ? [`${pad(indent + 4)}defaultValue(value: ${filterDefaultLiteral(filter)})`] : []),

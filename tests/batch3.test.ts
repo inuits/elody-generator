@@ -182,7 +182,12 @@ describe("a selection filter that fetches its options", () => {
         "        type",
         "        key",
         "        label",
+        "        selectionOption",
         "        isDisplayedByDefault",
+        "        filterOptionsMapping {",
+        "          label",
+        "          value",
+        "        }",
         "        advancedFilterInputForRetrievingOptions {",
         "          type",
         "          value",
@@ -244,6 +249,18 @@ describe("digipolis: option mappings, selection options, operators, sort options
     expect(filters).toContain('        filterOptionsMapping: {\n          label: "intialValues.access"\n          value: "intialValues.access"\n        }');
     expect(filters).toContain("        filterOptionsMapping {\n          label\n          value\n        }");
     expect(filters).toContain("        operator\n        label\n        selectionOption\n");
+  });
+
+  it("asks selectionOption and filterOptionsMapping back for every selection filter that fetches its options", async () => {
+    const file = await render(
+      entity(`sh:property ${label} ; elody:filter
+        [ rdfs:label "metadata.labels.access" ; sh:order 1 ; elody:alias "access" ; elody:key "dams:1|metadata.access.value" ; elody:displayedByDefault true ;
+          elody:optionsType "asset" ; elody:optionsKey "dams:1|metadata.access.value" ; elody:filterKind elody:SelectionFilter ]`),
+    );
+    const filters = fragment(file, "filtersForKeyword");
+    expect(filters).not.toContain("selectionOption:");
+    expect(filters).not.toContain("filterOptionsMapping:");
+    expect(filters).toContain("        label\n        selectionOption\n        isDisplayedByDefault\n        filterOptionsMapping {\n          label\n          value\n        }\n        advancedFilterInputForRetrievingOptions {");
   });
 
   it("renders operator on a scoping selection filter", async () => {
