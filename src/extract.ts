@@ -123,7 +123,7 @@ type Filter = {
   defaults: string[];
   defaultAsList: boolean;
   hidden: boolean;
-  options?: { type: string; key: string; matchExact: boolean; distinctBy?: string };
+  options?: { type: string; key: string; matchExact?: boolean; distinctBy?: string };
   optionsLabel?: string;
   optionsValue?: string;
   selectionOption?: string;
@@ -152,7 +152,7 @@ type Entity = {
   graphqlType: string;
   properties: Property[];
   viewModes: string[];
-  thumbnail?: { key?: string; fromMediafile?: boolean };
+  thumbnail?: { key?: string; fromMediafile?: boolean; order?: number };
   typePills: boolean;
   spreads: { listingValues: string[]; detailValues: string[]; card: string[]; filters: string[] };
   relationValues?: boolean;
@@ -342,7 +342,8 @@ export class Extractor {
         if (colSpan) property.colSpan = Number(colSpan);
       } else if (field.name.value === "thumbnail") {
         const filename = child(field, "filename");
-        entity.thumbnail = filename && scalar(argument(filename, "fromMediafile")) === "true" ? { fromMediafile: true } : { key: input(child(field, "key")) ?? "thumbnail" };
+        const before = fields(teaser?.selectionSet).slice(0, fields(teaser?.selectionSet).indexOf(field)).filter((f) => f.name.value === "metaData").length;
+        entity.thumbnail = { ...(filename && scalar(argument(filename, "fromMediafile")) === "true" ? { fromMediafile: true } : { key: input(child(field, "key")) ?? "thumbnail" }), order: before };
       } else if (field.name.value === "contextMenuActions") entity.contextMenu = { ...this.contextMenu(field, where)!, forceShow: entity.contextMenu?.forceShow ?? false };
       else if (field.name.value === "forceShowContextMenuActions") {
         entity.contextMenu ??= { forceShow: false, basic: false, actions: [] };
@@ -645,7 +646,12 @@ export class Extractor {
       return;
     }
     const custom = fields(query.selectionSet).find((f) => f.name.value === "CustomBulkOperations");
-    entity.customOperations.push({ name, operations: this.operations(child(child(custom, "bulkOperationOptions"), "options"), `${where} ${name}`) });
+    const operations = this.operations(child(child(custom, "bulkOperationOptions"), "options"), `${where} ${name}`);
+    if (operations.length) entity.customOperations.push({ name, operations });
+    else {
+      this.note(`${where}: custom bulk operations ${name} declare no operation the vocabulary knows; the element names them, nothing is generated`);
+      this.stubs.add(name);
+    }
   }
 
   private filters(block: FieldNode | undefined, where: string): Filter[] {
@@ -688,7 +694,7 @@ export class Extractor {
           filter.options = {
             type: typeValue,
             key: scalar(list(objectField(text, "key"))[0]) ?? "",
-            matchExact: scalar(objectField(text, "match_exact")) === "true",
+            matchExact: scalar(objectField(text, "match_exact")) === undefined ? undefined : scalar(objectField(text, "match_exact")) === "true",
             distinctBy: scalar(objectField(text, "distinct_by")),
           };
         else this.note(`${where}: filter ${alias(field)} fetches its options in a way the vocabulary cannot say (no text search scoped to one type); its option source is left out`);
@@ -867,7 +873,7 @@ export class Extractor {
     if (f.operator) lines.push(`    elody:filterOperator ${q(f.operator)} ;`);
     if (f.options) {
       lines.push(`    elody:optionsType ${q(f.options.type)} ;`, `    elody:optionsKey ${q(f.options.key)} ;`);
-      if (f.options.matchExact) lines.push(`    elody:optionsMatchExact true ;`);
+      if (f.options.matchExact !== undefined) lines.push(`    elody:optionsMatchExact ${f.options.matchExact} ;`);
       if (f.options.distinctBy) lines.push(`    elody:optionsDistinctBy ${q(f.options.distinctBy)} ;`);
     }
     lines.push(`    elody:filterKind ${f.kind} ;`);
@@ -922,7 +928,8 @@ export class Extractor {
     if (entity.relationValues !== undefined) out.push(`  elody:relationValues ${entity.relationValues} ;`);
     if (entity.detailFormatters === false) out.push(`  elody:detailFormatters false ;`);
     if (entity.excludeBaseSortOptions) out.push(`  elody:excludeBaseSortOptions true ;`);
-    if (entity.thumbnail) out.push(`  elody:thumbnail [ ${entity.thumbnail.fromMediafile ? "elody:fromMediafile true" : `elody:key ${q(entity.thumbnail.key ?? "thumbnail")}`} ] ;`);
+    if (entity.thumbnail)
+      out.push(`  elody:thumbnail [ ${entity.thumbnail.fromMediafile ? "elody:fromMediafile true" : `elody:key ${q(entity.thumbnail.key ?? "thumbnail")}`}${entity.thumbnail.order ? ` ; sh:order ${entity.thumbnail.order}` : ""} ] ;`);
     for (const s of entity.spreads.listingValues) out.push(`  elody:listingValuesSpread ${q(s)} ;`);
     for (const s of entity.spreads.detailValues) out.push(`  elody:detailValuesSpread ${q(s)} ;`);
     for (const s of entity.spreads.card) out.push(`  elody:cardSpread ${q(s)} ;`);

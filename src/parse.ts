@@ -685,7 +685,8 @@ class Parse {
     if (!node) return undefined;
     const key = this.r.value(node, elody("key"));
     const fromMediafile = this.r.literal(node, elody("fromMediafile")) === true;
-    return fromMediafile ? { fromMediafile: true } : { key };
+    const order = this.r.literal(node, elody("order")) ?? this.r.literal(node, sh("order"));
+    return { ...(fromMediafile ? { fromMediafile: true } : { key }), ...(typeof order === "number" ? { order } : {}) };
   }
 
   /** A boolean the declaration may leave out: true, false or undefined. */
@@ -885,7 +886,7 @@ class Parse {
         ? {
             type: String(r.value(node, elody("optionsType"))),
             key: String(r.value(node, elody("optionsKey")) ?? ""),
-            matchExact: r.literal(node, elody("optionsMatchExact")) === true,
+            matchExact: this.optionalFlag(node, elody("optionsMatchExact")),
             distinctBy: r.value(node, elody("optionsDistinctBy")) || undefined,
           }
         : undefined,

@@ -54,9 +54,11 @@ export function renderThumbnail(entity: M.UiEntity, indent: number): string {
 }
 
 export function renderTeaserFields(entity: M.UiEntity, indent: number): string {
-  return entity.properties
-    .filter((property) => property.teaser)
-    .map((property) => {
+  const fields = entity.properties.filter((property) => property.teaser);
+  const thumbnail = renderThumbnail(entity, indent);
+  // the thumbnail comes first unless sh:order places it after the n-th field
+  const at = Math.min(Math.max(entity.thumbnail?.order ?? 0, 0), fields.length);
+  const rendered = fields.map((property) => {
       const lines = [
         `${pad(indent)}${property.alias ?? property.key}: metaData {`,
         `${pad(indent + 2)}label(input: "${property.label ?? property.key}")`,
@@ -68,8 +70,9 @@ export function renderTeaserFields(entity: M.UiEntity, indent: number): string {
       if (property.unit) lines.push(`${pad(indent + 2)}unit(input: ${property.unit})`);
       lines.push(`${pad(indent)}}`);
       return lines.join("\n");
-    })
-    .join("\n");
+    });
+  if (thumbnail) rendered.splice(at, 0, thumbnail);
+  return rendered.join("\n");
 }
 
 const configLiteral = (value: M.UiConfigEntry["value"]): string =>
@@ -169,7 +172,7 @@ function renderFilterOptions(options: NonNullable<M.UiFilter["options"]>, indent
     `${pad(indent + 4)}key: ["${options.key}"]`,
     `${pad(indent + 4)}value: "*"`,
     ...(options.distinctBy ? [`${pad(indent + 4)}distinct_by: "${options.distinctBy}"`] : []),
-    `${pad(indent + 4)}match_exact: ${options.matchExact}`,
+    ...(options.matchExact !== undefined ? [`${pad(indent + 4)}match_exact: ${options.matchExact}`] : []),
     `${pad(indent + 2)}}`,
     `${pad(indent + 2)}{ type: type, value: "${options.type}" }`,
     `${pad(indent)}]`,
@@ -726,8 +729,6 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   if (readsRelationValues(entity, "listing")) minimal.push("    relationValues");
   if (entity.viewModes.length > 0) minimal.push(renderViewModes(entity, 4));
   minimal.push("    teaserMetadata {");
-  const thumbnail = renderThumbnail(entity, 6);
-  if (thumbnail) minimal.push(thumbnail);
   if (entity.typePills) minimal.push("      ...typePillsTeaserMetadata");
   for (const spread of entity.spreads.card) minimal.push(`      ...${spread}`);
   const contextMenu = renderContextMenu(entity, 6);

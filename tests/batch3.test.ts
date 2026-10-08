@@ -160,7 +160,7 @@ describe("a selection filter that fetches its options", () => {
     const file = await render(
       entity(`sh:property ${label} ; elody:filter
         [ rdfs:label "metadata.labels.language" ; sh:order 1 ; elody:alias "language" ; elody:key "vliz:1|properties.has_language.value" ; elody:displayedByDefault true ;
-          elody:optionsType "language" ; elody:optionsKey "vliz:1|properties.title.value" ; elody:filterKind elody:SelectionFilter ; elody:showTooltip true ]`),
+          elody:optionsType "language" ; elody:optionsKey "vliz:1|properties.title.value" ; elody:optionsMatchExact false ; elody:filterKind elody:SelectionFilter ; elody:showTooltip true ]`),
     );
     expect(fragment(file, "filtersForKeyword")).toContain(
       [
@@ -193,6 +193,23 @@ describe("a selection filter that fetches its options", () => {
         "      }",
       ].join("\n"),
     );
+  });
+
+  it("leaves match_exact out of the option search when not declared", async () => {
+    const file = await render(
+      entity(`sh:property ${label} ; elody:filter
+        [ rdfs:label "metadata.labels.access" ; sh:order 1 ; elody:alias "access" ; elody:key "dams:1|metadata.access.value" ; elody:displayedByDefault true ;
+          elody:optionsType "asset" ; elody:optionsKey "dams:1|metadata.access.value" ; elody:optionsDistinctBy "metadata.access.value" ; elody:filterKind elody:SelectionFilter ]`),
+    );
+    const filters = fragment(file, "filtersForKeyword");
+    expect(filters).toContain('            distinct_by: "metadata.access.value"\n          }');
+    expect(filters).not.toContain("match_exact: ");
+    expect(filters).toContain("          match_exact\n");
+  });
+
+  it("places the thumbnail among the card's fields by sh:order", async () => {
+    const file = await render(entity(`elody:thumbnail [ elody:key "thumbnail" ; sh:order 1 ] ; sh:property ${label} , [ sh:path em:mimetype ; sh:order 2 ; elody:labelKey "metadata.labels.mimetype" ]`));
+    expect(fragment(file, "minimalKeyword")).toContain('title: metaData {\n        label(input: "metadata.labels.title")\n        key(input: "title")\n      }\n      thumbnail {\n        key(input: "thumbnail")\n      }\n      mimetype: metaData');
   });
 
   it("renders distinct_by and match_exact when declared", async () => {

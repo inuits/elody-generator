@@ -67,7 +67,7 @@ export type UiFilter = {
   /** elody:parentFilterKey: the parentKey argument of a selection filter */
   parentKey?: string;
   /** elody:optionsType & co: a selection filter fetches its options from the entities of a type */
-  options?: { type: string; key: string; matchExact: boolean; distinctBy?: string };
+  options?: { type: string; key: string; matchExact?: boolean; distinctBy?: string };
   /** elody:optionsLabel / elody:optionsValue: filterOptionsMapping */
   optionsLabel?: string;
   optionsValue?: string;
@@ -240,8 +240,8 @@ export type UiEntity = {
   detailFormatters?: boolean;
   /** elody:excludeBaseSortOptions: only the declared sort options */
   excludeBaseSortOptions: boolean;
-  /** elody:thumbnail: the card's picture, from an initial value or the primary media file */
-  thumbnail?: { key?: string; fromMediafile?: boolean };
+  /** elody:thumbnail: the card's picture, from an initial value or the primary media file; sh:order places it among the card's fields */
+  thumbnail?: { key?: string; fromMediafile?: boolean; order?: number };
   /** hand-written shared fragments spread into a block (elody:listingValuesSpread & co) */
   spreads: { listingValues: string[]; detailValues: string[]; card: string[]; filters: string[] };
   dynamicFormConfigField?: string;
