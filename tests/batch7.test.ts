@@ -91,6 +91,6 @@ describe("vlacc detail extras", () => {
            elody:element [ a elody:ListElement ; sh:order 1 ; elody:alias "Awards" ; elody:collapsed false ; elody:entityTypes "award" ; elody:relationType "refAwards" ; elody:disableLibraryBar true ; elody:customQuery "GetAwardsInDetail" ; elody:customQueryFilters "GetAwardsInEntityFilters" ] .`,
       ),
     );
-    expect(file).toContain('                }\n              }\n              Awards: entityListElement {\n                label(input: "")\n                isCollapsed(input: false)\n                disableLibraryBar(input: true)\n                entityTypes(input: [award])\n                relationType: label(input: "refAwards")\n                customQuery(input: "GetAwardsInDetail")\n                customQueryFilters(input: "GetAwardsInEntityFilters")\n              }\n            }');
+    expect(file).toContain('                }\n              }\n              Awards: entityListElement {\n                isCollapsed(input: false)\n                disableLibraryBar(input: true)\n                entityTypes(input: [award])\n                relationType: label(input: "refAwards")\n                customQuery(input: "GetAwardsInDetail")\n                customQueryFilters(input: "GetAwardsInEntityFilters")\n              }\n            }');
   });
 });

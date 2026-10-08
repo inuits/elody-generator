@@ -84,6 +84,9 @@ type Property = {
   required: boolean;
   validationRule?: string;
   validationValue?: string;
+  validationRelationType?: string;
+  validationAmount?: number;
+  validationExact?: boolean;
   cardKey?: string;
   detailLabelKey?: string;
   sortPrimary?: boolean;
@@ -166,8 +169,8 @@ type Filter = {
   lookup?: { from: string; localField: string; foreignField: string; as: string };
 };
 
-type FormField = { key: string; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; clientField?: string };
-type Form = { queryName: string; label?: string; tabAlias?: string; fields: FormField[]; submit?: { label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors: boolean } };
+type FormField = { key: string; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; hidden?: boolean; clientField?: string };
+type Form = { queryName: string; label?: string; tabAlias?: string; fields: FormField[]; fieldsSpreads: string[]; copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string }[] }; submit?: { label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors: boolean } };
 
 type Operation = {
   order?: number;
@@ -234,6 +237,7 @@ export class Extractor {
   private readonly stubs = new Set<string>();
   /** list query nodes by query and filters document: one node per pair, the entities document with the first */
   private readonly listQueryNodes = new Map<string, string>();
+  private readonly pickerNodes = new Map<string, string>();
   private readonly queriesWithResults = new Set<string>();
   /** every node minted so far: a list query, a picker, a form or a custom operations set never share a name */
   private readonly nodes = new Set<string>();
@@ -557,6 +561,16 @@ export class Extractor {
         if (opened) entity.forms.push(opened);
       }
     }
+    // the type's other create forms: every Get*CreateForm dynamic form in the file that holds its listing fragment
+    const file = this.definitions.get(`minimal${name}`)?.file;
+    for (const definition of this.definitions.values()) {
+      if (definition.kind !== "query" || definition.file !== file || !/CreateForm$/.test(definition.name)) continue;
+      if (definition.name === entity.form?.queryName || entity.forms.some((f) => f.queryName === definition.name)) continue;
+      const query = definition.node as OperationDefinitionNode;
+      if (!fields(query.selectionSet).some((f) => f.name.value === "GetDynamicForm")) continue;
+      const extra = this.formWithFields(this.form(query, definition.name, where), where);
+      if (extra) entity.forms.push(extra);
+    }
     for (const [suffix, document] of [["Entities", "entities"], ["Filters", "filters"], ["SortOptions", "sortOptions"], ["BulkOperations", "bulkOperations"]] as const)
       if (this.operation(`Get${name}${suffix}`)) entity.documents.push(document);
     return entity;
@@ -574,7 +588,7 @@ export class Extractor {
    * validation(input: { value: required }) is sh:minCount 1; another rule (url, customValue with its
    * customValue, ...) is elody:validationRule / elody:validationValue. The value may be a list.
    */
-  private validation(validation: FieldNode | undefined, where: string): { required: boolean; rule?: string; value?: string } {
+  private validation(validation: FieldNode | undefined, where: string): { required: boolean; rule?: string; value?: string; relationType?: string; amount?: number; exact?: boolean } {
     if (!validation) return { required: false };
     const input = argument(validation, "input");
     const raw = input?.kind === Kind.OBJECT ? objectField(input, "value") : undefined;
@@ -583,7 +597,17 @@ export class Extractor {
     const others = rules.filter((rule) => rule !== "required");
     if (!rules.length) this.note(`${where}: validation without a value; left out`);
     if (others.length > 1) this.note(`${where}: validation ${others.join(", ")}: only the first rule is declared`);
-    return { required: rules.includes("required"), rule: others[0], value: custom };
+    // has_required_relation carries its relation and count in an object of its own
+    const relation = input?.kind === Kind.OBJECT ? objectField(input, "has_required_relation") : undefined;
+    const amount = relation?.kind === Kind.OBJECT ? scalar(objectField(relation, "amount")) : undefined;
+    return {
+      required: rules.includes("required"),
+      rule: others[0],
+      value: custom,
+      relationType: relation?.kind === Kind.OBJECT ? scalar(objectField(relation, "relationType")) : undefined,
+      amount: amount === undefined ? undefined : Number(amount),
+      exact: relation?.kind === Kind.OBJECT && scalar(objectField(relation, "exact")) !== undefined ? scalar(objectField(relation, "exact")) === "true" : undefined,
+    };
   }
 
   private contextMenu(field: FieldNode, where: string): Entity["contextMenu"] {
@@ -668,6 +692,9 @@ export class Extractor {
           if (validation.rule) {
             property.validationRule = validation.rule;
             property.validationValue = validation.value;
+            property.validationRelationType = validation.relationType;
+            property.validationAmount = validation.amount;
+            property.validationExact = validation.exact;
           }
         } else if (result.editable) property.readOnly = true;
         // the panel references the property shape by its path, which is the key (an aliased value keeps its key)
@@ -704,10 +731,12 @@ export class Extractor {
     const pickerNode = pickerList ? this.picker(pickerList, pickerFilters, where, entity) : undefined;
     const relation = fields(element.selectionSet).find((f) => alias(f) === "relationType");
     const scoped = fields(element.selectionSet).find((f) => alias(f) === "customQueryRelationType");
+    // the list's own label: the unaliased label field (relationType: label(...) is the relation, not the label)
+    const ownLabel = fields(element.selectionSet).find((f) => f.name.value === "label" && (!f.alias || f.alias.value === "label"));
     return {
       kind: "list",
       alias: element.alias?.value,
-      label: input(child(element, "label")),
+      label: ownLabel ? input(ownLabel) : undefined,
       mediaKind: this.instance("MediaElementKind", input(child(element, "type")), `${where} list ${alias(element)}`),
       customQueryRelationType: scoped ? input(scoped) : undefined,
       listViewMode: input(child(element, "viewMode")),
@@ -732,6 +761,9 @@ export class Extractor {
   private picker(name: string, filtersName: string | undefined, where: string, entity: Entity): string {
     const known = entity.pickers.find((p) => p.name === name);
     if (known) return known.node ?? name;
+    // a picker several types use keeps one node: the first type declares it, the others reference it
+    const shared = this.pickerNodes.get(`${name}|${filtersName ?? ""}`);
+    if (shared) return shared;
     const query = this.operation(name);
     const results: Picker["results"] = [];
     const entities = query ? fields(query.selectionSet).find((f) => f.name.value === "Entities") : undefined;
@@ -744,6 +776,7 @@ export class Extractor {
     const filters = filtersName ? this.operation(filtersName) : undefined;
     const { block, filtersType } = this.advancedFiltersOf(filters);
     const node = this.mint(name, `${name}Picker`);
+    this.pickerNodes.set(`${name}|${filtersName ?? ""}`, node);
     entity.pickers.push({ node, name, filtersName, filtersType, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
     return node;
   }
@@ -897,7 +930,7 @@ export class Extractor {
 
   /** A form without a field the vocabulary knows (an upload container only) cannot be declared: it stays hand-written. */
   private formWithFields(form: Form, where: string): Form | undefined {
-    if (form.fields.length) return form;
+    if (form.fields.length || form.fieldsSpreads.length) return form;
     this.note(`${where}: form ${form.queryName} has no field the vocabulary can declare; it stays hand-written`);
     this.stubs.add(form.queryName);
     return undefined;
@@ -907,7 +940,21 @@ export class Extractor {
     const dynamic = fields(query.selectionSet).find((f) => f.name.value === "GetDynamicForm");
     const tab = fields(dynamic?.selectionSet).find((f) => f.name.value === "formTab");
     // a tab without an alias is the plain formTab field; said as the alias "formTab"
-    const form: Form = { queryName, label: input(child(dynamic, "label")), tabAlias: tab?.alias?.value ?? (tab ? "formTab" : undefined), fields: [] };
+    const form: Form = { queryName, label: input(child(dynamic, "label")), tabAlias: tab?.alias?.value ?? (tab ? "formTab" : undefined), fields: [], fieldsSpreads: spreads(child(tab, "formFields")?.selectionSet) };
+    // copyFromParent: prefilled from the entity the form is opened on
+    const copy = child(tab, "copyFromParent");
+    const copyInput = copy ? argument(copy, "input") : undefined;
+    if (copyInput?.kind === Kind.OBJECT) {
+      const auto = scalar(objectField(copyInput, "autoCopy"));
+      form.copyFromParent = {
+        autoCopy: auto === undefined ? undefined : auto === "true",
+        keyMap: list(objectField(copyInput, "keyMap"))
+          .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
+          .map((entry) => ({ key: scalar(objectField(entry, "key")) ?? "", fromKey: scalar(objectField(entry, "fromKey")) ?? "" })),
+      };
+    }
+    for (const field of fields(tab?.selectionSet))
+      if (!["formFields", "copyFromParent"].includes(field.name.value)) this.note(`${where}: form ${queryName} tab field ${field.name.value} has no term; left out`);
     for (const field of fields(child(tab, "formFields")?.selectionSet)) {
       if (field.name.value === "metaData") {
         const widget = child(field, "inputField");
@@ -926,6 +973,10 @@ export class Extractor {
           required: validation.required,
           validationRule: validation.rule,
           validationValue: validation.value,
+          validationRelationType: validation.relationType,
+          validationAmount: validation.amount,
+          validationExact: validation.exact,
+          hidden: child(field, "hiddenField") ? true : undefined,
           clientField: base ? undefined : type,
         });
       } else if (field.name.value === "action") {
@@ -1045,6 +1096,9 @@ export class Extractor {
     if (p.containsRelationPropertyValue !== undefined) lines.push(`    elody:containsRelationPropertyValue ${q(p.containsRelationPropertyValue)} ;`);
     if (p.validationRule) lines.push(`    elody:validationRule ${q(p.validationRule)} ;`);
     if (p.validationValue !== undefined) lines.push(`    elody:validationValue ${q(p.validationValue)} ;`);
+    if (p.validationRelationType) lines.push(`    elody:validationRelationType ${q(p.validationRelationType)} ;`);
+    if (p.validationAmount !== undefined) lines.push(`    elody:validationAmount ${p.validationAmount} ;`);
+    if (p.validationExact !== undefined) lines.push(`    elody:validationExact ${p.validationExact} ;`);
     if (p.labelRole) lines.push(`    shui:propertyRole shui:LabelRole ;`);
     const editor = p.multilingual ? (p.editor === "shui:TextAreaEditor" ? "shui:TextAreaWithLangEditor" : "shui:TextFieldWithLangEditor") : p.editor;
     if (editor) lines.push(`    shui:editor ${editor} ;`);
@@ -1151,7 +1205,8 @@ export class Extractor {
 
   /** The node of a list element (in a column or a panel), at the given indentation. */
   private listElementNode(element: Extract<Element, { kind: "list" }>, order: number, pad: string): string {
-    const l = [`${pad}[ a elody:ListElement ;`, `${pad}rdfs:label ${q(element.label ?? "")} ;`, `${pad}sh:order ${order} ;`];
+    // a list without a label (one inside a panel) carries none
+    const l = [`${pad}[ a elody:ListElement ;`, ...(element.label !== undefined ? [`${pad}rdfs:label ${q(element.label)} ;`] : []), `${pad}sh:order ${order} ;`];
     if (element.alias) l.push(`${pad}elody:alias ${q(element.alias)} ;`);
     if (element.mediaKind) l.push(`${pad}elody:mediaKind ${element.mediaKind} ;`);
     l.push(`${pad}elody:collapsed ${element.collapsed} ;`);
@@ -1332,6 +1387,14 @@ export class Extractor {
       formNodes.add(f.queryName);
       const lines = [`ui:${f.queryName}`, `  a elody:Form ;`, ...(f.label !== undefined ? [`  rdfs:label ${q(f.label)} ;`] : []), `  elody:queryName ${q(f.queryName)} ;`];
       if (f.tabAlias && f.tabAlias !== "name") lines.push(`  elody:alias ${q(f.tabAlias)} ;`);
+      for (const spread of f.fieldsSpreads) lines.push(`  elody:fieldsSpread ${q(spread)} ;`);
+      if (f.copyFromParent) {
+        const parts = [
+          ...(f.copyFromParent.autoCopy !== undefined ? [`elody:autoCopy ${f.copyFromParent.autoCopy}`] : []),
+          ...(f.copyFromParent.keyMap.length ? [`elody:copyKey ${f.copyFromParent.keyMap.map((entry, i) => `[ sh:order ${i + 1} ; elody:key ${q(entry.key)} ; elody:fromKey ${q(entry.fromKey)} ]`).join(" , ")}`] : []),
+        ];
+        lines.push(`  elody:copyFromParent [ ${parts.join(" ; ")} ] ;`);
+      }
       const shapeFields = f.fields.map((field, i) => {
         const s = [`      [ sh:path em:${field.key} ;`];
         if (field.label) s.push(`      sh:name ${q(field.label.split(".").pop() ?? field.key)}@en ;`);
@@ -1342,13 +1405,17 @@ export class Extractor {
         if (field.required) s.push(`      sh:minCount 1 ;`);
         if (field.validationRule) s.push(`      elody:validationRule ${q(field.validationRule)} ;`);
         if (field.validationValue !== undefined) s.push(`      elody:validationValue ${q(field.validationValue)} ;`);
+        if (field.validationRelationType) s.push(`      elody:validationRelationType ${q(field.validationRelationType)} ;`);
+        if (field.validationAmount !== undefined) s.push(`      elody:validationAmount ${field.validationAmount} ;`);
+        if (field.validationExact !== undefined) s.push(`      elody:validationExact ${field.validationExact} ;`);
+        if (field.hidden) s.push(`      dash:hidden true ;`);
         if (field.editor) s.push(`      shui:editor ${field.editor} ;`);
         if (field.clientField) s.push(`      elody:clientInputField ${q(field.clientField)} ;`);
         if (field.label) s.push(`      elody:labelKey ${q(field.label)} ;`);
         s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
         return s.join("\n");
       });
-      lines.push(`  elody:shape`, `    [ sh:property`, shapeFields.join(" ,\n") + " ] ;");
+      lines.push(`  elody:shape`, ...(shapeFields.length ? [`    [ sh:property`, shapeFields.join(" ,\n") + " ] ;"] : ["    [ ] ;"]));
       if (f.submit) {
         const s = [`    [ rdfs:label ${q(f.submit.label ?? "")} ;`];
         if (f.submit.actionQuery) s.push(`    elody:actionQuery ${q(f.submit.actionQuery)} ;`);

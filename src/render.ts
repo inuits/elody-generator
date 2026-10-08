@@ -14,12 +14,16 @@ const stringList = (values: string[]) => `[${values.map((value) => `"${value}"`)
 
 /** The listing fragment leaves out the detail-only properties; the detail fragment reads them all. */
 /** validation(input: { value: ... }): required (sh:minCount 1) and the declared rule, with its argument. */
-export function renderValidation(field: { required: boolean; validationRule?: string; validationValue?: string }, depth: number): string[] {
+export function renderValidation(field: { required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean }, depth: number): string[] {
   const rules = [...(field.required ? ["required"] : []), ...(field.validationRule ? [field.validationRule] : [])];
   if (!rules.length) return [];
   const value = rules.length === 1 ? rules[0] : `[${rules.join(", ")}]`;
-  // the rule's argument goes under its own name: regex for a regex, customValue for the rest
-  const extra = field.validationValue !== undefined ? `, ${field.validationRule === "regex" ? "regex" : "customValue"}: "${field.validationValue}"` : "";
+  // the rule's argument goes under its own name: regex for a regex, has_required_relation its relation and count, customValue for the rest
+  const relation =
+    field.validationRelationType !== undefined || field.validationAmount !== undefined
+      ? `, has_required_relation: { ${[...(field.validationRelationType !== undefined ? [`relationType: "${field.validationRelationType}"`] : []), ...(field.validationAmount !== undefined ? [`amount: ${field.validationAmount}`] : []), ...(field.validationExact !== undefined ? [`exact: ${field.validationExact}`] : [])].join(", ")} }`
+      : "";
+  const extra = (field.validationValue !== undefined ? `, ${field.validationRule === "regex" ? "regex" : "customValue"}: "${field.validationValue}"` : "") + relation;
   return [`${pad(depth)}validation(input: { value: ${value}${extra} }) {`, `${pad(depth + 2)}...validation`, `${pad(depth)}}`];
 }
 
@@ -143,7 +147,8 @@ export function renderSortOptions(entity: M.UiEntity, indent: number): string {
     .map((property, index) => ({ property, index }))
     .sort((a, b) => (a.property.sortOrder ?? a.index) - (b.property.sortOrder ?? b.index) || a.index - b.index)
     .map(({ property }) => property);
-  if (sortable.length === 0) return "";
+  // no sortable property: nothing, unless the base options are excluded on purpose (an empty list)
+  if (sortable.length === 0 && !entity.excludeBaseSortOptions) return "";
 
   const options = sortable
     .map((property) =>
@@ -403,6 +408,16 @@ export function renderBulkOperationOptions(operations: M.UiBulkOperation[], inde
   ].join("\n");
 }
 
+/** The copyFromParent block of a form tab: prefilled from the entity the form is opened on. */
+function renderCopyFromParent(copy: M.UiCreateForm["copyFromParent"]): string[] {
+  if (!copy) return [];
+  const parts = [
+    ...(copy.autoCopy !== undefined ? [`autoCopy: ${copy.autoCopy}`] : []),
+    ...(copy.keyMap.length ? [`keyMap: [${copy.keyMap.map((entry) => `{ key: "${entry.key}", fromKey: "${entry.fromKey}" }`).join(", ")}]`] : []),
+  ];
+  return [`        copyFromParent(input: { ${parts.join(", ")} }) {`, "          ...copyFromParent", "        }"];
+}
+
 export function renderCreateForm(form: M.UiCreateForm): string {
   const fieldBlocks = form.fields.map((field) => {
     const lines = [
@@ -416,12 +431,13 @@ export function renderCreateForm(form: M.UiCreateForm): string {
     ];
     lines.push(...renderValidation(field, 14));
     lines.push("            }");
+    if (field.hidden) lines.push("            hiddenField(input: { hidden: true }) {", "              ...hiddenField", "            }");
     lines.push("          }");
     return lines.join("\n");
   });
 
-  // consecutive fields of one sh:PropertyGroup are wrapped in a form section
-  const fields: string[] = [];
+  // consecutive fields of one sh:PropertyGroup are wrapped in a form section; shared fragments come first
+  const fields: string[] = (form.fieldsSpreads ?? []).map((spread) => `          ...${spread}`);
   for (let index = 0; index < form.fields.length; index++) {
     const section = form.fields[index].section;
     if (!section) {
@@ -465,6 +481,7 @@ export function renderCreateForm(form: M.UiCreateForm): string {
     // a form without a label has none; a tab aliased "formTab" is the plain field
     ...(form.label !== undefined ? [`      label(input: "${form.label}")`] : []),
     `      ${(form.tabAlias ?? "name") === "formTab" ? "formTab" : `${form.tabAlias ?? "name"}: formTab`} {`,
+    ...renderCopyFromParent(form.copyFromParent),
     "        formFields {",
     fields.join("\n"),
     ...(submit ? [submit] : []),
@@ -529,7 +546,11 @@ export function renderPicker(picker: M.UiPicker): string {
 
 /** The documents of a list element's list query: the entities document only when it declares results. */
 export function renderListQueryDocuments(picker: M.UiPicker): string[] {
-  return [...(picker.results.length ? [renderListQuery(picker)] : []), ...(picker.filters.length ? [renderListFilters(picker)] : [])];
+  // a document an earlier type already emitted is not emitted again
+  return [
+    ...(picker.results.length && picker.emitList !== false ? [renderListQuery(picker)] : []),
+    ...(picker.filters.length && picker.emitFilters !== false ? [renderListFilters(picker)] : []),
+  ];
 }
 
 export function renderListQuery(picker: M.UiPicker): string {
@@ -636,7 +657,7 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
       const alias = element.alias ? `${element.alias}: ` : "";
       const lines = [
         `${pad(depth)}${alias}entityListElement {`,
-        `${pad(depth + 2)}label(input: "${element.label ?? ""}")`,
+        ...(element.label !== undefined ? [`${pad(depth + 2)}label(input: "${element.label}")`] : []),
         ...(element.mediaKind ? [`${pad(depth + 2)}type(input: ${element.mediaKind})`] : []),
         `${pad(depth + 2)}isCollapsed(input: ${element.collapsed ?? false})`,
       ];

@@ -103,6 +103,15 @@ class Parse {
   private listQueries = new Map<string, M.UiPicker>();
   /** list queries already emitted by an earlier type: a shared one is emitted once */
   private readonly emittedListQueries = new Set<string>();
+  /** forms, pickers, custom bulk operations and guided flows already emitted by an earlier type: a shared node goes with the first */
+  private readonly emittedNodes = new Set<string>();
+
+  /** Whether this entity emits the document: the first type referencing a shared document does, the others only name it. */
+  private emitsOnce(name: string): boolean {
+    if (this.emittedNodes.has(name)) return false;
+    this.emittedNodes.add(name);
+    return true;
+  }
   /** keys of the entity's properties without sh:group, in the spec's order */
   private ungroupedFields: string[] = [];
   /** lower-cased GraphQL type of the entity being parsed, for minted label keys */
@@ -774,7 +783,7 @@ class Parse {
       detail: this.withEditWidgets(this.detail(r.node(subject, elody("detail")), pathToKey), parsed),
       formSources: r.nodes(subject, elody("formSource")).map((node) => this.formSource(node)),
       bulkOperations: r.byOrder(r.nodes(subject, elody("bulkOperation"))).map((node) => this.bulkOperation(node)),
-      customBulkOperations: r.nodes(subject, elody("customBulkOperations")).map((node) => ({
+      customBulkOperations: r.nodes(subject, elody("customBulkOperations")).filter((node) => this.emitsOnce(`custom:${this.queryNameOf(node, "custom bulk operations set")}`)).map((node) => ({
         queryName: this.queryNameOf(node, "custom bulk operations set"),
         operations: r.byOrder(r.nodes(node, elody("operation"))).map((op) => this.bulkOperation(op)),
       })),
@@ -847,6 +856,9 @@ class Parse {
       required: Number(r.value(node, sh("minCount")) ?? 0) >= 1,
       validationRule: r.value(node, elody("validationRule")) || undefined,
       validationValue: r.value(node, elody("validationValue")) || undefined,
+      validationRelationType: r.value(node, elody("validationRelationType")) || undefined,
+      validationAmount: typeof r.literal(node, elody("validationAmount")) === "number" ? (r.literal(node, elody("validationAmount")) as number) : undefined,
+      validationExact: this.optionalFlag(node, elody("validationExact")),
       cardKey: r.value(node, elody("cardKey")) || undefined,
       detailLabelKey: r.value(node, elody("detailLabelKey")) || undefined,
       sortPrimary: r.literal(node, elody("sortPrimary")) === true,
@@ -1013,11 +1025,22 @@ class Parse {
     };
   }
 
+  /** elody:copyFromParent: the form's copyFromParent block. */
+  private copyFromParent(node: string | undefined): M.UiCreateForm["copyFromParent"] {
+    if (!node) return undefined;
+    const r = this.r;
+    return {
+      autoCopy: this.optionalFlag(node, elody("autoCopy")),
+      keyMap: r.byOrder(r.nodes(node, elody("copyKey"))).map((entry) => ({ key: String(r.value(entry, elody("key")) ?? ""), fromKey: String(r.value(entry, elody("fromKey")) ?? "") })),
+    };
+  }
+
   private createForms(subject: string): M.UiCreateForm[] {
     const r = this.r;
     const declared = r
       .nodes(subject, elody("form"))
       .filter((node) => r.hasType(node, elody("Form")))
+      .filter((node) => this.emitsOnce(`form:${this.queryNameOf(node, "form")}`))
       .map((node): M.UiCreateForm => {
         const shape = r.node(node, elody("shape"));
         if (!shape) throw new Error(`form ${compact(node)} has no elody:shape`);
@@ -1025,6 +1048,8 @@ class Parse {
           queryName: this.queryNameOf(node, "form"),
           tabAlias: r.value(node, elody("alias")) || undefined,
           label: r.value(node, rdfs("label")),
+          fieldsSpreads: r.literals(node, elody("fieldsSpread")),
+          copyFromParent: this.copyFromParent(r.node(node, elody("copyFromParent"))),
           fields: this.formFields(r.nodes(shape, sh("property"))),
           submit: this.submit(r.node(node, elody("submit"))),
         };
@@ -1127,6 +1152,10 @@ class Parse {
       required,
       validationRule: r.value(node, elody("validationRule")) || undefined,
       validationValue: r.value(node, elody("validationValue")) || undefined,
+      validationRelationType: r.value(node, elody("validationRelationType")) || undefined,
+      validationAmount: typeof r.literal(node, elody("validationAmount")) === "number" ? (r.literal(node, elody("validationAmount")) as number) : undefined,
+      validationExact: this.optionalFlag(node, elody("validationExact")),
+      hidden: this.hidden(node) || undefined,
       editor,
       multilingual: this.o.multilingual(editor) || this.languageInOf(node).length > 0,
       languageIn: this.languageInOf(node),
@@ -1209,6 +1238,8 @@ class Parse {
     return {
       queryName: names.list,
       filtersQueryName: names.filters,
+      emitList: this.emitsOnce(`document:${names.list}`),
+      emitFilters: this.emitsOnce(`document:${names.filters}`),
       order: r.order(node),
       results: r.byOrder(r.nodes(node, elody("result"))).map((result): M.UiPickerResult => {
         let type = r.value(result, elody("graphqlType"));

@@ -238,6 +238,23 @@ describe("extract: vlacc constructs", () => {
   }
   fragment workSortOptions on Work {
     sortOptions { options(input: [{ icon: NoIcon, label: "metadata.labels.title", value: "title", primary: true }]) { icon label value } isAsc(input: asc) }
+  }
+  query GetFullWorkCreateForm {
+    GetDynamicForm { label(input: "navigation.create-work") Work: formTab { formFields {
+      ...basicCreateWorkFields
+      record_type: metaData { label(input: "metadata.labels.record-type") key(input: "record_type") inputField(type: baseTextField) { ...inputfield validation(input: { value: required }) { ...validation } } }
+      createAction: action { label(input: "actions.labels.create") icon(input: Create) actionType(input: submit) actionQuery(input: "CreateEntity") creationType(input: work) }
+    } } }
+  }
+  query GetBasicWorkCreateForm {
+    GetDynamicForm { label(input: "navigation.create-work") Work: formTab {
+      copyFromParent(input: { autoCopy: true, keyMap: [{ key: "ref_languages", fromKey: "ref_work_languages" }] }) { ...copyFromParent }
+      formFields {
+      ...basicCreateWorkFields
+      is_omnibus: metaData { label(input: "metadata.labels.is-omnibus") key(input: "is_omnibus") inputField(type: baseCheckbox) { ...inputfield } hiddenField(input: { hidden: true }) { ...hiddenField } }
+      refWork: metaData { label(input: "metadata.labels.work") key(input: "refWork") inputField(type: refWorkInReadingTypeField) { validation(input: { value: [has_required_relation], has_required_relation: { relationType: "refWork", amount: 1 } }) { ...validation } ...inputfield } }
+      createAction: action { label(input: "actions.labels.create") icon(input: Create) actionType(input: submit) actionQuery(input: "CreateEntity") creationType(input: work) }
+    } } }
   }`);
     const { ttl, notes, types } = extractDeclaration(files, { namespace: "urn:ui:" });
     expect(types.sort()).toEqual(["Work", "WorkInHomeScreen"]);
@@ -253,6 +270,9 @@ describe("extract: vlacc constructs", () => {
     expect(ttl).toContain('elody:selectionSpread "advancedFilter"');
     expect(ttl).toContain('elody:elementSpread "entityHistoryVersionList"');
     expect(ttl).toContain('elody:alias "column2"');
+    // a list inside a panel without a label of its own: relationType: label(...) is not its label
+    expect(ttl).toMatch(/elody:alias "Awards" ;\n(?:.*\n)*?    elody:relationType "refAwards"/);
+    expect(ttl).not.toContain('rdfs:label "refAwards"');
     expect(ttl).toContain("ui:WorkUi-panels\n"); expect(ttl).toContain("ui:WorkUi-panels-2\n");
     expect(ttl).toMatch(/ui:WorkUi-panels\n(?:.*\n)*?  elody:element\n    \[ a elody:ListElement ;(?:.*\n)*?    elody:alias "Awards"/);
     expect(ttl).toContain("elody:hideInHistory true");
@@ -262,5 +282,10 @@ describe("extract: vlacc constructs", () => {
     expect(ttl).not.toContain("elody:activeViewMode");
     expect(ttl).toContain("elody:requiresSameType true ;\n      elody:minSelectedItems 2 ;\n      elody:maxSelectedItems 2 ;");
     expect(ttl).toContain("elody:sortPrimary true");
+    // every Get*CreateForm of the type's file is a form of the type, spreads said
+    expect(ttl).toContain("elody:form ui:GetFullWorkCreateForm , ui:GetBasicWorkCreateForm");
+    expect(ttl).toContain('elody:copyFromParent [ elody:autoCopy true ; elody:copyKey [ sh:order 1 ; elody:key "ref_languages" ; elody:fromKey "ref_work_languages" ] ] ;');
+    expect(ttl).toContain("dash:hidden true");
+    expect(ttl).toContain('elody:validationRule "has_required_relation" ;\n      elody:validationRelationType "refWork" ;\n      elody:validationAmount 1 ;');
   });
 });

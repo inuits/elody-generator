@@ -63,6 +63,10 @@ export type UiProperty = {
   /** elody:validationRule / elody:validationValue: a validation beyond required (url, customValue "min_value:1") */
   validationRule?: string;
   validationValue?: string;
+  /** elody:validationRelationType / elody:validationAmount: the has_required_relation rule's relation and count */
+  validationRelationType?: string;
+  validationAmount?: number;
+  validationExact?: boolean;
   /** a relation-valued property (sh:class, or an inverse path): the Elody relation it reads */
   relationType?: string;
   /** metadata key(s) labelling the related entity (metadataKeyAsLabel) */
@@ -160,6 +164,11 @@ export type UiCreateFormField = {
   required: boolean;
   validationRule?: string;
   validationValue?: string;
+  validationRelationType?: string;
+  validationAmount?: number;
+  validationExact?: boolean;
+  /** dash:hidden: the field is in the form but hidden (hiddenField) */
+  hidden?: boolean;
   /** the shui editor the input type was derived from (explicit or inferred) */
   editor?: string;
   multilingual: boolean;
@@ -172,6 +181,10 @@ export type UiCreateForm = {
   queryName: string;
   label?: string;
   fields: UiCreateFormField[];
+  /** elody:fieldsSpread: shared fields fragments spread before the fields */
+  fieldsSpreads?: string[];
+  /** elody:copyFromParent: prefill from the entity the form is opened on */
+  copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string }[] };
   /** the form tab's GraphQL alias (elody:alias on the form); default "name" */
   tabAlias?: string;
   submit?: { label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors?: boolean };
@@ -209,6 +222,9 @@ export type UiPicker = {
   filters: UiFilter[];
   /** elody:filtersType: the type the filters document narrows to (... on X { advancedFilters }) */
   filtersType?: string;
+  /** false when an earlier type already emitted the document of that name */
+  emitList?: boolean;
+  emitFilters?: boolean;
 };
 
 export type UiPanel = {
