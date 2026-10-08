@@ -128,6 +128,7 @@ type Filter = {
   optionsValue?: string;
   selectionOption?: string;
   operator?: string;
+  showTime?: boolean;
 };
 
 type FormField = { key: string; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; clientField?: string };
@@ -167,6 +168,8 @@ type Entity = {
   pickers: Picker[];
   filters: Filter[];
   form?: Form;
+  /** the forms the bulk operations and actions open, when these files hold them */
+  forms: Form[];
   operations?: Operation[];
   customOperations: { name: string; operations: Operation[] }[];
   listQueries: ListQuery[];
@@ -256,6 +259,7 @@ export class Extractor {
       filters: [],
       customOperations: [],
       listQueries: [],
+      forms: [],
     };
     const where = name;
 
@@ -459,6 +463,15 @@ export class Extractor {
     if (form) entity.form = this.form(form, `Get${name}CreateForm`, where);
     const bulk = this.fragment(`${name.charAt(0).toLowerCase() + name.slice(1)}BulkOperations`);
     if (bulk) entity.operations = this.operations(child(child(bulk, "bulkOperationOptions"), "options"), where);
+    // the forms the operations open: declared when these files hold them as dynamic forms
+    const opened = [...(entity.operations ?? []), ...entity.customOperations.flatMap((c) => c.operations)]
+      .map((op) => op.modal?.form)
+      .filter((form): form is string => form !== undefined && form !== entity.form?.queryName);
+    for (const formName of new Set(opened)) {
+      const query = this.operation(formName);
+      if (query && fields(query.selectionSet).some((f) => f.name.value === "GetDynamicForm") && !entity.forms.some((f) => f.queryName === formName))
+        entity.forms.push(this.form(query, formName, where));
+    }
     for (const [suffix, document] of [["Entities", "entities"], ["Filters", "filters"], ["SortOptions", "sortOptions"], ["BulkOperations", "bulkOperations"]] as const)
       if (this.operation(`Get${name}${suffix}`)) entity.documents.push(document);
     return entity;
@@ -684,6 +697,7 @@ export class Extractor {
       }
       filter.selectionOption = str(field, "selectionOption");
       filter.operator = str(field, "operator");
+      filter.showTime = str(field, "showTimeForDateFilter") === "true";
       const retrieving = argument(field, "advancedFilterInputForRetrievingOptions");
       if (retrieving) {
         const inputs = list(retrieving).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT);
@@ -700,7 +714,7 @@ export class Extractor {
         else this.note(`${where}: filter ${alias(field)} fetches its options in a way the vocabulary cannot say (no text search scoped to one type); its option source is left out`);
       }
       for (const a of field.arguments ?? [])
-        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator"].includes(a.name.value))
+        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator", "showTimeForDateFilter"].includes(a.name.value))
           this.note(`${where}: filter ${alias(field)} argument ${a.name.value} has no term; left out`);
       result.push(filter);
     }
@@ -871,6 +885,7 @@ export class Extractor {
     if (f.optionsValue) lines.push(`    elody:optionsValue ${q(f.optionsValue)} ;`);
     if (f.selectionOption) lines.push(`    elody:selectionOption ${q(f.selectionOption)} ;`);
     if (f.operator) lines.push(`    elody:filterOperator ${q(f.operator)} ;`);
+    if (f.showTime) lines.push(`    elody:showTime true ;`);
     if (f.options) {
       lines.push(`    elody:optionsType ${q(f.options.type)} ;`, `    elody:optionsKey ${q(f.options.key)} ;`);
       if (f.options.matchExact !== undefined) lines.push(`    elody:optionsMatchExact ${f.options.matchExact} ;`);
@@ -1051,10 +1066,10 @@ export class Extractor {
 
     // form, bulk operations, custom bulk operations
     const extra: string[] = [];
-    if (entity.form) {
-      out.push(`  elody:form ui:${entity.form.queryName} ;`);
-      formNodes.add(entity.form.queryName);
-      const f = entity.form;
+    const allForms = [...(entity.form ? [entity.form] : []), ...entity.forms];
+    if (allForms.length) out.push(`  elody:form ${allForms.map((f) => `ui:${f.queryName}`).join(" , ")} ;`);
+    for (const f of allForms) {
+      formNodes.add(f.queryName);
       const lines = [`ui:${f.queryName}`, `  a elody:Form ;`, `  rdfs:label ${q(f.label ?? "")} ;`, `  elody:queryName ${q(f.queryName)} ;`];
       if (f.tabAlias && f.tabAlias !== "name") lines.push(`  elody:alias ${q(f.tabAlias)} ;`);
       const shapeFields = f.fields.map((field, i) => {

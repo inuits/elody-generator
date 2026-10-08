@@ -247,6 +247,14 @@ describe("digipolis: option mappings, selection options, operators, sort options
     expect(fragment(file, "filtersForKeyword")).toContain('relation: advancedFilter(type: selection, key: ["dams:1|relations.isAssetFor.key"], operator: or) {\n        type\n        key\n        operator\n');
   });
 
+  it("renders showTimeForDateFilter on a date filter", async () => {
+    const file = await render(
+      entity(`sh:property ${label} ; elody:filter [ rdfs:label "metadata.labels.created-at" ; sh:order 1 ; elody:alias "created_at" ; elody:key "vlacc:1|audit.created.at" ; elody:showTime true ; elody:displayedByDefault true ; elody:filterKind elody:DateFilter ; elody:showTooltip true ]`),
+    );
+    expect(fragment(file, "filtersForKeyword")).toContain("        showTimeForDateFilter: true\n        isDisplayedByDefault: true");
+    expect(fragment(file, "filtersForKeyword")).toContain("        showTimeForDateFilter\n        isDisplayedByDefault\n");
+  });
+
   it("excludes the platform's sort options when declared", async () => {
     const file = await render(entity(`elody:excludeBaseSortOptions true ; sh:property [ sh:path em:title ; sh:order 1 ; shui:propertyRole shui:LabelRole ; elody:labelKey "metadata.labels.title" ; elody:sortable true ]`));
     expect(fragment(file, "keywordSortOptions")).toContain("        ]\n        excludeBaseSortOptions: true\n      ) {");

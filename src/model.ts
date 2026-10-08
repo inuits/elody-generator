@@ -75,6 +75,8 @@ export type UiFilter = {
   selectionOption?: string;
   /** elody:filterOperator: how the values combine (or, and) */
   operator?: string;
+  /** elody:showTime: a date filter with the time of day */
+  showTime: boolean;
   label?: string;
   defaultValues: string[];
   defaultValueAsList: boolean;
