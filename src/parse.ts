@@ -734,6 +734,7 @@ class Parse {
       relationValues: this.optionalFlag(subject, elody("relationValues")) ?? (this.legacy ? true : undefined),
       bulkOperationsFragment: this.optionalFlag(subject, elody("bulkOperations")) ?? (this.legacy ? true : undefined),
       thumbnail: this.thumbnail(r.node(subject, elody("thumbnail"))),
+      excludeBaseSortOptions: r.literal(subject, elody("excludeBaseSortOptions")) === true,
       spreads: {
         listingValues: r.literals(subject, elody("listingValuesSpread")),
         detailValues: r.literals(subject, elody("detailValuesSpread")),
@@ -876,6 +877,10 @@ class Parse {
       key: r.value(node, elody("key")),
       keyAsList: r.literal(node, elody("keyAsList")) !== false,
       parentKey: r.value(node, elody("parentFilterKey")) || undefined,
+      optionsLabel: r.value(node, elody("optionsLabel")) || undefined,
+      optionsValue: r.value(node, elody("optionsValue")) || undefined,
+      selectionOption: r.value(node, elody("selectionOption")) || undefined,
+      operator: r.value(node, elody("filterOperator")) || undefined,
       options: r.value(node, elody("optionsType"))
         ? {
             type: String(r.value(node, elody("optionsType"))),

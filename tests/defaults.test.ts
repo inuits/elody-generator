@@ -89,7 +89,7 @@ describe("relationValues", () => {
   const detail = `elody:detail [ elody:column [ sh:order 1 ; elody:size elody:Width100 ; elody:element [ a elody:WindowElement ; sh:order 1 ; elody:panel ui:Info ] ] ]`;
   const info = `ui:Info a elody:Panel ; elody:alias "info" ; rdfs:label "panel" ; elody:field em:email .`;
 
-  it("is read on the detail page when a property reads a relation, not in the listing", async () => {
+  it("is read on the detail page (a relation or not), not in the listing", async () => {
     const file = await render(entity(`sh:property ${label} , [ sh:path em:tenant ; sh:order 2 ; sh:class em:Tenant ; elody:teaser false ] ; ${detail}`, info));
     expect(fragment(file, "fullUser")).toContain("    relationValues\n");
     expect(fragment(file, "minimalUser")).not.toContain("relationValues");

@@ -68,6 +68,13 @@ export type UiFilter = {
   parentKey?: string;
   /** elody:optionsType & co: a selection filter fetches its options from the entities of a type */
   options?: { type: string; key: string; matchExact: boolean; distinctBy?: string };
+  /** elody:optionsLabel / elody:optionsValue: filterOptionsMapping */
+  optionsLabel?: string;
+  optionsValue?: string;
+  /** elody:selectionOption: how the options are offered (autocomplete) */
+  selectionOption?: string;
+  /** elody:filterOperator: how the values combine (or, and) */
+  operator?: string;
   label?: string;
   defaultValues: string[];
   defaultValueAsList: boolean;
@@ -231,6 +238,8 @@ export type UiEntity = {
   bulkOperationsFragment?: boolean;
   /** elody:detailFormatters: the detail fragment reads values with their formatters too (default true) */
   detailFormatters?: boolean;
+  /** elody:excludeBaseSortOptions: only the declared sort options */
+  excludeBaseSortOptions: boolean;
   /** elody:thumbnail: the card's picture, from an initial value or the primary media file */
   thumbnail?: { key?: string; fromMediafile?: boolean };
   /** hand-written shared fragments spread into a block (elody:listingValuesSpread & co) */

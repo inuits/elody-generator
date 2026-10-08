@@ -124,6 +124,10 @@ type Filter = {
   defaultAsList: boolean;
   hidden: boolean;
   options?: { type: string; key: string; matchExact: boolean; distinctBy?: string };
+  optionsLabel?: string;
+  optionsValue?: string;
+  selectionOption?: string;
+  operator?: string;
 };
 
 type FormField = { key: string; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; clientField?: string };
@@ -153,6 +157,7 @@ type Entity = {
   spreads: { listingValues: string[]; detailValues: string[]; card: string[]; filters: string[] };
   relationValues?: boolean;
   detailFormatters?: boolean;
+  excludeBaseSortOptions?: boolean;
   documents: string[];
   columns: Column[];
   shapeDriven: boolean;
@@ -187,6 +192,14 @@ export class Extractor {
   /** list query nodes by query and filters document: one node per pair, the entities document with the first */
   private readonly listQueryNodes = new Map<string, string>();
   private readonly queriesWithResults = new Set<string>();
+  /** every node minted so far: a list query, a picker, a form or a custom operations set never share a name */
+  private readonly nodes = new Set<string>();
+
+  private mint(preferred: string, fallback: string): string {
+    const node = !this.nodes.has(preferred) ? preferred : !this.nodes.has(fallback) ? fallback : `${preferred}_${this.nodes.size}`;
+    this.nodes.add(node);
+    return node;
+  }
 
   constructor(definitions: Definition[], ontology: Ontology) {
     this.definitions = new Map(definitions.map((d) => [d.name, d]));
@@ -291,6 +304,18 @@ export class Extractor {
     const detailFormatted = new Set<string>();
     for (const field of fields(fullValues?.selectionSet)) if (field.name.value === "keyValue") add(field, false);
     for (const field of fields(minimalValues?.selectionSet)) if (field.name.value === "keyValue") add(field, true);
+    // the card's fields come first, in the card's order (the initial values are read by name, the card is shown in order)
+    const cardOrder = fields(child(minimal, "teaserMetadata")?.selectionSet)
+      .filter((f) => f.name.value === "metaData")
+      .map((f) => input(child(f, "key")) ?? alias(f));
+    entity.properties.sort((a, b) => {
+      const ia = cardOrder.indexOf(a.alias ?? a.key);
+      const ib = cardOrder.indexOf(b.alias ?? b.key);
+      if (ia === -1 && ib === -1) return 0;
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
     for (const a of listingFormatted) if (byAlias.get(a)?.inDetail && !detailFormatted.has(a)) entity.detailFormatters = false;
     for (const field of fields(minimalValues?.selectionSet)) if (field.name.value !== "keyValue") this.note(`${where}: initial value ${alias(field)} is not a keyValue; left out`);
     // (a value read in the listing only is said with elody:listingOnly; a value read on the detail page only with elody:detailOnly)
@@ -376,13 +401,10 @@ export class Extractor {
     // listing; say it when the client has them elsewhere
     const listingHas = fields(minimal.selectionSet).some((f) => f.name.value === "relationValues");
     const detailHas = full ? fields(full.selectionSet).some((f) => f.name.value === "relationValues") : false;
-    const derivedDetail =
-      entity.properties.some((p) => p.relationType) || entity.contextMenu !== undefined || entity.columns.some((c) => c.elements.some((e) => e.kind === "list"));
     if (listingHas) {
       entity.relationValues = true;
       if (full && !detailHas) this.note(`${where}: the listing reads relationValues but the detail page does not; both will read them`);
-    } else if (!detailHas && derivedDetail && full) entity.relationValues = false;
-    else if (detailHas && !derivedDetail) this.note(`${where}: the detail page reads relationValues though nothing declared needs them; left to the generator (none)`);
+    } else if (full && !detailHas) entity.relationValues = false;
 
     // sort options
     const sort = this.fragment(`${name.charAt(0).toLowerCase() + name.slice(1)}SortOptions`);
@@ -404,6 +426,11 @@ export class Extractor {
       sortedAliases.push(value);
       position += 1;
     }
+    if (options && scalar(argument(options, "excludeBaseSortOptions")) === "true") entity.excludeBaseSortOptions = true;
+    for (const entry of list(options ? argument(options, "input") : undefined))
+      if (entry.kind === Kind.OBJECT)
+        for (const extra of entry.fields.map((f) => f.name.value).filter((n) => !["icon", "label", "value"].includes(n)))
+          this.note(`${where}: sort option field ${extra} has no term; left out`);
     const direction = input(child(child(sort, "sortOptions"), "isAsc"));
     if (direction && sortedAliases.length) {
       const first = byAlias.get(sortedAliases[0]) ?? entity.properties.find((p) => p.key === sortedAliases[0]);
@@ -545,7 +572,7 @@ export class Extractor {
     if (customBulkOperations) this.customOperations(customBulkOperations, where, entity);
     const pickerList = input(child(element, "customQueryEntityPickerList"));
     const pickerFilters = input(child(element, "customQueryEntityPickerListFilters"));
-    if (pickerList) this.picker(pickerList, pickerFilters, where, entity);
+    const pickerNode = pickerList ? this.picker(pickerList, pickerFilters, where, entity) : undefined;
     const relation = fields(element.selectionSet).find((f) => alias(f) === "relationType");
     const scoped = fields(element.selectionSet).find((f) => alias(f) === "customQueryRelationType");
     return {
@@ -561,14 +588,15 @@ export class Extractor {
       customQuery,
       customQueryFilters,
       customBulkOperations,
-      picker: pickerList,
+      picker: pickerNode,
       listQuery: listQueryNode,
     };
   }
 
   /** An entity picker's documents: the list (results per type) and the scoping filters. */
-  private picker(name: string, filtersName: string | undefined, where: string, entity: Entity) {
-    if (entity.pickers.some((p) => p.name === name)) return;
+  private picker(name: string, filtersName: string | undefined, where: string, entity: Entity): string {
+    const known = entity.pickers.find((p) => p.name === name);
+    if (known) return known.node ?? name;
     const query = this.operation(name);
     const results: Picker["results"] = [];
     const entities = query ? fields(query.selectionSet).find((f) => f.name.value === "Entities") : undefined;
@@ -577,7 +605,9 @@ export class Extractor {
     if (!query) this.note(`${where}: picker ${name} is not in these files; declared without results`);
     const filters = filtersName ? this.operation(filtersName) : undefined;
     const block = filters ? child(fields(filters.selectionSet).find((f) => f.name.value === "EntityTypeFilters"), "advancedFilters") : undefined;
-    entity.pickers.push({ name, filtersName, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
+    const node = this.mint(name, `${name}Picker`);
+    entity.pickers.push({ node, name, filtersName, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
+    return node;
   }
 
   /** The node of a list query: one per query and filters document; the entities document goes with the first node of a query. */
@@ -585,8 +615,7 @@ export class Extractor {
     const pair = `${name}|${filtersName ?? ""}`;
     const known = this.listQueryNodes.get(pair);
     if (known) return known;
-    const taken = new Set(this.listQueryNodes.values());
-    const node = !taken.has(name) ? name : filtersName && !taken.has(filtersName) ? filtersName : `${name}_${this.listQueryNodes.size}`;
+    const node = this.mint(name, filtersName ?? `${name}List`);
     this.listQueryNodes.set(pair, node);
     const query = this.operation(name);
     const results: ListQuery["results"] = [];
@@ -611,8 +640,8 @@ export class Extractor {
     if (entity.customOperations.some((c) => c.name === name)) return;
     const query = this.operation(name);
     if (!query) {
-      this.note(`${where}: custom bulk operations ${name} are not in these files; a stub names them`);
-      entity.customOperations.push({ name, operations: [] });
+      this.note(`${where}: custom bulk operations ${name} are not in these files; the element names them, nothing is generated`);
+      this.stubs.add(name);
       return;
     }
     const custom = fields(query.selectionSet).find((f) => f.name.value === "CustomBulkOperations");
@@ -642,6 +671,13 @@ export class Extractor {
         defaultAsList: defaultValue?.kind === Kind.LIST,
         hidden: child(field, "hidden") !== undefined && input(child(field, "hidden")) !== "false",
       };
+      const mapping = argument(field, "filterOptionsMapping");
+      if (mapping?.kind === Kind.OBJECT) {
+        filter.optionsLabel = scalar(objectField(mapping, "label"));
+        filter.optionsValue = scalar(objectField(mapping, "value"));
+      }
+      filter.selectionOption = str(field, "selectionOption");
+      filter.operator = str(field, "operator");
       const retrieving = argument(field, "advancedFilterInputForRetrievingOptions");
       if (retrieving) {
         const inputs = list(retrieving).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT);
@@ -658,7 +694,7 @@ export class Extractor {
         else this.note(`${where}: filter ${alias(field)} fetches its options in a way the vocabulary cannot say (no text search scoped to one type); its option source is left out`);
       }
       for (const a of field.arguments ?? [])
-        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "advancedFilterInputForRetrievingOptions"].includes(a.name.value))
+        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator"].includes(a.name.value))
           this.note(`${where}: filter ${alias(field)} argument ${a.name.value} has no term; left out`);
       result.push(filter);
     }
@@ -825,6 +861,10 @@ export class Extractor {
     for (const value of f.defaults) lines.push(`    sh:defaultValue ${q(value)} ;`);
     if (f.defaultAsList) lines.push(`    elody:defaultValueAsList true ;`);
     if (f.displayed) lines.push(`    elody:displayedByDefault true ;`);
+    if (f.optionsLabel) lines.push(`    elody:optionsLabel ${q(f.optionsLabel)} ;`);
+    if (f.optionsValue) lines.push(`    elody:optionsValue ${q(f.optionsValue)} ;`);
+    if (f.selectionOption) lines.push(`    elody:selectionOption ${q(f.selectionOption)} ;`);
+    if (f.operator) lines.push(`    elody:filterOperator ${q(f.operator)} ;`);
     if (f.options) {
       lines.push(`    elody:optionsType ${q(f.options.type)} ;`, `    elody:optionsKey ${q(f.options.key)} ;`);
       if (f.options.matchExact) lines.push(`    elody:optionsMatchExact true ;`);
@@ -881,6 +921,7 @@ export class Extractor {
     if (entity.typePills) out.push(`  elody:typePills true ;`);
     if (entity.relationValues !== undefined) out.push(`  elody:relationValues ${entity.relationValues} ;`);
     if (entity.detailFormatters === false) out.push(`  elody:detailFormatters false ;`);
+    if (entity.excludeBaseSortOptions) out.push(`  elody:excludeBaseSortOptions true ;`);
     if (entity.thumbnail) out.push(`  elody:thumbnail [ ${entity.thumbnail.fromMediafile ? "elody:fromMediafile true" : `elody:key ${q(entity.thumbnail.key ?? "thumbnail")}`} ] ;`);
     for (const s of entity.spreads.listingValues) out.push(`  elody:listingValuesSpread ${q(s)} ;`);
     for (const s of entity.spreads.detailValues) out.push(`  elody:detailValuesSpread ${q(s)} ;`);
@@ -965,7 +1006,7 @@ export class Extractor {
     }
     if (entity.dynamicFormConfig) out.push(`  elody:dynamicFormConfig ${q(entity.dynamicFormConfig)} ;`);
     if (entity.ports) out.push(`  elody:ports ${q(entity.ports)} ;`);
-    if (entity.pickers.length) out.push(`  elody:picker ${entity.pickers.map((p) => `ui:${p.name}`).join(" , ")} ;`);
+    if (entity.pickers.length) out.push(`  elody:picker ${entity.pickers.map((p) => `ui:${p.node ?? p.name}`).join(" , ")} ;`);
 
     // filters
     const filters = entity.filters;

@@ -53,7 +53,7 @@ const query = (file: string, name: string): string => {
 };
 
 describe("relationValues per fragment", () => {
-  it("is read in the detail fragment only when only the detail page needs it", async () => {
+  it("is read in the detail fragment, not in the listing", async () => {
     const file = await render(
       entity(`sh:property ${label} ;
         elody:detail [ elody:column [ sh:order 1 ; elody:size elody:Width100 ; elody:element [ a elody:ListElement ; sh:order 1 ; rdfs:label "list" ; elody:entityTypes "asset" ; elody:relationType "hasAsset" ] ] ]`),

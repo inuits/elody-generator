@@ -36,14 +36,9 @@ export function renderInitialValues(entity: M.UiEntity, indent: number, withForm
  */
 export function readsRelationValues(entity: M.UiEntity, fragment: "listing" | "detail"): boolean {
   if (entity.relationValues !== undefined) return entity.relationValues;
-  // the listing reads them only when declared (clients' cards do without, even with relations on them)
-  if (fragment === "listing") return false;
-  return (
-    entity.properties.some((property) => property.relationType || property.panelElement?.kind === "list") ||
-    entity.contextMenu !== undefined ||
-    entity.spreads.detailValues.length > 0 ||
-    (entity.detail?.columns ?? []).some((column) => column.elements.some((element) => element.kind === "list"))
-  );
+  // the listing reads them only when declared (clients' cards do without, even with relations on them);
+  // the detail page reads them unless declared otherwise (nearly every client's does)
+  return fragment === "detail";
 }
 
 /** Whether the type carries a bulk operations fragment: declared, else when it declares operations or asks for the document. */
@@ -144,6 +139,7 @@ export function renderSortOptions(entity: M.UiEntity, indent: number): string {
     `${pad(indent + 4)}input: [`,
     options,
     `${pad(indent + 4)}]`,
+    ...(entity.excludeBaseSortOptions ? [`${pad(indent + 4)}excludeBaseSortOptions: true`] : []),
     `${pad(indent + 2)}) {`,
     `${pad(indent + 4)}icon`,
     `${pad(indent + 4)}label`,
@@ -206,36 +202,53 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
     if (filter.kind === "selection" && !filter.label && !filter.options) {
       const key = filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`;
       const parent = filter.parentKey ? `, parentKey: "${filter.parentKey}"` : "";
+      const operator = filter.operator ? `, operator: ${filter.operator}` : "";
       const selection = [
         "type",
         ...(filter.parentKey ? ["parentKey"] : []),
         "key",
+        ...(filter.operator ? ["operator"] : []),
         ...(filter.tooltip ? ["tooltip(value: true)"] : []),
         ...(filter.defaultValues.length > 0 || filter.defaultValueAsList ? [`defaultValue(value: ${filterDefaultLiteral(filter)})`] : []),
         ...(filter.hidden ? ["hidden(value: true)"] : []),
       ];
       return [
-        `${pad(indent + 2)}${aliased}advancedFilter(type: selection${parent}, key: ${key}) {`,
+        `${pad(indent + 2)}${aliased}advancedFilter(type: selection${parent}, key: ${key}${operator}) {`,
         ...selection.map((field) => `${pad(indent + 4)}${field}`),
         `${pad(indent + 2)}}`,
       ].join("\n");
     }
 
     const options = filter.options ? renderFilterOptions(filter.options, indent + 4) : undefined;
+    const mapping =
+      filter.optionsLabel || filter.optionsValue
+        ? [
+            `${pad(indent + 4)}filterOptionsMapping: {`,
+            ...(filter.optionsLabel ? [`${pad(indent + 6)}label: "${filter.optionsLabel}"`] : []),
+            ...(filter.optionsValue ? [`${pad(indent + 6)}value: "${filter.optionsValue}"`] : []),
+            `${pad(indent + 4)}}`,
+          ]
+        : [];
     const args = [
       `${pad(indent + 4)}type: ${filter.kind}`,
       ...(filter.parentKey ? [`${pad(indent + 4)}parentKey: "${filter.parentKey}"`] : []),
       ...(filter.key ? [`${pad(indent + 4)}key: ${filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`}`] : []),
+      ...(filter.operator ? [`${pad(indent + 4)}operator: ${filter.operator}`] : []),
       ...(filter.label ? [`${pad(indent + 4)}label: "${filter.label}"`] : []),
+      ...(filter.selectionOption ? [`${pad(indent + 4)}selectionOption: ${filter.selectionOption}`] : []),
       ...(filter.displayedByDefault ? [`${pad(indent + 4)}isDisplayedByDefault: true`] : []),
+      ...mapping,
       ...(options ? options.args : []),
     ];
     const selection = [
       `${pad(indent + 4)}type`,
       ...(filter.parentKey ? [`${pad(indent + 4)}parentKey`] : []),
       ...(filter.key ? [`${pad(indent + 4)}key`] : []),
+      ...(filter.operator ? [`${pad(indent + 4)}operator`] : []),
       ...(filter.label ? [`${pad(indent + 4)}label`] : []),
+      ...(filter.selectionOption ? [`${pad(indent + 4)}selectionOption`] : []),
       ...(filter.displayedByDefault ? [`${pad(indent + 4)}isDisplayedByDefault`] : []),
+      ...(mapping.length ? [`${pad(indent + 4)}filterOptionsMapping {`, `${pad(indent + 6)}label`, `${pad(indent + 6)}value`, `${pad(indent + 4)}}`] : []),
       ...(options ? options.fields : []),
       ...(filter.tooltip ? [`${pad(indent + 4)}tooltip(value: true)`] : []),
       ...(filter.defaultValues.length > 0 || filter.defaultValueAsList ? [`${pad(indent + 4)}defaultValue(value: ${filterDefaultLiteral(filter)})`] : []),
@@ -450,7 +463,7 @@ export function renderRepetitiveForm(form: M.UiRepetitiveForm): string {
 
 /** The entities document of a picker or a list query (its results per type), and its filters document. */
 export function renderPicker(picker: M.UiPicker): string {
-  return `${renderListQuery(picker)}\n\n${renderListFilters(picker)}`;
+  return renderListQueryDocuments(picker).join("\n\n");
 }
 
 /** The documents of a list element's list query: the entities document only when it declares results. */
@@ -833,7 +846,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
 
   for (const form of entity.repetitiveForms) documents.push(renderRepetitiveForm(form));
 
-  for (const picker of entity.pickers) documents.push(renderPicker(picker));
+  for (const picker of entity.pickers) documents.push(...renderListQueryDocuments(picker));
 
   for (const listQuery of entity.listQueries) documents.push(...renderListQueryDocuments(listQuery));
 

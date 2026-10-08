@@ -207,6 +207,50 @@ describe("a selection filter that fetches its options", () => {
   });
 });
 
+describe("digipolis: option mappings, selection options, operators, sort options of the type only", () => {
+  it("renders filterOptionsMapping, selectionOption and operator on a selection filter", async () => {
+    const file = await render(
+      entity(`sh:property ${label} ; elody:filter
+        [ rdfs:label "metadata.labels.access" ; sh:order 1 ; elody:alias "access" ; elody:key "dams:1|metadata.access.value" ; elody:displayedByDefault true ;
+          elody:optionsLabel "intialValues.access" ; elody:optionsValue "intialValues.access" ; elody:selectionOption "autocomplete" ; elody:filterOperator "or" ;
+          elody:optionsType "asset" ; elody:optionsKey "dams:1|metadata.access.value" ; elody:optionsDistinctBy "metadata.access.value" ; elody:filterKind elody:SelectionFilter ; elody:showTooltip true ]`),
+    );
+    const filters = fragment(file, "filtersForKeyword");
+    expect(filters).toContain('        operator: or\n');
+    expect(filters).toContain('        selectionOption: autocomplete\n');
+    expect(filters).toContain('        filterOptionsMapping: {\n          label: "intialValues.access"\n          value: "intialValues.access"\n        }');
+    expect(filters).toContain("        filterOptionsMapping {\n          label\n          value\n        }");
+    expect(filters).toContain("        operator\n        label\n        selectionOption\n");
+  });
+
+  it("renders operator on a scoping selection filter", async () => {
+    const file = await render(
+      entity(`sh:property ${label} ; elody:filter [ sh:order 1 ; elody:alias "relation" ; elody:key "dams:1|relations.isAssetFor.key" ; elody:filterOperator "or" ; dash:hidden true ; sh:defaultValue "$entity.id" ; elody:filterKind elody:SelectionFilter ]`),
+    );
+    expect(fragment(file, "filtersForKeyword")).toContain('relation: advancedFilter(type: selection, key: ["dams:1|relations.isAssetFor.key"], operator: or) {\n        type\n        key\n        operator\n');
+  });
+
+  it("excludes the platform's sort options when declared", async () => {
+    const file = await render(entity(`elody:excludeBaseSortOptions true ; sh:property [ sh:path em:title ; sh:order 1 ; shui:propertyRole shui:LabelRole ; elody:labelKey "metadata.labels.title" ; elody:sortable true ]`));
+    expect(fragment(file, "keywordSortOptions")).toContain("        ]\n        excludeBaseSortOptions: true\n      ) {");
+  });
+
+  it("declares a picker without results: only its filters document is generated", async () => {
+    const file = await render(
+      entity(`sh:property ${label} ; elody:picker ui:GetAssetsPicker`, `ui:GetAssetsPicker a elody:Picker ; elody:queryName "GetAssetsPicker" ; elody:filter [ sh:order 1 ; elody:alias "type" ; dash:hidden true ; sh:defaultValue "asset" ; elody:filterKind elody:TypeFilter ] .`),
+    );
+    expect(query(file, "GetAssetsPicker(")).toBe("");
+    expect(query(file, "GetAssetsPickerFilters")).toContain('defaultValue(value: "asset")');
+  });
+
+  it("reads relationValues on the detail page by default, not when elody:relationValues is false", async () => {
+    const plain = await render(entity(`sh:property ${label} ; ${window("ui:Info")}`, info("", "em:title")));
+    expect(fragment(plain, "fullKeyword")).toContain("    relationValues\n");
+    const off = await render(entity(`elody:relationValues false ; sh:property ${label} ; ${window("ui:Info")}`, info("", "em:title")));
+    expect(fragment(off, "fullKeyword")).not.toContain("relationValues");
+  });
+});
+
 describe("the 0.3.0 fixture", () => {
   it("conforms with the batch-3 terms and renders them", async () => {
     const { VOCABULARY_PATH } = await import("../src/ontology.js");

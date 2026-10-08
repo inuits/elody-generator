@@ -214,6 +214,13 @@ elody:EndpointCallAction elody:enumValue "EndpointCall" .
 elody:EntityDetailModal elody:enumValue "EntityDetailModal" .
 elody:EntityEditModal elody:enumValue "EntityEditModal" .
 elody:ExportCsvOperation elody:enumValue "exportCsv" .
+elody:ExportXlsxOperation elody:enumValue "exportXlsx" .
+elody:ExportCsvOfMediafilesOperation elody:enumValue "exportCsvOfMediafilesFromAsset" .
+elody:DownloadMediafilesDirectlyOperation elody:enumValue "downloadMediafilesDirectly" .
+elody:BulkUpdateMetadataOperation elody:enumValue "bulkUpdateMetadata" .
+elody:MarkAsSeenOperation elody:enumValue "markAsSeen" .
+elody:MarkAsUnseenOperation elody:enumValue "markAsUnseen" .
+elody:MergeEntitiesOperation elody:enumValue "mergeEntities" .
 elody:GeoFilter elody:enumValue "geo" .
 elody:GridView elody:enumValue "ViewModesGrid" .
 elody:HardBreakExtension elody:enumValue "hardBreak" .
