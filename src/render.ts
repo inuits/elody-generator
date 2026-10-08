@@ -15,7 +15,7 @@ const stringList = (values: string[]) => `[${values.map((value) => `"${value}"`)
 /** The listing fragment leaves out the detail-only properties; the detail fragment reads them all. */
 export function renderInitialValues(entity: M.UiEntity, indent: number, withFormatters = true, listing = false): string {
   return entity.properties
-    .filter((property) => !listing || !property.detailOnly)
+    .filter((property) => property.readsValue && (listing ? !property.detailOnly : !property.listingOnly))
     .map((property) => {
       const alias = property.alias ?? property.key;
       const index = property.index !== undefined ? `, index: ${property.index}` : "";
@@ -34,11 +34,11 @@ export function renderInitialValues(entity: M.UiEntity, indent: number, withForm
  */
 export function readsRelationValues(entity: M.UiEntity, fragment: "listing" | "detail"): boolean {
   if (entity.relationValues !== undefined) return entity.relationValues;
-  const onCard = entity.properties.some((property) => property.relationType && !property.detailOnly) || entity.contextMenu !== undefined;
-  if (fragment === "listing") return onCard;
+  // the listing reads them only when declared (clients' cards do without, even with relations on them)
+  if (fragment === "listing") return false;
   return (
-    onCard ||
     entity.properties.some((property) => property.relationType || property.panelElement?.kind === "list") ||
+    entity.contextMenu !== undefined ||
     (entity.detail?.columns ?? []).some((column) => column.elements.some((element) => element.kind === "list"))
   );
 }
@@ -175,12 +175,12 @@ function renderFilterOptions(options: NonNullable<M.UiFilter["options"]>, indent
     `${pad(indent + 2)}{ type: type, value: "${options.type}" }`,
     `${pad(indent)}]`,
   ];
+  // the inputs asked back: clients that search with distinct_by write type, key, value, distinct_by, match_exact;
+  // the plain search is written type, value, key, match_exact (vliz, the most of them)
   const fields = [
     `${pad(indent)}advancedFilterInputForRetrievingOptions {`,
     `${pad(indent + 2)}type`,
-    `${pad(indent + 2)}key`,
-    `${pad(indent + 2)}value`,
-    ...(options.distinctBy ? [`${pad(indent + 2)}distinct_by`] : []),
+    ...(options.distinctBy ? [`${pad(indent + 2)}key`, `${pad(indent + 2)}value`, `${pad(indent + 2)}distinct_by`] : [`${pad(indent + 2)}value`, `${pad(indent + 2)}key`]),
     `${pad(indent + 2)}match_exact`,
     `${pad(indent)}}`,
   ];
@@ -221,6 +221,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
     const options = filter.options ? renderFilterOptions(filter.options, indent + 4) : undefined;
     const args = [
       `${pad(indent + 4)}type: ${filter.kind}`,
+      ...(filter.parentKey ? [`${pad(indent + 4)}parentKey: "${filter.parentKey}"`] : []),
       ...(filter.key ? [`${pad(indent + 4)}key: ["${filter.key}"]`] : []),
       ...(filter.label ? [`${pad(indent + 4)}label: "${filter.label}"`] : []),
       ...(filter.displayedByDefault ? [`${pad(indent + 4)}isDisplayedByDefault: true`] : []),
@@ -228,6 +229,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
     ];
     const selection = [
       `${pad(indent + 4)}type`,
+      ...(filter.parentKey ? [`${pad(indent + 4)}parentKey`] : []),
       ...(filter.key ? [`${pad(indent + 4)}key`] : []),
       ...(filter.label ? [`${pad(indent + 4)}label`] : []),
       ...(filter.displayedByDefault ? [`${pad(indent + 4)}isDisplayedByDefault`] : []),
@@ -324,7 +326,7 @@ export function renderBulkOperationOptions(operations: M.UiBulkOperation[], inde
 export function renderCreateForm(form: M.UiCreateForm): string {
   const fieldBlocks = form.fields.map((field) => {
     const lines = [
-      `          ${field.key}: metaData {`,
+      `          ${field.alias ?? field.key}: metaData {`,
       `            label(input: "${field.label ?? field.key}")`,
       `            key(input: "${field.key}")`,
       ...(field.multilingual ? ["            isMultilingual(input: true)"] : []),

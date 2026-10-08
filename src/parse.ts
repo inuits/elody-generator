@@ -793,6 +793,8 @@ class Parse {
       alias: r.value(node, elody("alias")) || undefined,
       clientInputField: r.value(node, elody("clientInputField")) || undefined,
       detailOnly,
+      listingOnly: r.literal(node, elody("listingOnly")) === true,
+      readsValue: r.literal(node, elody("readsValue")) !== false,
       sortLabelKey: r.value(node, elody("sortLabelKey")) || undefined,
       sortOrder: typeof sortOrder === "number" ? sortOrder : undefined,
       path: r.node(node, sh("path")),
@@ -1059,6 +1061,7 @@ class Parse {
     const key = key0;
     return {
       key,
+      alias: r.value(node, elody("alias")) || undefined,
       label: this.propertyLabel(node, key, `ui.${this.type}.${key}`),
       order: r.order(node),
       inputType,

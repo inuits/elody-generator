@@ -62,8 +62,9 @@ ui:ComponentUi
   a elody:EntityUi ;
   elody:graphqlType "GithubProcessor" ;
   elody:emit "file" ;
-  # the reference output reads the raw values on the detail page
+  # the reference output reads the raw values on the detail page, and relations on the card too
   elody:detailFormatters false ;
+  elody:relationValues true ;
   elody:documents "entities" , "filters" , "sortOptions" , "bulkOperations" ;
   sh:property
     [ sh:path em:name ;

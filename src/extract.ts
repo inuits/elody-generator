@@ -67,6 +67,8 @@ type Property = {
   valueLabelKey?: string;
   inListing: boolean;
   inDetail: boolean;
+  /** no initial value is read for it: a spread or the platform provides it */
+  readsValue: boolean;
   teaser: boolean;
   labelKey?: string;
   unit?: string;
@@ -101,7 +103,8 @@ type Element =
       customQueryFilters?: string;
       customBulkOperations?: string;
       picker?: string;
-      listQuery: boolean;
+      /** the declared list query node this element loads, when these files hold its documents */
+      listQuery?: string;
     };
 type Column = { size?: string; elements: Element[] };
 
@@ -121,7 +124,7 @@ type Filter = {
   options?: { type: string; key: string; matchExact: boolean; distinctBy?: string };
 };
 
-type FormField = { key: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; clientField?: string };
+type FormField = { key: string; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; clientField?: string };
 type Form = { queryName: string; label?: string; tabAlias?: string; fields: FormField[]; submit?: { label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors: boolean } };
 
 type Operation = {
@@ -135,7 +138,7 @@ type Operation = {
   modal?: { kind?: string; form?: string; relationType?: string; closeConfirmation?: boolean; permission?: string };
 };
 
-type ListQuery = { name: string; filtersName?: string; results: { type: string; fragment: string }[]; filters: Filter[] };
+type ListQuery = { node?: string; name: string; filtersName?: string; results: { type: string; fragment: string }[]; filters: Filter[] };
 type Picker = ListQuery;
 
 type Entity = {
@@ -179,6 +182,9 @@ export class Extractor {
   private readonly definitions: Map<string, Definition>;
   private readonly o: Ontology;
   private readonly stubs = new Set<string>();
+  /** list query nodes by query and filters document: one node per pair, the entities document with the first */
+  private readonly listQueryNodes = new Map<string, string>();
+  private readonly queriesWithResults = new Set<string>();
 
   constructor(definitions: Definition[], ontology: Ontology) {
     this.definitions = new Map(definitions.map((d) => [d.name, d]));
@@ -257,6 +263,7 @@ export class Extractor {
           index: str(field, "index") !== undefined ? Number(str(field, "index")) : undefined,
           inListing: false,
           inDetail: false,
+          readsValue: true,
           teaser: false,
           sortable: false,
           single: true,
@@ -284,7 +291,7 @@ export class Extractor {
     for (const field of fields(minimalValues?.selectionSet)) if (field.name.value === "keyValue") add(field, true);
     for (const a of listingFormatted) if (byAlias.get(a)?.inDetail && !detailFormatted.has(a)) entity.detailFormatters = false;
     for (const field of fields(minimalValues?.selectionSet)) if (field.name.value !== "keyValue") this.note(`${where}: initial value ${alias(field)} is not a keyValue; left out`);
-    for (const property of entity.properties) if (property.inListing && !property.inDetail && full) this.note(`${where}: ${property.alias ?? property.key} is read in the listing but not on the detail page; it will be read on both`);
+    // (a value read in the listing only is said with elody:listingOnly; a value read on the detail page only with elody:detailOnly)
     entity.spreads.listingValues = spreads(minimalValues?.selectionSet).filter((s) => s !== "typePillsIntialValues");
     entity.spreads.detailValues = spreads(fullValues?.selectionSet);
     entity.typePills = spreads(minimalValues?.selectionSet).includes("typePillsIntialValues");
@@ -299,6 +306,7 @@ export class Extractor {
           this.note(`${where}: card field ${alias(field)} reads no initial value; left out`);
           continue;
         }
+        if (alias(field) !== (property.alias ?? property.key)) this.note(`${where}: card field ${alias(field)} shows the value ${key}; the card will show it under ${property.alias ?? property.key}`);
         property.teaser = true;
         property.labelKey = input(child(field, "label"));
         const unit = input(child(field, "unit"));
@@ -317,11 +325,6 @@ export class Extractor {
     entity.spreads.card = spreads(teaser?.selectionSet).filter((s) => s !== "typePillsTeaserMetadata");
     for (const property of entity.properties) if (!property.inListing) property.teaser = false;
 
-    // relationValues: say it when the derivation would not give what the client has
-    const listingHas = fields(minimal.selectionSet).some((f) => f.name.value === "relationValues");
-    const detailHas = full ? fields(full.selectionSet).some((f) => f.name.value === "relationValues") : false;
-    if (listingHas && (detailHas || !full)) entity.relationValues = true;
-    else if (!listingHas && !detailHas) entity.relationValues = false;
     for (const field of fields(minimal.selectionSet)) {
       if (["intialValues", "relationValues", "allowedViewModes", "teaserMetadata"].includes(field.name.value)) continue;
       if (alias(field) === "dynamicFormConfig") entity.dynamicFormConfig = field.name.value;
@@ -367,6 +370,18 @@ export class Extractor {
         else entity.fragmentFields.push(alias(field));
       }
 
+    // relationValues: the generator derives them for the detail page (a relation, a list, a context menu), never for the
+    // listing; say it when the client has them elsewhere
+    const listingHas = fields(minimal.selectionSet).some((f) => f.name.value === "relationValues");
+    const detailHas = full ? fields(full.selectionSet).some((f) => f.name.value === "relationValues") : false;
+    const derivedDetail =
+      entity.properties.some((p) => p.relationType) || entity.contextMenu !== undefined || entity.columns.some((c) => c.elements.some((e) => e.kind === "list"));
+    if (listingHas) {
+      entity.relationValues = true;
+      if (full && !detailHas) this.note(`${where}: the listing reads relationValues but the detail page does not; both will read them`);
+    } else if (!detailHas && derivedDetail && full) entity.relationValues = false;
+    else if (detailHas && !derivedDetail) this.note(`${where}: the detail page reads relationValues though nothing declared needs them; left to the generator (none)`);
+
     // sort options
     const sort = this.fragment(`${name.charAt(0).toLowerCase() + name.slice(1)}SortOptions`);
     const options = child(child(sort, "sortOptions"), "options");
@@ -378,10 +393,9 @@ export class Extractor {
       const label = scalar(objectField(entry, "label"));
       let property = byAlias.get(value) ?? entity.properties.find((p) => p.key === value);
       if (!property) {
-        property = { key: value, inListing: false, inDetail: true, teaser: false, sortable: false, single: true, required: false, readOnly: false, labelRole: false };
+        property = { key: value, inListing: false, inDetail: true, readsValue: false, teaser: false, sortable: false, single: true, required: false, readOnly: false, labelRole: false };
         entity.properties.push(property);
         byAlias.set(value, property);
-        this.note(`${where}: sort option ${value} is no initial value; a detail-only property is declared for it`);
       }
       property.sortable = true;
       if (label && label !== property.labelKey) property.sortLabelKey = label;
@@ -426,6 +440,16 @@ export class Extractor {
     if (value.kind === Kind.BOOLEAN) return String(value.value);
     if (value.kind === Kind.INT || value.kind === Kind.FLOAT) return value.value;
     return q(scalar(value) ?? "");
+  }
+
+  /** validation(input: { value: required }) is sh:minCount 1; other validations have no term. */
+  private required(validation: FieldNode | undefined, where: string): boolean {
+    if (!validation) return false;
+    const value = argument(validation, "input");
+    const kind = value?.kind === Kind.OBJECT ? scalar(objectField(value, "value")) : undefined;
+    if (kind === "required") return true;
+    this.note(`${where}: validation ${kind ?? "?"} has no term; left out`);
+    return false;
   }
 
   private contextMenu(field: FieldNode, where: string): Entity["contextMenu"] {
@@ -477,10 +501,10 @@ export class Extractor {
         const key = input(child(field, "key")) ?? alias(field);
         let property = entity.properties.find((p) => p.key === key && !p.alias) ?? byAlias.get(key);
         if (!property) {
-          property = { key, inListing: false, inDetail: true, teaser: false, sortable: false, single: true, required: false, readOnly: false, labelRole: false };
+          // shown in the panel, its value read by a spread (or not at all): no initial value for it
+          property = { key, inListing: false, inDetail: true, readsValue: false, teaser: false, sortable: false, single: true, required: false, readOnly: false, labelRole: false };
           entity.properties.push(property);
           byAlias.set(key, property);
-          this.note(`${where}: panel field ${key} is no initial value; a detail-only property is declared for it`);
         }
         const label = input(child(field, "label"));
         if (label && !property.labelKey) property.labelKey = label;
@@ -493,9 +517,10 @@ export class Extractor {
             property.editor = base.editor;
             property.datatype = base.datatype;
           } else property.clientField = type;
-          if (child(widget, "validation")) property.required = true;
+          if (this.required(child(widget, "validation"), `${where} panel ${alias(panel)} field ${key}`)) property.required = true;
         } else if (result.editable) property.readOnly = true;
-        result.fields.push(key);
+        // the panel references the property shape by its path, which is the key (an aliased value keeps its key)
+        result.fields.push(property.key);
       }
       panels.push(result);
     }
@@ -512,7 +537,7 @@ export class Extractor {
     const customBulkOperations = input(child(element, "customBulkOperations"));
     // a declared list query only when these files hold the query or its filters document; else the names stay strings
     const declared = customQuery !== undefined && (this.operation(customQuery) !== undefined || (customQueryFilters !== undefined && this.operation(customQueryFilters) !== undefined));
-    if (customQuery && declared) this.listQuery(customQuery, customQueryFilters, where, entity);
+    const listQueryNode = customQuery && declared ? this.listQuery(customQuery, customQueryFilters, where, entity) : undefined;
     if (customBulkOperations) this.customOperations(customBulkOperations, where, entity);
     const pickerList = input(child(element, "customQueryEntityPickerList"));
     const pickerFilters = input(child(element, "customQueryEntityPickerListFilters"));
@@ -530,7 +555,7 @@ export class Extractor {
       customQueryFilters,
       customBulkOperations,
       picker: pickerList,
-      listQuery: declared,
+      listQuery: listQueryNode,
     };
   }
 
@@ -548,23 +573,30 @@ export class Extractor {
     entity.pickers.push({ name, filtersName, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
   }
 
-  private listQuery(name: string, filtersName: string | undefined, where: string, entity: Entity) {
-    if (entity.listQueries.some((l) => l.name === name)) return;
+  /** The node of a list query: one per query and filters document; the entities document goes with the first node of a query. */
+  private listQuery(name: string, filtersName: string | undefined, where: string, entity: Entity): string {
+    const pair = `${name}|${filtersName ?? ""}`;
+    const known = this.listQueryNodes.get(pair);
+    if (known) return known;
+    const node = this.queriesWithResults.has(name) || [...this.listQueryNodes.values()].includes(name) ? (filtersName ?? `${name}_${this.listQueryNodes.size}`) : name;
+    this.listQueryNodes.set(pair, node);
     const query = this.operation(name);
     const results: ListQuery["results"] = [];
-    if (query) {
+    if (query && !this.queriesWithResults.has(name)) {
       const entities = fields(query.selectionSet).find((f) => f.name.value === "Entities");
       const inline = (child(entities, "results")?.selectionSet?.selections ?? []).filter((s) => s.kind === Kind.INLINE_FRAGMENT);
       const spreadOnly = inline.every((s) => s.kind === Kind.INLINE_FRAGMENT && s.selectionSet.selections.every((x) => x.kind === Kind.FRAGMENT_SPREAD));
-      if (spreadOnly && inline.length)
+      if (spreadOnly && inline.length) {
         for (const on of inline)
           if (on.kind === Kind.INLINE_FRAGMENT) results.push({ type: on.typeCondition?.name.value ?? "", fragment: spreads(on.selectionSet)[0] ?? "" });
-      else this.note(`${where}: list query ${name} selects its results inline; only its filters document is declared`);
+        this.queriesWithResults.add(name);
+      } else this.note(`${where}: list query ${name} selects its results inline; only its filters document is declared`);
     }
     const filters = filtersName ? this.operation(filtersName) : undefined;
     const block = filters ? child(fields(filters.selectionSet).find((f) => f.name.value === "EntityTypeFilters"), "advancedFilters") : undefined;
-    entity.listQueries.push({ name, filtersName, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
+    entity.listQueries.push({ node, name, filtersName, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
     if (filtersName && !filters) this.note(`${where}: filters document ${filtersName} is not in these files; the list query declares no filters and the name stays`);
+    return node;
   }
 
   private customOperations(name: string, where: string, entity: Entity) {
@@ -634,13 +666,15 @@ export class Extractor {
         const widget = child(field, "inputField");
         const type = widget ? (str(widget, "type") ?? "baseTextField") : "baseTextField";
         const base = BASE_FIELDS[type];
+        const key = input(child(field, "key")) ?? alias(field);
         form.fields.push({
-          key: input(child(field, "key")) ?? alias(field),
+          key,
+          alias: alias(field) !== key ? alias(field) : undefined,
           label: input(child(field, "label")),
           editor: base?.editor,
           datatype: base?.datatype,
           single: true,
-          required: child(widget, "validation") !== undefined,
+          required: this.required(child(widget, "validation"), `${where} form ${queryName} field ${key}`),
           clientField: base ? undefined : type,
         });
       } else if (field.name.value === "action") {
@@ -766,6 +800,8 @@ export class Extractor {
     if (p.sortDirection) lines.push(`    elody:defaultSortDirection ${p.sortDirection} ;`);
     if (!p.teaser && p.inListing) lines.push(`    elody:teaser false ;`);
     if (!p.inListing) lines.push(`    elody:detailOnly true ;`);
+    if (p.inListing && !p.inDetail && p.readsValue) lines.push(`    elody:listingOnly true ;`);
+    if (!p.readsValue) lines.push(`    elody:readsValue false ;`);
     lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " ]");
     return lines.join("\n");
   }
@@ -848,7 +884,7 @@ export class Extractor {
     properties.forEach((p, index) => (p.order = index + 1));
     if (!properties.length) {
       this.note(`${name}: no initial values; a placeholder property is declared`);
-      properties.push({ key: "title", order: 1, inListing: true, inDetail: true, teaser: true, sortable: false, single: true, required: false, readOnly: false, labelRole: true });
+      properties.push({ key: "title", order: 1, inListing: true, inDetail: true, readsValue: true, teaser: true, sortable: false, single: true, required: false, readOnly: false, labelRole: true });
     }
     out.push(`  sh:property`, properties.map((p) => this.property(p)).join(" ,\n") + " ;");
 
@@ -898,7 +934,7 @@ export class Extractor {
           for (const type of element.entityTypes) l.push(`      elody:entityTypes ${q(type)} ;`);
           if (element.relationType) l.push(`      elody:relationType ${q(element.relationType)} ;`);
           if (element.searchInput) l.push(`      elody:searchInput ${element.searchInput} ;`);
-          if (element.customQuery && element.listQuery) l.push(`      elody:listQuery ui:${element.customQuery} ;`);
+          if (element.listQuery) l.push(`      elody:listQuery ui:${element.listQuery} ;`);
           else {
             if (element.customQuery) l.push(`      elody:customQuery ${q(element.customQuery)} ;`);
             if (element.customQueryFilters) l.push(`      elody:customQueryFilters ${q(element.customQueryFilters)} ;`);
@@ -967,6 +1003,7 @@ export class Extractor {
         const s = [`      [ sh:path em:${field.key} ;`];
         if (field.label) s.push(`      sh:name ${q(field.label.split(".").pop() ?? field.key)}@en ;`);
         s.push(`      sh:order ${i + 1} ;`);
+        if (field.alias) s.push(`      elody:alias ${q(field.alias)} ;`);
         if (field.datatype) s.push(`      sh:datatype ${field.datatype} ;`);
         s.push(`      sh:maxCount 1 ;`);
         if (field.required) s.push(`      sh:minCount 1 ;`);
@@ -1007,7 +1044,7 @@ export class Extractor {
       }
     }
     for (const lq of [...entity.listQueries, ...entity.pickers.map((p) => ({ ...p, picker: true }))]) {
-      const lines = [`ui:${lq.name}`, `  a ${"picker" in lq ? "elody:Picker" : "elody:ListQuery"} ;`, `  elody:queryName ${q(lq.name)} ;`];
+      const lines = [`ui:${lq.node ?? lq.name}`, `  a ${"picker" in lq ? "elody:Picker" : "elody:ListQuery"} ;`, `  elody:queryName ${q(lq.name)} ;`];
       if (lq.filtersName) lines.push(`  elody:filtersQuery ${q(lq.filtersName)} ;`);
       if (lq.results.length) lines.push(`  elody:result`, lq.results.map((r, i) => `    [ elody:graphqlType ${q(r.type)} ; sh:order ${i + 1} ; elody:fragment ${q(r.fragment)} ]`).join(" ,\n") + " ;");
       const filters = lq.filters;

@@ -62,11 +62,11 @@ describe("relationValues per fragment", () => {
     expect(fragment(file, "fullThing")).toContain("    relationValues\n");
   });
 
-  it("is read in the listing too when the card needs it", async () => {
+  it("is never derived for the listing: clients' cards do without, even with relations on them", async () => {
     const menu = await render(entity(`sh:property ${label} ; elody:contextMenu [ elody:includeBasicActions true ]`));
-    expect(fragment(menu, "minimalThing")).toContain("    relationValues\n");
+    expect(fragment(menu, "minimalThing")).not.toContain("relationValues");
     const relation = await render(entity(`sh:property ${label} , [ sh:path em:owner ; sh:order 2 ; sh:class em:Person ; elody:teaser false ]`));
-    expect(fragment(relation, "minimalThing")).toContain("    relationValues\n");
+    expect(fragment(relation, "minimalThing")).not.toContain("relationValues");
     const detailRelation = await render(
       entity(`sh:property ${label} , [ sh:path em:owner ; sh:order 2 ; sh:class em:Person ; elody:detailOnly true ] ; ${window("ui:Info")}`, info()),
     );

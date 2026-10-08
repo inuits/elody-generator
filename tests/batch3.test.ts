@@ -83,6 +83,41 @@ describe("shared fragments spread into a block", () => {
   });
 });
 
+describe("listing-only and unread fields", () => {
+  it("reads a listing-only field in the listing fragment only, and an unread field nowhere", async () => {
+    const file = await render(
+      entity(
+        `elody:detailValuesSpread "vocabIntialValues" ; sh:property ${label} ,
+         [ sh:path em:thumbnail ; sh:order 2 ; elody:source elody:RootSource ; elody:listingOnly true ; elody:teaser false ] ,
+         [ sh:path em:prefLabel ; sh:order 3 ; elody:labelKey "metadata.labels.pref-label" ; elody:readsValue false ; elody:detailOnly true ] ; ${window("ui:Info")}`,
+        info("", "em:title , em:prefLabel"),
+      ),
+    );
+    expect(fragment(file, "minimalKeyword")).toContain('thumbnail: keyValue(key: "thumbnail", source: root)');
+    expect(fragment(file, "fullKeyword")).not.toContain("thumbnail");
+    expect(fragment(file, "fullKeyword")).not.toContain("prefLabel: keyValue");
+    expect(fragment(file, "fullKeyword")).toContain("prefLabel: metaData {");
+  });
+});
+
+describe("form fields and filters with an alias of their own", () => {
+  it("names a form field by elody:alias and keeps the key", async () => {
+    const form = `ui:Create a elody:Form ; rdfs:label "create" ; elody:queryName "GetKeywordCreateForm" ;
+      elody:shape [ sh:property [ sh:path em:person ; sh:order 1 ; elody:alias "owner" ; elody:clientInputField "ownerTypeField" ; elody:labelKey "metadata.labels.owner" ] ] ;
+      elody:submit [ rdfs:label "actions.labels.create" ; elody:actionQuery "CreateEntity" ; elody:creationType "keyword" ; elody:icon "Create" ] .`;
+    const file = await render(entity(`sh:property ${label} ; elody:form ui:Create`, form));
+    expect(query(file, "GetKeywordCreateForm")).toContain('owner: metaData {\n            label(input: "metadata.labels.owner")\n            key(input: "person")');
+  });
+
+  it("renders parentKey on a text filter", async () => {
+    const file = await render(
+      entity(`sh:property ${label} ; elody:filter [ rdfs:label "metadata.labels.title" ; sh:order 1 ; elody:alias "title" ; elody:parentFilterKey "metadata" ; elody:key "title" ; elody:displayedByDefault true ; elody:filterKind elody:TextFilter ]`),
+    );
+    expect(fragment(file, "filtersForKeyword")).toContain('        type: text\n        parentKey: "metadata"\n        key: ["title"]');
+    expect(fragment(file, "filtersForKeyword")).toContain("        type\n        parentKey\n        key\n");
+  });
+});
+
 describe("a selection filter that fetches its options", () => {
   it("renders the option search and asks the inputs back", async () => {
     const file = await render(
@@ -113,8 +148,8 @@ describe("a selection filter that fetches its options", () => {
         "        isDisplayedByDefault",
         "        advancedFilterInputForRetrievingOptions {",
         "          type",
-        "          key",
         "          value",
+        "          key",
         "          match_exact",
         "        }",
         "        tooltip(value: true)",
@@ -131,7 +166,7 @@ describe("a selection filter that fetches its options", () => {
     );
     const filters = fragment(file, "filtersForKeyword");
     expect(filters).toContain('            value: "*"\n            distinct_by: "metadata.status.value"\n            match_exact: true');
-    expect(filters).toContain("          value\n          distinct_by\n          match_exact\n        }");
+    expect(filters).toContain("          type\n          key\n          value\n          distinct_by\n          match_exact\n        }");
   });
 });
 

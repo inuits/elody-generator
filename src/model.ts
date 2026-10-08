@@ -23,6 +23,10 @@ export type UiProperty = {
   clientInputField?: string;
   /** elody:detailOnly: read on the detail page only, not in the listing fragment */
   detailOnly: boolean;
+  /** elody:listingOnly: read in the listing fragment only */
+  listingOnly: boolean;
+  /** elody:readsValue false: no initial value is read (a spread or the platform provides it) */
+  readsValue: boolean;
   sortable: boolean;
   /** elody:sortLabelKey / elody:sortOrder: the sort option's own label and position */
   sortLabelKey?: string;
@@ -111,6 +115,8 @@ export type UiCustomBulkOperations = { queryName: string; operations: UiBulkOper
 
 export type UiCreateFormField = {
   key: string;
+  /** elody:alias: the GraphQL alias of the form field, when not the key */
+  alias?: string;
   label?: string;
   order: number;
   inputType: string;

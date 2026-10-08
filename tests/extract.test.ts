@@ -87,9 +87,9 @@ describe("extract: what hand-written documents say", () => {
     }
   }`),
     );
-    // the one thing it cannot say: a value read in the listing only
-    expect(notes).toEqual(["User: slug is read in the listing but not on the detail page; it will be read on both"]);
+    expect(notes, ttl).toEqual([]);
     expect(ttl).toContain('elody:alias "slug"');
+    expect(ttl).toContain("elody:listingOnly true");
     expect(ttl).toContain('elody:alias "title"');
     expect(ttl).toContain("elody:detailOnly true");
     expect(ttl).toContain('elody:sortLabelKey "metadata.labels.user.email"');
