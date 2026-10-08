@@ -249,10 +249,10 @@ class Migration {
     }
     // 0.3.0 reads relationValues and carries the bulk operations fragment only when the type needs or
     // declares them; the legacy dialect always did, so a migrated declaration says so explicitly
-    for (const flag of ["relationValues", "bulkOperations"] as const)
+    for (const [flag, value] of [["relationValues", true], ["bulkOperations", true], ["detailFormatters", false]] as const)
       if (!r.has(entity, elody(flag))) {
-        this.add(subject, elody(flag), this.bool(true));
-        this.note(`elody:${flag} true made explicit: the generator no longer emits it by default`);
+        this.add(subject, elody(flag), this.bool(value));
+        this.note(`elody:${flag} ${value} made explicit: the generator's default changed`);
       }
   }
 
@@ -437,7 +437,16 @@ class Migration {
       this.copyRest(field, copy, new Set([elody("inputType"), elody("required"), rdfs("label"), sh("name")]));
       this.add(shape, sh("property"), copy);
     }
-    this.copyRest(node, out, new Set([elody("field")]));
+    // 0.3.0 shows form errors only when the submit says so; the legacy dialect always did
+    for (const submit of r.nodes(node, elody("submit"))) {
+      const copy = this.deepCopy({ termType: "BlankNode", value: submit } as Term);
+      if (!r.has(submit, elody("showsFormErrors"))) {
+        this.add(copy, elody("showsFormErrors"), this.bool(true));
+        this.note("elody:showsFormErrors true made explicit: the generator no longer emits it by default");
+      }
+      this.add(out, elody("submit"), copy);
+    }
+    this.copyRest(node, out, new Set([elody("field"), elody("submit")]));
     return out;
   }
 

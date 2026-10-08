@@ -11,6 +11,7 @@ ui:AlertUi
   a elody:EntityUi ;
   elody:graphqlType "Alert" ;
   elody:emit "file" ;
+  elody:detailFormatters false ;
   # the reference output reads relations and carries an (empty) bulk operations fragment
   elody:relationValues true ;
   elody:bulkOperations true ;
@@ -61,6 +62,8 @@ ui:ComponentUi
   a elody:EntityUi ;
   elody:graphqlType "GithubProcessor" ;
   elody:emit "file" ;
+  # the reference output reads the raw values on the detail page
+  elody:detailFormatters false ;
   elody:documents "entities" , "filters" , "sortOptions" , "bulkOperations" ;
   sh:property
     [ sh:path em:name ;
@@ -200,6 +203,9 @@ ui:PipelineUi
   a elody:EntityUi ;
   elody:graphqlType "Pipeline" ;
   elody:emit "file" ;
+  elody:detailFormatters false ;
+  # the reference output reads relations on the card too
+  elody:relationValues true ;
   sh:property
     [ sh:path em:name ;
     sh:name "Name"@en , "Naam"@nl ;
@@ -392,6 +398,7 @@ ui:GetPipelineCreateForm
     [ rdfs:label "actions.labels.create" ;
     elody:actionQuery "CreateEntity" ;
     elody:creationType "pipeline" ;
+    elody:showsFormErrors true ;
     elody:icon "Create" ] .
 
 ui:GetPipelineValidation

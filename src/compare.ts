@@ -189,7 +189,8 @@ export function readDefinitions(files: QueryFile[]): ReadResult {
 /** The definition without `__typename`, comments or location, string literals unquoted the same way. */
 export function normalizeNode<T extends ASTNode>(node: T): T {
   return visit(node, {
-    Field: (field) => (field.name.value === "__typename" ? null : undefined),
+    Field: (field) =>
+      field.name.value === "__typename" ? null : field.alias && field.alias.value === field.name.value ? { ...field, alias: undefined } : undefined,
     // where a fragment is spread in a selection set does not change what the PWA receives: spreads go last
     SelectionSet: {
       leave(set) {

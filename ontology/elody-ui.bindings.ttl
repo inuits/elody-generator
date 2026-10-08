@@ -171,6 +171,9 @@ elody:BooleanFilter elody:enumValue "boolean" .
 elody:BubbleGraph elody:enumValue "bubble" .
 elody:BulkDataPanel elody:enumValue "bulkData" .
 elody:BulkEditModal elody:enumValue "BulkOperationsEdit" .
+elody:BulkOperationsModal elody:enumValue "BulkOperations" .
+elody:GuidedFlowModal elody:enumValue "GuidedFlow" .
+elody:MergeModal elody:enumValue "BulkOperationsMerge" .
 elody:CalendarView elody:enumValue "ViewModesCalendar" .
 elody:CanCreate elody:enumValue "cancreate" .
 elody:CanDelete elody:enumValue "candelete" .

@@ -18,24 +18,42 @@ export function renderInitialValues(entity: M.UiEntity, indent: number, withForm
     .filter((property) => !listing || !property.detailOnly)
     .map((property) => {
       const alias = property.alias ?? property.key;
+      const index = property.index !== undefined ? `, index: ${property.index}` : "";
       const formatter = withFormatters && property.formatter ? `, formatter: "${property.formatter}"` : "";
       if (property.relationType)
-        return `${pad(indent)}${alias}: keyValue(key: "${property.relationType}", source: relations, metadataKeyAsLabel: "${property.valueLabelKey ?? DEFAULT_VALUE_LABEL_KEY}"${formatter})`;
-      return `${pad(indent)}${alias}: keyValue(key: "${property.key}", source: ${property.source ?? "metadata"}${formatter})`;
+        return `${pad(indent)}${alias}: keyValue(key: "${property.relationType}", source: relations, metadataKeyAsLabel: "${property.valueLabelKey ?? DEFAULT_VALUE_LABEL_KEY}"${index}${formatter})`;
+      return `${pad(indent)}${alias}: keyValue(key: "${property.key}", source: ${property.source ?? "metadata"}${index}${formatter})`;
     })
     .join("\n");
 }
 
-/** Whether the type's fragments read relationValues: declared, else needed by a relation, a list or a context menu. */
-export const readsRelationValues = (entity: M.UiEntity): boolean =>
-  entity.relationValues ??
-  (entity.properties.some((property) => property.relationType || property.panelElement?.kind === "list") ||
-    entity.contextMenu !== undefined ||
-    (entity.detail?.columns ?? []).some((column) => column.elements.some((element) => element.kind === "list")));
+/**
+ * Whether a fragment reads relationValues: declared for both, else what each needs. The listing
+ * fragment needs it for a relation it reads on the card or a context menu; the detail fragment for
+ * any relation, a panel that lists related entities, or a list element.
+ */
+export function readsRelationValues(entity: M.UiEntity, fragment: "listing" | "detail"): boolean {
+  if (entity.relationValues !== undefined) return entity.relationValues;
+  const onCard = entity.properties.some((property) => property.relationType && !property.detailOnly) || entity.contextMenu !== undefined;
+  if (fragment === "listing") return onCard;
+  return (
+    onCard ||
+    entity.properties.some((property) => property.relationType || property.panelElement?.kind === "list") ||
+    (entity.detail?.columns ?? []).some((column) => column.elements.some((element) => element.kind === "list"))
+  );
+}
 
 /** Whether the type carries a bulk operations fragment: declared, else when it declares operations or asks for the document. */
 export const carriesBulkOperations = (entity: M.UiEntity): boolean =>
   entity.bulkOperationsFragment ?? (entity.bulkOperations.length > 0 || entity.documents.includes("bulkOperations"));
+
+/** The card's thumbnail (teaserMetadata.thumbnail), before the fields. */
+export function renderThumbnail(entity: M.UiEntity, indent: number): string {
+  const thumbnail = entity.thumbnail;
+  if (!thumbnail) return "";
+  const read = thumbnail.fromMediafile ? "filename(fromMediafile: true)" : `key(input: "${thumbnail.key ?? "thumbnail"}")`;
+  return [`${pad(indent)}thumbnail {`, `${pad(indent + 2)}${read}`, `${pad(indent)}}`].join("\n");
+}
 
 export function renderTeaserFields(entity: M.UiEntity, indent: number): string {
   return entity.properties
@@ -44,7 +62,7 @@ export function renderTeaserFields(entity: M.UiEntity, indent: number): string {
       const lines = [
         `${pad(indent)}${property.alias ?? property.key}: metaData {`,
         `${pad(indent + 2)}label(input: "${property.label ?? property.key}")`,
-        `${pad(indent + 2)}key(input: "${property.key}")`,
+        `${pad(indent + 2)}key(input: "${property.alias ?? property.key}")`,
       ];
       if (property.multilingual) lines.push(`${pad(indent + 2)}isMultilingual(input: true)`);
       if (property.languageIn.length) lines.push(`${pad(indent + 2)}languageIn(input: ${stringList(property.languageIn)})`);
@@ -109,7 +127,7 @@ export function renderSortOptions(entity: M.UiEntity, indent: number): string {
         `${pad(indent + 6)}{`,
         `${pad(indent + 8)}icon: NoIcon`,
         `${pad(indent + 8)}label: "${property.sortLabelKey ?? property.label ?? property.key}"`,
-        `${pad(indent + 8)}value: "${property.key}"`,
+        `${pad(indent + 8)}value: "${property.alias ?? property.key}"`,
         `${pad(indent + 6)}}`,
       ].join("\n"),
     )
@@ -184,6 +202,8 @@ export function renderFilterList(filters: M.UiFilter[], indent: number): string 
       ...(filter.label ? ["label"] : []),
       ...(filter.displayedByDefault ? ["isDisplayedByDefault"] : []),
       ...(filter.tooltip ? ["tooltip(value: true)"] : []),
+      ...(filter.defaultValues.length > 0 || filter.defaultValueAsList ? [`defaultValue(value: ${filterDefaultLiteral(filter)})`] : []),
+      ...(filter.hidden ? ["hidden(value: true)"] : []),
     ];
     return [
       `${pad(indent + 2)}${filter.alias}: advancedFilter(`,
@@ -242,7 +262,8 @@ export function renderBulkOperationOptions(operations: M.UiBulkOperation[], inde
       if (operation.modal.formQuery) lines.push(`${pad(indent + 10)}formQueries: ["${operation.modal.formQuery}"]`);
       if (operation.modal.formRelationType)
         lines.push(`${pad(indent + 10)}formRelationType: "${operation.modal.formRelationType}"`);
-      lines.push(`${pad(indent + 10)}askForCloseConfirmation: ${operation.modal.closeConfirmation}`);
+      if (operation.modal.closeConfirmation !== undefined)
+        lines.push(`${pad(indent + 10)}askForCloseConfirmation: ${operation.modal.closeConfirmation}`);
       if (operation.modal.permission) lines.push(`${pad(indent + 10)}neededPermission: ${operation.modal.permission}`);
       lines.push(`${pad(indent + 8)}}`);
     }
@@ -329,7 +350,7 @@ export function renderCreateForm(form: M.UiCreateForm): string {
         "            actionType(input: submit)",
         `            actionQuery(input: "${form.submit.actionQuery ?? ""}")`,
         `            creationType(input: ${form.submit.creationType ?? ""})`,
-        "            showsFormErrors(input: true)",
+        ...(form.submit.showsFormErrors ? ["            showsFormErrors(input: true)"] : []),
         "          }",
       ].join("\n")
     : "";
@@ -338,7 +359,7 @@ export function renderCreateForm(form: M.UiCreateForm): string {
     `  query ${form.queryName} {`,
     "    GetDynamicForm {",
     `      label(input: "${form.label ?? ""}")`,
-    "      name: formTab {",
+    `      ${form.tabAlias ?? "name"}: formTab {`,
     "        formFields {",
     fields.join("\n"),
     ...(submit ? [submit] : []),
@@ -462,6 +483,7 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
       `${pad(depth + 2)}panelType(input: ${panel.panelType})`,
       `${pad(depth + 2)}isCollapsed(input: ${panel.collapsed})`,
       `${pad(depth + 2)}isEditable(input: ${panel.editable})`,
+      ...(panel.multipleColumns ? [`${pad(depth + 2)}canBeMultipleColumns(input: true)`] : []),
     ];
     for (const key of panel.fields) {
       const property = propertyByKey.get(key);
@@ -531,7 +553,7 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
         `${pad(depth)}}`,
       ].join("\n");
 
-    const lines = [`${pad(depth)}windowElement {`, `${pad(depth + 2)}label(input: "${element.label ?? ""}")`];
+    const lines = [`${pad(depth)}${element.alias ? `${element.alias}: ` : ""}windowElement {`, `${pad(depth + 2)}label(input: "${element.label ?? ""}")`];
     if (element.expandButton) {
       lines.push(`${pad(depth + 2)}expandButtonOptions {`);
       lines.push(`${pad(depth + 4)}shown(input: true)`);
@@ -546,7 +568,7 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
     const alias = index === 0 ? "column" : `column${index + 1}: column`;
     return [
       `${pad(indent + 2)}${alias} {`,
-      `${pad(indent + 4)}size(size: ${column.size})`,
+      ...(column.size ? [`${pad(indent + 4)}size(size: ${column.size})`] : []),
       `${pad(indent + 4)}elements {`,
       ...column.elements.map((element) => renderElement(element, indent + 6)),
       `${pad(indent + 4)}}`,
@@ -637,14 +659,15 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
         : `    dynamicFormConfig: ${entity.dynamicFormConfigField}`,
     );
   if (entity.portsField) minimal.push(entity.portsField === "ports" ? "    ports" : `    ports: ${entity.portsField}`);
-  const relationValues = readsRelationValues(entity);
   minimal.push("    intialValues {");
   if (entity.typePills) minimal.push("      ...typePillsIntialValues");
   minimal.push(renderInitialValues(entity, 6, true, true));
   minimal.push("    }");
-  if (relationValues) minimal.push("    relationValues");
+  if (readsRelationValues(entity, "listing")) minimal.push("    relationValues");
   if (entity.viewModes.length > 0) minimal.push(renderViewModes(entity, 4));
   minimal.push("    teaserMetadata {");
+  const thumbnail = renderThumbnail(entity, 6);
+  if (thumbnail) minimal.push(thumbnail);
   if (entity.typePills) minimal.push("      ...typePillsTeaserMetadata");
   const contextMenu = renderContextMenu(entity, 6);
   if (contextMenu) minimal.push(contextMenu);
@@ -658,9 +681,9 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
     const full: string[] = [`  fragment full${type} on ${onType} {`];
     if (entity.detail.shapeDriven) full.push("    shapeFields");
     full.push("    intialValues {");
-    full.push(renderInitialValues(entity, 6, false));
+    full.push(renderInitialValues(entity, 6, entity.detailFormatters !== false));
     full.push("    }");
-    if (relationValues) full.push("    relationValues");
+    if (readsRelationValues(entity, "detail")) full.push("    relationValues");
     for (const field of entity.detail.fragmentFields) full.push(`    ${field}`);
     full.push(renderDetailView(entity, 4));
     full.push("  }");

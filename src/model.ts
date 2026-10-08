@@ -87,7 +87,8 @@ export type UiBulkOpModal = {
   typeModal: string;
   formQuery?: string;
   formRelationType?: string;
-  closeConfirmation: boolean;
+  /** askForCloseConfirmation, only when declared */
+  closeConfirmation?: boolean;
   permission?: string;
 };
 
@@ -122,7 +123,9 @@ export type UiCreateForm = {
   queryName: string;
   label?: string;
   fields: UiCreateFormField[];
-  submit?: { label?: string; icon?: string; actionQuery?: string; creationType?: string };
+  /** the form tab's GraphQL alias (elody:alias on the form); default "name" */
+  tabAlias?: string;
+  submit?: { label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors?: boolean };
 };
 
 export type UiRepetitiveStep = {
@@ -164,6 +167,8 @@ export type UiPanel = {
   panelType: string;
   collapsed: boolean;
   editable: boolean;
+  /** elody:multipleColumns: canBeMultipleColumns(input: true) */
+  multipleColumns: boolean;
   fields: string[];
 };
 
@@ -189,7 +194,7 @@ export type UiElement = {
   pickerFilters?: string;
 };
 
-export type UiColumn = { order: number; size: string; elements: UiElement[] };
+export type UiColumn = { order: number; size?: string; elements: UiElement[] };
 
 export type UiDetail = { shapeDriven: boolean; fragmentFields: string[]; columns: UiColumn[] };
 
@@ -208,6 +213,10 @@ export type UiEntity = {
   relationValues?: boolean;
   /** elody:bulkOperations: carry the bulk operations fragment; undefined derives it */
   bulkOperationsFragment?: boolean;
+  /** elody:detailFormatters: the detail fragment reads values with their formatters too (default true) */
+  detailFormatters?: boolean;
+  /** elody:thumbnail: the card's picture, from an initial value or the primary media file */
+  thumbnail?: { key?: string; fromMediafile?: boolean };
   dynamicFormConfigField?: string;
   portsField?: string;
   viewModes: UiViewMode[];

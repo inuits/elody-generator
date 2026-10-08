@@ -670,6 +670,14 @@ class Parse {
     return { list, filters: pickerFiltersNameFor(list) };
   }
 
+  /** elody:thumbnail: the card's picture, read from an initial value (elody:key) or the primary media file. */
+  private thumbnail(node: string | undefined): M.UiEntity["thumbnail"] {
+    if (!node) return undefined;
+    const key = this.r.value(node, elody("key"));
+    const fromMediafile = this.r.literal(node, elody("fromMediafile")) === true;
+    return fromMediafile ? { fromMediafile: true } : { key };
+  }
+
   /** A boolean the declaration may leave out: true, false or undefined. */
   private optionalFlag(node: string, predicate: string): boolean | undefined {
     const value = this.r.literal(node, predicate);
@@ -714,6 +722,9 @@ class Parse {
       typePills: r.literal(subject, elody("typePills")) === true,
       relationValues: this.optionalFlag(subject, elody("relationValues")) ?? (this.legacy ? true : undefined),
       bulkOperationsFragment: this.optionalFlag(subject, elody("bulkOperations")) ?? (this.legacy ? true : undefined),
+      thumbnail: this.thumbnail(r.node(subject, elody("thumbnail"))),
+      // the legacy generator read the raw values on the detail page
+      detailFormatters: this.optionalFlag(subject, elody("detailFormatters")) ?? (this.legacy ? false : undefined),
       dynamicFormConfigField: r.value(subject, elody("dynamicFormConfig")) || undefined,
       portsField: r.value(subject, elody("ports")) || undefined,
       viewModes: r.byOrder(r.nodes(subject, elody("viewMode"))).map((node) => this.viewMode(node)),
@@ -908,7 +919,7 @@ class Parse {
             typeModal: this.enumValue(modalNode, elody("modalKind"), elody("ModalKind"), elody("typeModal")) ?? "",
             formQuery: this.formRef(modalNode, elody("form"), elody("formQuery")),
             formRelationType: r.value(modalNode, elody("formRelationType")),
-            closeConfirmation: r.literal(modalNode, elody("closeConfirmation")) === true,
+            closeConfirmation: this.optionalFlag(modalNode, elody("closeConfirmation")),
             permission: this.enumValue(modalNode, elody("permission"), elody("Permission")),
           }
         : undefined,
@@ -925,6 +936,7 @@ class Parse {
         if (!shape) throw new Error(`form ${compact(node)} has no elody:shape`);
         return {
           queryName: this.queryNameOf(node, "form"),
+          tabAlias: r.value(node, elody("alias")) || undefined,
           label: r.value(node, rdfs("label")),
           fields: this.formFields(r.nodes(shape, sh("property"))),
           submit: this.submit(r.node(node, elody("submit"))),
@@ -984,6 +996,8 @@ class Parse {
       icon: r.value(node, elody("icon")),
       actionQuery: r.value(node, elody("actionQuery")),
       creationType: r.value(node, elody("creationType")),
+      // the legacy dialect always showed form errors
+      showsFormErrors: this.optionalFlag(node, elody("showsFormErrors")) ?? (this.legacy ? true : undefined),
     };
   }
 
@@ -1142,7 +1156,7 @@ class Parse {
       fragmentFields: r.literals(node, elody("fragmentField")),
       columns: r.byOrder(r.nodes(node, elody("column"))).map((column): M.UiColumn => ({
         order: r.order(column),
-        size: this.enumValue(column, elody("size"), elody("ColumnSize")) ?? "hundred",
+        size: this.enumValue(column, elody("size"), elody("ColumnSize")),
         elements: r.byOrder(r.nodes(column, elody("element"))).map((element) => this.element(element, pathToKey)),
       })),
     };
@@ -1218,6 +1232,7 @@ class Parse {
         panelType: this.enumValue(panel, elody("panelKind"), elody("PanelKind"), elody("panelType")) ?? "metadata",
         collapsed: r.literal(panel, elody("collapsed")) === true,
         editable,
+        multipleColumns: r.literal(panel, elody("multipleColumns")) === true,
         fields: [
           ...(this.groupFields.get(panel) ?? []),
           ...(r.literal(panel, elody("showsUngrouped")) === true ? this.ungroupedFields : []),
@@ -1244,6 +1259,7 @@ class Parse {
       panelType: this.enumValue(panel, elody("panelKind"), elody("PanelKind"), elody("panelType")) ?? "metadata",
       collapsed: r.literal(panel, elody("collapsed")) === true,
       editable,
+      multipleColumns: r.literal(panel, elody("multipleColumns")) === true,
       fields,
     };
   }

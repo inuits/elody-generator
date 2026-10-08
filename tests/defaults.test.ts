@@ -63,9 +63,9 @@ describe("elody:alias on a property shape", () => {
     expect(full).toContain('label(input: "metadata.labels.email")');
   });
 
-  it("uses the alias on the card too, with the key as the metadata key", async () => {
+  it("uses the alias on the card too: the card reads the initial value under it", async () => {
     const file = await render(entity(`sh:property ${label} , [ sh:path em:id ; sh:order 2 ; elody:alias "slug" ; elody:labelKey "metadata.labels.slug" ]`));
-    expect(fragment(file, "minimalUser")).toContain('slug: metaData {\n        label(input: "metadata.labels.slug")\n        key(input: "id")');
+    expect(fragment(file, "minimalUser")).toContain('slug: metaData {\n        label(input: "metadata.labels.slug")\n        key(input: "slug")');
   });
 });
 
@@ -104,7 +104,8 @@ describe("relationValues", () => {
         elody:detail [ elody:column [ sh:order 1 ; elody:size elody:Width100 ; elody:element [ a elody:ListElement ; sh:order 1 ; rdfs:label "list" ; elody:entityTypes "asset" ; elody:relationType "hasAsset" ] ] ]`),
     );
     expect(fragment(file, "fullUser")).toContain("    relationValues\n");
-    expect(fragment(file, "minimalUser")).toContain("    relationValues\n");
+    // the card does not need it: the list is on the detail page
+    expect(fragment(file, "minimalUser")).not.toContain("relationValues");
   });
 
   it("follows an explicit elody:relationValues", async () => {
