@@ -96,24 +96,37 @@ export type CompareReport = Comparison & {
   declaration: string;
 };
 
-/** The `gql` template literals of a TypeScript module, in order. */
+const simpleEscapes: Record<string, string> = { n: "\n", t: "\t", r: "\r", b: "\b", f: "\f", v: "\v", "0": "\0" };
+
+/** A template literal's text as the tag function receives it: the escape sequences cooked. */
+export function cookTemplateLiteral(raw: string): string {
+  return raw.replace(/\\(u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|\r?\n|.)/gs, (_, sequence: string, brace?: string, unicode?: string, hex?: string) => {
+    if (brace) return String.fromCodePoint(parseInt(brace, 16));
+    if (unicode) return String.fromCharCode(parseInt(unicode, 16));
+    if (hex) return String.fromCharCode(parseInt(hex, 16));
+    if (sequence === "\n" || sequence === "\r\n") return "";
+    return simpleEscapes[sequence] ?? sequence;
+  });
+}
+
+/** The `gql` template literals of a TypeScript module, in order, as the tag receives them. */
 export function extractGqlDocuments(source: string): string[] {
   const documents: string[] = [];
   const open = /\bgql\s*`/g;
   let match: RegExpExecArray | null;
   while ((match = open.exec(source))) {
     let index = match.index + match[0].length;
-    let body = "";
+    let raw = "";
     while (index < source.length && source[index] !== "`") {
       if (source[index] === "\\" && index + 1 < source.length) {
-        body += source[index] + source[index + 1];
+        raw += source[index] + source[index + 1];
         index += 2;
         continue;
       }
-      body += source[index];
+      raw += source[index];
       index += 1;
     }
-    documents.push(body);
+    documents.push(cookTemplateLiteral(raw));
     open.lastIndex = index + 1;
   }
   return documents;

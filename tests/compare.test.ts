@@ -41,6 +41,13 @@ describe("extractGqlDocuments", () => {
   });
 });
 
+describe("extractGqlDocuments: escapes", () => {
+  it("cooks the escape sequences the way the gql tag receives them", () => {
+    const source = "export const a = gql`\n  fragment a on A { label(input: \"a \\` b\") description(input: \"line\\nbreak\") }\n`;";
+    expect(extractGqlDocuments(source)[0].trim()).toBe('fragment a on A { label(input: "a ` b") description(input: "line\nbreak") }');
+  });
+});
+
 describe("readDefinitions", () => {
   it("collects fragments and operations by name, with their file and kind", () => {
     const { definitions, duplicates, errors } = readDefinitions([
