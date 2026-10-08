@@ -1079,6 +1079,8 @@ export class Extractor {
     const allForms = [...(entity.form ? [entity.form] : []), ...entity.forms];
     if (allForms.length) out.push(`  elody:form ${allForms.map((f) => `ui:${f.queryName}`).join(" , ")} ;`);
     for (const f of allForms) {
+      // a form several types open is written once
+      if (formNodes.has(f.queryName)) continue;
       formNodes.add(f.queryName);
       const lines = [`ui:${f.queryName}`, `  a elody:Form ;`, `  rdfs:label ${q(f.label ?? "")} ;`, `  elody:queryName ${q(f.queryName)} ;`];
       if (f.tabAlias && f.tabAlias !== "name") lines.push(`  elody:alias ${q(f.tabAlias)} ;`);

@@ -397,8 +397,8 @@ export function renderCreateForm(form: M.UiCreateForm): string {
         `            label(input: "${form.submit.label ?? ""}")`,
         `            icon(input: ${form.submit.icon ?? "NoIcon"})`,
         "            actionType(input: submit)",
-        `            actionQuery(input: "${form.submit.actionQuery ?? ""}")`,
-        `            creationType(input: ${form.submit.creationType ?? ""})`,
+        ...(form.submit.actionQuery !== undefined ? [`            actionQuery(input: "${form.submit.actionQuery}")`] : []),
+        ...(form.submit.creationType ? [`            creationType(input: ${form.submit.creationType})`] : []),
         ...(form.submit.showsFormErrors ? ["            showsFormErrors(input: true)"] : []),
         "          }",
       ].join("\n")
