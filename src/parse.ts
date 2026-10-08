@@ -1301,7 +1301,7 @@ class Parse {
         panelType: this.enumValue(panel, elody("panelKind"), elody("PanelKind"), elody("panelType")) ?? "metadata",
         collapsed: r.literal(panel, elody("collapsed")) === true,
         editable,
-        multipleColumns: r.literal(panel, elody("multipleColumns")) === true,
+        multipleColumns: this.optionalFlag(panel, elody("multipleColumns")),
         spreads: r.literals(panel, elody("spread")),
         fields: [
           ...(this.groupFields.get(panel) ?? []),
@@ -1329,7 +1329,7 @@ class Parse {
       panelType: this.enumValue(panel, elody("panelKind"), elody("PanelKind"), elody("panelType")) ?? "metadata",
       collapsed: r.literal(panel, elody("collapsed")) === true,
       editable,
-      multipleColumns: r.literal(panel, elody("multipleColumns")) === true,
+      multipleColumns: this.optionalFlag(panel, elody("multipleColumns")),
       spreads: r.literals(panel, elody("spread")),
       fields,
     };

@@ -567,7 +567,7 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
       `${pad(depth + 2)}panelType(input: ${panel.panelType})`,
       `${pad(depth + 2)}isCollapsed(input: ${panel.collapsed})`,
       `${pad(depth + 2)}isEditable(input: ${panel.editable})`,
-      ...(panel.multipleColumns ? [`${pad(depth + 2)}canBeMultipleColumns(input: true)`] : []),
+      ...(panel.multipleColumns !== undefined ? [`${pad(depth + 2)}canBeMultipleColumns(input: ${panel.multipleColumns})`] : []),
     ];
     for (const key of panel.fields) {
       const property = propertyByKey.get(key);

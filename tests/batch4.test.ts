@@ -49,6 +49,14 @@ describe("ugent-aicap", () => {
     expect(file).toContain("        lookup {\n          from\n          local_field\n          foreign_field\n          as\n        }");
   });
 
+  it("renders canBeMultipleColumns false when declared so", async () => {
+    const file = await render(
+      entity(`sh:property ${label} ; elody:detail [ elody:column [ sh:order 1 ; elody:size elody:Width50 ; elody:element [ a elody:WindowElement ; sh:order 1 ; rdfs:label "w" ; elody:panel ui:Info ] ] ]`,
+        `ui:Info a elody:Panel ; elody:alias "info" ; rdfs:label "p" ; elody:multipleColumns false ; elody:field em:name .`),
+    );
+    expect(file).toContain("canBeMultipleColumns(input: false)");
+  });
+
   it("declares an empty custom operations set", async () => {
     const file = await render(entity(`sh:property ${label} ; elody:customBulkOperations ui:Ops`, `ui:Ops elody:queryName "GetSiteRefSitesBulkOperations" .`));
     expect(file).toContain("  query GetSiteRefSitesBulkOperations {\n    CustomBulkOperations {\n      bulkOperationOptions {\n        options(input: []) {");

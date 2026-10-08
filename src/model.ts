@@ -192,8 +192,8 @@ export type UiPanel = {
   panelType: string;
   collapsed: boolean;
   editable: boolean;
-  /** elody:multipleColumns: canBeMultipleColumns(input: true) */
-  multipleColumns: boolean;
+  /** elody:multipleColumns: canBeMultipleColumns(input: true|false); undefined leaves it unsaid */
+  multipleColumns?: boolean;
   /** elody:spread: hand-written fragments on WindowElementPanel spread after the fields */
   spreads: string[];
   fields: string[];

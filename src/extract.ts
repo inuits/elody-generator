@@ -89,7 +89,7 @@ type Property = {
   multilingual?: boolean;
 };
 
-type Panel = { alias: string; label?: string; kind?: string; collapsed: boolean; editable: boolean; multipleColumns: boolean; fields: string[]; spreads: string[] };
+type Panel = { alias: string; label?: string; kind?: string; collapsed: boolean; editable: boolean; multipleColumns?: boolean; fields: string[]; spreads: string[] };
 type Element =
   | { kind: "window"; alias?: string; label?: string; expandButton: boolean; editButton?: boolean; panels: Panel[] }
   | { kind: "shaclShape"; label?: string; fieldsKey?: string; collapsed: boolean }
@@ -544,7 +544,7 @@ export class Extractor {
         kind: this.instance("PanelKind", input(child(panel, "panelType")), `${where} panel ${alias(panel)}`),
         collapsed: input(child(panel, "isCollapsed")) === "true",
         editable: input(child(panel, "isEditable")) !== "false",
-        multipleColumns: input(child(panel, "canBeMultipleColumns")) === "true",
+        multipleColumns: input(child(panel, "canBeMultipleColumns")) === undefined ? undefined : input(child(panel, "canBeMultipleColumns")) === "true",
         fields: [],
         spreads: spreads(panel.selectionSet),
       };
@@ -1015,7 +1015,7 @@ export class Extractor {
               const p: string[] = [`${id}`, `  a elody:Panel ;`, `  rdfs:label ${q(panel.label ?? "")} ;`, `  sh:order 1 ;`, `  elody:alias ${q(panel.alias)} ;`];
               p.push(`  elody:collapsed ${panel.collapsed} ;`);
               if (!panel.editable) p.push(`  dash:readOnly true ;`);
-              if (panel.multipleColumns) p.push(`  elody:multipleColumns true ;`);
+              if (panel.multipleColumns !== undefined) p.push(`  elody:multipleColumns ${panel.multipleColumns} ;`);
               for (const s of panel.spreads) p.push(`  elody:spread ${q(s)} ;`);
               p.push(`  elody:panelKind ${panel.kind ?? "elody:MetadataPanel"} ;`);
               if (panel.fields.length) p.push(`  elody:field ${panel.fields.map((f) => `em:${f}`).join(" , ")} ;`);
