@@ -236,6 +236,8 @@ export function normalizeNode<T extends ASTNode>(node: T): T {
       },
     },
     StringValue: (value) => (value.block ? { ...value, block: false } : undefined),
+    // GraphQL coerces a bare value into a one-element list: the two read the same
+    ListValue: { leave: (list) => (list.values.length === 1 ? list.values[0] : undefined) },
     enter(current) {
       if ("loc" in current && current.loc) {
         const { loc: _loc, ...rest } = current as ASTNode & { loc?: unknown };

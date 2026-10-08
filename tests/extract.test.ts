@@ -104,3 +104,78 @@ describe("extract: what hand-written documents say", () => {
     expect(ttl).not.toContain("elody:relationValues");
   });
 });
+
+describe("extract: askforceone constructs", () => {
+  const file = (body: string) => [{ path: "queries/entities/badge.queries.ts", source: `import { gql } from "graphql-modules";\nexport const badge = gql\`\n${body}\n\`;\n` }];
+
+  it("keeps the card's order for an aliased title, splits a title read differently per page, and reads validations, permissions, options, aliases", () => {
+    const { ttl, notes } = extractDeclaration(
+      file(`
+  fragment minimalBadge on Badge {
+    intialValues {
+      title: keyValue(key: "key", source: metadata)
+      level: keyValue(key: "level", source: metadata)
+      tenant: keyValue(key: "isIn", source: relations, metadataKeyAsLabel: "name")
+    }
+    teaserMetadata {
+      tenant: metaData { label(input: "metadata.labels.tenant") key(input: "tenant") }
+      title: metaData { label(input: "metadata.labels.key") key(input: "key") }
+      level: metaData { label(input: "metadata.labels.level") key(input: "level") }
+    }
+    ...minimalBaseEntity
+  }
+  fragment fullBadge on Badge {
+    intialValues {
+      canUpdate
+      canDelete
+      key: keyValue(key: "key", source: metadata)
+      title: keyValue(key: "isIn", source: relations, metadataKeyAsLabel: "name")
+      level: keyValue(key: "level", source: metadata)
+    }
+    relationValues
+    entityView { badgeColumn: column { size(size: seventy) elements { windowElement {
+      label(input: "window-element-labels.badge")
+      badge: panels {
+        panelHeaderContent(panelHeaderContentInput: { label: "panel-labels.badge" }) { label }
+        panelType(input: metadata) isCollapsed(input: false) isEditable(input: true) can(input: "update:badge")
+        key: metaData { label(input: "metadata.labels.key") key(input: "key") inputField(type: baseTextField) { ...inputfield validation(input: { value: [required, regex], regex: "^[a-z]+$" }) { ...validation } } }
+        level: metaData { label(input: "metadata.labels.level") key(input: "level") inputField(type: baseNumberField) { ...inputfield validation(input: { value: [customValue], customValue: "min_value:1" }) { ...validation } } }
+      }
+    }
+    instances: entityListElement { label(input: "l") isCollapsed(input: false) entityTypes(input: [badgeInstance]) customQuery(input: "GetEntities") customQueryFilters(input: "GetInstancesOfBadgeFilters") }
+    } } }
+  }
+  fragment filtersForBadge on Badge {
+    advancedFilters {
+      usageState: advancedFilter(type: selection key: ["elody:1|metadata.usageState.value"] label: "metadata.labels.usage-state" isDisplayedByDefault: true
+        options: [{ label: "metadata.options.usage-state.USED", value: "USED" }]) { type key label isDisplayedByDefault options { label value } }
+      tenant: advancedFilter(type: selection key: ["elody:1|relations.isIn.key"] label: "metadata.labels.tenant" isDisplayedByDefault: true selectionOption: checkboxlist
+        filterOptionsMapping: { label: "intialValues.title", value: "intialValues.id" } advancedFilterInputForRetrievingOptions: [{ type: type, value: "tenant" }]) {
+        type key label isDisplayedByDefault selectionOption filterOptionsMapping { label value } advancedFilterInputForRetrievingOptions { type key value match_exact }
+      }
+    }
+  }
+  query GetInstancesOfBadgeFilters($entityType: String!) {
+    EntityTypeFilters(type: $entityType) { ... on BadgeInstance { advancedFilters {
+      type: advancedFilter(type: type) { type defaultValue(value: "badgeInstance") hidden(value: true) }
+    } } }
+  }`),
+    );
+    expect(notes, ttl).toEqual([]);
+    // the card's order: tenant, title (the alias of key), level; the detail-only key and relation title follow
+    const paths = [...ttl.matchAll(/sh:path em:(\w+) ;\n(?:.*\n)*?.*sh:order (\d+) ;/g)].map((m) => `${m[1]}:${m[2]}`);
+    expect(paths.slice(0, 3)).toEqual(["tenant:1", "key:2", "level:3"]);
+    // the relation read under title on the detail page keeps title as its path; the listing's title is the alias of key
+    expect(ttl).toMatch(/sh:path em:title ;\n(?:.*\n)*?    elody:relationType "isIn" ;\n(?:.*\n)*?    elody:detailOnly true/);
+    expect(ttl).toMatch(/sh:path em:key ;\n(?:.*\n)*?    elody:alias "title" ;\n(?:.*\n)*?    elody:listingOnly true/);
+    expect(ttl).toContain("elody:readsPermissions true");
+    expect(ttl).toContain('elody:validationRule "regex" ;\n    elody:validationValue "^[a-z]+$"');
+    expect(ttl).toContain('elody:validationRule "customValue" ;\n    elody:validationValue "min_value:1"');
+    expect(ttl).toContain('elody:can "update:badge"');
+    expect(ttl).toContain('elody:alias "badgeColumn"');
+    expect(ttl).toContain('elody:option [ sh:order 1 ; elody:labelKey "metadata.options.usage-state.USED" ; elody:value "USED" ]');
+    expect(ttl).toContain('elody:optionsType "tenant"');
+    expect(ttl).not.toContain("elody:optionsKey");
+    expect(ttl).toContain('elody:filtersType "BadgeInstance"');
+  });
+});

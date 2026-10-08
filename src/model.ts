@@ -47,6 +47,9 @@ export type UiProperty = {
   editInputType?: string;
   /** sh:minCount 1: required when edited */
   required: boolean;
+  /** elody:validationRule / elody:validationValue: a validation beyond required (url, customValue "min_value:1") */
+  validationRule?: string;
+  validationValue?: string;
   /** a relation-valued property (sh:class, or an inverse path): the Elody relation it reads */
   relationType?: string;
   /** metadata key(s) labelling the related entity (metadataKeyAsLabel) */
@@ -69,7 +72,9 @@ export type UiFilter = {
   /** elody:parentFilterKey: the parentKey argument of a selection filter */
   parentKey?: string;
   /** elody:optionsType & co: a selection filter fetches its options from the entities of a type */
-  options?: { type: string; key: string; matchExact?: boolean; distinctBy?: string };
+  options?: { type: string; key?: string; matchExact?: boolean; distinctBy?: string };
+  /** elody:option: fixed options (options: [{ label, value }]) */
+  staticOptions?: { label: string; value: string; order: number }[];
   /** elody:optionsLabel / elody:optionsValue: filterOptionsMapping */
   optionsLabel?: string;
   optionsValue?: string;
@@ -136,6 +141,8 @@ export type UiCreateFormField = {
   order: number;
   inputType: string;
   required: boolean;
+  validationRule?: string;
+  validationValue?: string;
   /** the shui editor the input type was derived from (explicit or inferred) */
   editor?: string;
   multilingual: boolean;
@@ -183,6 +190,8 @@ export type UiPicker = {
   order: number;
   results: UiPickerResult[];
   filters: UiFilter[];
+  /** elody:filtersType: the type the filters document narrows to (... on X { advancedFilters }) */
+  filtersType?: string;
 };
 
 export type UiPanel = {
@@ -194,6 +203,8 @@ export type UiPanel = {
   editable: boolean;
   /** elody:multipleColumns: canBeMultipleColumns(input: true|false); undefined leaves it unsaid */
   multipleColumns?: boolean;
+  /** elody:can: the permission editing the panel needs (can(input: "update:feedback")) */
+  can?: string;
   /** elody:spread: hand-written fragments on WindowElementPanel spread after the fields */
   spreads: string[];
   fields: string[];
@@ -231,7 +242,7 @@ export type UiElement = {
   pickerFilters?: string;
 };
 
-export type UiColumn = { order: number; size?: string; elements: UiElement[] };
+export type UiColumn = { order: number; alias?: string; size?: string; elements: UiElement[] };
 
 export type UiDetail = { shapeDriven: boolean; fragmentFields: string[]; columns: UiColumn[] };
 
@@ -256,6 +267,8 @@ export type UiEntity = {
   excludeBaseSortOptions: boolean;
   /** elody:filtersFragmentName: the filters fragment's name when not filtersFor<Type> */
   filtersFragmentName?: string;
+  /** elody:readsPermissions: the detail values read canUpdate and canDelete */
+  readsPermissions?: boolean;
   /** elody:thumbnail: the card's picture, from an initial value or the primary media file; sh:order places it among the card's fields */
   thumbnail?: { key?: string; fromMediafile?: boolean; order?: number };
   /** hand-written shared fragments spread into a block (elody:listingValuesSpread & co) */

@@ -11,7 +11,7 @@
  * read and tidied, not committed as it comes.
  */
 import { Kind, parse } from "graphql";
-import type { ArgumentNode, FieldNode, FragmentDefinitionNode, ObjectValueNode, OperationDefinitionNode, SelectionNode, SelectionSetNode, ValueNode } from "graphql";
+import type { ArgumentNode, FieldNode, FragmentDefinitionNode, InlineFragmentNode, ObjectValueNode, OperationDefinitionNode, SelectionNode, SelectionSetNode, ValueNode } from "graphql";
 import { readDefinitions, type Definition, type QueryFile } from "./compare.js";
 import { Ontology, defaultOntology } from "./ontology.js";
 import { elody } from "./vocab.js";
@@ -82,6 +82,8 @@ type Property = {
   datatype?: string;
   single: boolean;
   required: boolean;
+  validationRule?: string;
+  validationValue?: string;
   clientField?: string;
   readOnly: boolean;
   labelRole: boolean;
@@ -89,7 +91,7 @@ type Property = {
   multilingual?: boolean;
 };
 
-type Panel = { alias: string; label?: string; kind?: string; collapsed: boolean; editable: boolean; multipleColumns?: boolean; fields: string[]; spreads: string[] };
+type Panel = { alias: string; label?: string; kind?: string; collapsed: boolean; editable: boolean; multipleColumns?: boolean; can?: string; fields: string[]; spreads: string[] };
 type Element =
   | { kind: "window"; alias?: string; label?: string; expandButton: boolean; editButton?: boolean; panels: Panel[] }
   | { kind: "shaclShape"; label?: string; fieldsKey?: string; collapsed: boolean }
@@ -113,7 +115,7 @@ type Element =
       /** the declared list query node this element loads, when these files hold its documents */
       listQuery?: string;
     };
-type Column = { size?: string; elements: Element[] };
+type Column = { alias?: string; size?: string; elements: Element[] };
 
 type Filter = {
   order?: number;
@@ -128,7 +130,8 @@ type Filter = {
   defaults: string[];
   defaultAsList: boolean;
   hidden: boolean;
-  options?: { type: string; key: string; matchExact?: boolean; distinctBy?: string };
+  options?: { type: string; key?: string; matchExact?: boolean; distinctBy?: string };
+  staticOptions?: { label: string; value: string }[];
   optionsLabel?: string;
   optionsValue?: string;
   selectionOption?: string;
@@ -138,7 +141,7 @@ type Filter = {
   lookup?: { from: string; localField: string; foreignField: string; as: string };
 };
 
-type FormField = { key: string; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; clientField?: string };
+type FormField = { key: string; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; clientField?: string };
 type Form = { queryName: string; label?: string; tabAlias?: string; fields: FormField[]; submit?: { label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors: boolean } };
 
 type Operation = {
@@ -152,7 +155,7 @@ type Operation = {
   modal?: { kind?: string; form?: string; relationType?: string; closeConfirmation?: boolean; permission?: string };
 };
 
-type ListQuery = { node?: string; name: string; filtersName?: string; results: { type: string; fragment: string }[]; filters: Filter[] };
+type ListQuery = { node?: string; name: string; filtersName?: string; filtersType?: string; results: { type: string; fragment: string }[]; filters: Filter[] };
 type Picker = ListQuery;
 
 type Entity = {
@@ -164,6 +167,7 @@ type Entity = {
   typePills: boolean;
   spreads: { listingValues: string[]; detailValues: string[]; card: string[]; filters: string[] };
   relationValues?: boolean;
+  readsPermissions?: boolean;
   detailFormatters?: boolean;
   excludeBaseSortOptions?: boolean;
   filtersFragmentName?: string;
@@ -280,6 +284,9 @@ export class Extractor {
       const key = str(field, "key") ?? a;
       const source = str(field, "source");
       let property = byAlias.get(a);
+      // the listing reads another value under the detail page's alias (title: the label here, a relation there): two shapes
+      if (property && listing && property.inDetail && !property.inListing && (property.key !== (source === "relations" ? a : key) || property.relationType !== (source === "relations" ? key : undefined)))
+        property = undefined;
       if (!property) {
         property = {
           key: source === "relations" ? a : key,
@@ -300,7 +307,7 @@ export class Extractor {
           labelRole: false,
         };
         if (source !== "relations" && key !== a) property.alias = a;
-        byAlias.set(a, property);
+        if (!byAlias.has(a)) byAlias.set(a, property);
         entity.properties.push(property);
       }
       const formatter = str(field, "formatter");
@@ -317,18 +324,12 @@ export class Extractor {
     const detailFormatted = new Set<string>();
     for (const field of fields(fullValues?.selectionSet)) if (field.name.value === "keyValue") add(field, false);
     for (const field of fields(minimalValues?.selectionSet)) if (field.name.value === "keyValue") add(field, true);
-    // the card's fields come first, in the card's order (the initial values are read by name, the card is shown in order)
-    const cardOrder = fields(child(minimal, "teaserMetadata")?.selectionSet)
-      .filter((f) => f.name.value === "metaData")
-      .map((f) => input(child(f, "key")) ?? alias(f));
-    entity.properties.sort((a, b) => {
-      const ia = cardOrder.indexOf(a.alias ?? a.key);
-      const ib = cardOrder.indexOf(b.alias ?? b.key);
-      if (ia === -1 && ib === -1) return 0;
-      if (ia === -1) return 1;
-      if (ib === -1) return -1;
-      return ia - ib;
-    });
+    // the permissions read with the detail values (canUpdate, canDelete)
+    for (const field of fields(fullValues?.selectionSet))
+      if (field.name.value !== "keyValue") {
+        if (["canUpdate", "canDelete"].includes(field.name.value)) entity.readsPermissions = true;
+        else this.note(`${where}: detail value ${alias(field)} is not a keyValue; left out`);
+      }
     for (const a of listingFormatted) if (byAlias.get(a)?.inDetail && !detailFormatted.has(a)) entity.detailFormatters = false;
     for (const field of fields(minimalValues?.selectionSet)) if (field.name.value !== "keyValue") this.note(`${where}: initial value ${alias(field)} is not a keyValue; left out`);
     // (a value read in the listing only is said with elody:listingOnly; a value read on the detail page only with elody:detailOnly)
@@ -338,16 +339,21 @@ export class Extractor {
 
     // the card
     const teaser = child(minimal, "teaserMetadata");
+    const cardIndex = new Map<Property, number>();
     for (const field of fields(teaser?.selectionSet)) {
       if (field.name.value === "metaData") {
         const key = input(child(field, "key")) ?? alias(field);
-        const property = byAlias.get(key) ?? byAlias.get(alias(field));
+        // the value read under the card field's alias, when there is one (title: metaData { key(input: "key") } shows the title alias of key)
+        const candidates = entity.properties.filter((p) => p.key === key || (p.alias ?? p.key) === key);
+        const property =
+          candidates.find((p) => p.inListing && (p.alias ?? p.key) === alias(field)) ?? candidates.find((p) => (p.alias ?? p.key) === alias(field)) ?? byAlias.get(key) ?? byAlias.get(alias(field));
         if (!property) {
           this.note(`${where}: card field ${alias(field)} reads no initial value; left out`);
           continue;
         }
         if (alias(field) !== (property.alias ?? property.key)) this.note(`${where}: card field ${alias(field)} shows the value ${key}; the card will show it under ${property.alias ?? property.key}`);
         property.teaser = true;
+        if (!cardIndex.has(property)) cardIndex.set(property, cardIndex.size);
         property.labelKey = input(child(field, "label"));
         if (input(child(field, "isMultilingual")) === "true") property.multilingual = true;
         const unit = input(child(field, "unit"));
@@ -366,6 +372,15 @@ export class Extractor {
     }
     entity.spreads.card = spreads(teaser?.selectionSet).filter((s) => s !== "typePillsTeaserMetadata");
     for (const property of entity.properties) if (!property.inListing) property.teaser = false;
+    // the card's fields come first, in the card's order (the initial values are read by name, the card is shown in order)
+    entity.properties.sort((a, b) => {
+      const ia = cardIndex.get(a) ?? -1;
+      const ib = cardIndex.get(b) ?? -1;
+      if (ia === -1 && ib === -1) return 0;
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
 
     for (const field of fields(minimal.selectionSet)) {
       if (["intialValues", "relationValues", "allowedViewModes", "teaserMetadata"].includes(field.name.value)) continue;
@@ -391,6 +406,8 @@ export class Extractor {
     for (const column of fields(view?.selectionSet)) {
       if (column.name.value !== "column") continue;
       const size = this.instance("ColumnSize", scalar(child(column, "size") ? argument(child(column, "size")!, "size") : undefined), `${where} column`);
+      // a column alias of its own (tipsColumn); column, column2, ... are what the generator names them
+      const columnAlias = column.alias?.value && !/^column\d*$/.test(column.alias.value) ? column.alias.value : undefined;
       const elements: Element[] = [];
       for (const element of fields(child(column, "elements")?.selectionSet)) {
         if (element.name.value === "windowElement") elements.push(this.window(element, where, entity, byAlias));
@@ -402,7 +419,7 @@ export class Extractor {
           elements.push({ kind: "markdown", label: input(child(element, "label")), metadataKey: content ? str(content, "metadataKey") : undefined, collapsed: input(child(element, "isCollapsed")) === "true" });
         } else this.note(`${where}: detail element ${element.name.value} is not rendered by the generator; left out`);
       }
-      if (elements.length) entity.columns.push({ size, elements });
+      if (elements.length) entity.columns.push({ alias: columnAlias, size, elements });
       else this.note(`${where}: a column holds nothing the generator renders; left out`);
     }
     if (full)
@@ -498,14 +515,20 @@ export class Extractor {
     return q(scalar(value) ?? "");
   }
 
-  /** validation(input: { value: required }) is sh:minCount 1; other validations have no term. */
-  private required(validation: FieldNode | undefined, where: string): boolean {
-    if (!validation) return false;
-    const value = argument(validation, "input");
-    const kind = value?.kind === Kind.OBJECT ? scalar(objectField(value, "value")) : undefined;
-    if (kind === "required") return true;
-    this.note(`${where}: validation ${kind ?? "?"} has no term; left out`);
-    return false;
+  /**
+   * validation(input: { value: required }) is sh:minCount 1; another rule (url, customValue with its
+   * customValue, ...) is elody:validationRule / elody:validationValue. The value may be a list.
+   */
+  private validation(validation: FieldNode | undefined, where: string): { required: boolean; rule?: string; value?: string } {
+    if (!validation) return { required: false };
+    const input = argument(validation, "input");
+    const raw = input?.kind === Kind.OBJECT ? objectField(input, "value") : undefined;
+    const rules = raw ? (raw.kind === Kind.LIST ? [...raw.values] : [raw]).map((v) => scalar(v) ?? "") : [];
+    const custom = input?.kind === Kind.OBJECT ? (scalar(objectField(input, "customValue")) ?? scalar(objectField(input, "regex"))) : undefined;
+    const others = rules.filter((rule) => rule !== "required");
+    if (!rules.length) this.note(`${where}: validation without a value; left out`);
+    if (others.length > 1) this.note(`${where}: validation ${others.join(", ")}: only the first rule is declared`);
+    return { required: rules.includes("required"), rule: others[0], value: custom };
   }
 
   private contextMenu(field: FieldNode, where: string): Entity["contextMenu"] {
@@ -541,6 +564,7 @@ export class Extractor {
       const result: Panel = {
         alias: alias(panel),
         label: headerLabel,
+        can: input(child(panel, "can")),
         kind: this.instance("PanelKind", input(child(panel, "panelType")), `${where} panel ${alias(panel)}`),
         collapsed: input(child(panel, "isCollapsed")) === "true",
         editable: input(child(panel, "isEditable")) !== "false",
@@ -550,7 +574,7 @@ export class Extractor {
       };
       for (const field of fields(panel.selectionSet)) {
         if (field.name.value !== "metaData") {
-          if (!["panelHeaderContent", "label", "panelType", "isCollapsed", "isEditable", "canBeMultipleColumns"].includes(field.name.value))
+          if (!["panelHeaderContent", "label", "panelType", "isCollapsed", "isEditable", "canBeMultipleColumns", "can"].includes(field.name.value))
             this.note(`${where}: panel ${alias(panel)} field ${alias(field)} (${field.name.value}) has no term; left out`);
           continue;
         }
@@ -578,7 +602,12 @@ export class Extractor {
             property.editor = base.editor;
             property.datatype = base.datatype;
           } else property.clientField = type;
-          if (this.required(child(widget, "validation"), `${where} panel ${alias(panel)} field ${key}`)) property.required = true;
+          const validation = this.validation(child(widget, "validation"), `${where} panel ${alias(panel)} field ${key}`);
+          if (validation.required) property.required = true;
+          if (validation.rule) {
+            property.validationRule = validation.rule;
+            property.validationValue = validation.value;
+          }
         } else if (result.editable) property.readOnly = true;
         // the panel references the property shape by its path, which is the key (an aliased value keeps its key)
         result.fields.push(property.key);
@@ -636,10 +665,20 @@ export class Extractor {
       if (on.kind === Kind.INLINE_FRAGMENT) results.push({ type: on.typeCondition?.name.value ?? "", fragment: spreads(on.selectionSet)[0] ?? "" });
     if (!query) this.note(`${where}: picker ${name} is not in these files; declared without results`);
     const filters = filtersName ? this.operation(filtersName) : undefined;
-    const block = filters ? child(fields(filters.selectionSet).find((f) => f.name.value === "EntityTypeFilters"), "advancedFilters") : undefined;
+    const { block, filtersType } = this.advancedFiltersOf(filters);
     const node = this.mint(name, `${name}Picker`);
-    entity.pickers.push({ node, name, filtersName, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
+    entity.pickers.push({ node, name, filtersName, filtersType, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
     return node;
+  }
+
+  /** The advancedFilters block of a filters document, on EntityTypeFilters itself or inside its inline fragment on a type. */
+  private advancedFiltersOf(filters: OperationDefinitionNode | undefined): { block?: FieldNode; filtersType?: string } {
+    const typeFilters = filters ? fields(filters.selectionSet).find((f) => f.name.value === "EntityTypeFilters") : undefined;
+    const direct = child(typeFilters, "advancedFilters");
+    if (direct) return { block: direct };
+    const inline = typeFilters?.selectionSet?.selections.find((s): s is InlineFragmentNode => s.kind === Kind.INLINE_FRAGMENT);
+    if (!inline) return {};
+    return { block: child({ selectionSet: inline.selectionSet }, "advancedFilters"), filtersType: inline.typeCondition?.name.value };
   }
 
   /** The node of a list query: one per query and filters document; the entities document goes with the first node of a query. */
@@ -662,8 +701,8 @@ export class Extractor {
       } else this.note(`${where}: list query ${name} selects its results inline; only its filters document is declared`);
     }
     const filters = filtersName ? this.operation(filtersName) : undefined;
-    const block = filters ? child(fields(filters.selectionSet).find((f) => f.name.value === "EntityTypeFilters"), "advancedFilters") : undefined;
-    entity.listQueries.push({ node, name, filtersName, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
+    const { block, filtersType } = this.advancedFiltersOf(filters);
+    entity.listQueries.push({ node, name, filtersName, filtersType, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
     if (filtersName && !filters) this.note(`${where}: filters document ${filtersName} is not in these files; the list query declares no filters and the name stays`);
     return node;
   }
@@ -733,17 +772,22 @@ export class Extractor {
         const text = inputs.find((o) => scalar(objectField(o, "type")) === "text");
         const type = inputs.find((o) => scalar(objectField(o, "type")) === "type");
         const typeValue = type ? scalar(objectField(type, "value")) : undefined;
-        if (text && typeValue)
+        if (typeValue)
           filter.options = {
             type: typeValue,
-            key: scalar(list(objectField(text, "key"))[0]) ?? "",
-            matchExact: scalar(objectField(text, "match_exact")) === undefined ? undefined : scalar(objectField(text, "match_exact")) === "true",
-            distinctBy: scalar(objectField(text, "distinct_by")),
+            key: text ? scalar(list(objectField(text, "key"))[0]) : undefined,
+            matchExact: text && scalar(objectField(text, "match_exact")) !== undefined ? scalar(objectField(text, "match_exact")) === "true" : undefined,
+            distinctBy: text ? scalar(objectField(text, "distinct_by")) : undefined,
           };
-        else this.note(`${where}: filter ${alias(field)} fetches its options in a way the vocabulary cannot say (no text search scoped to one type); its option source is left out`);
+        else this.note(`${where}: filter ${alias(field)} fetches its options in a way the vocabulary cannot say (no type input); its option source is left out`);
       }
+      const fixed = argument(field, "options");
+      if (fixed)
+        filter.staticOptions = list(fixed)
+          .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
+          .map((option) => ({ label: scalar(objectField(option, "label")) ?? "", value: scalar(objectField(option, "value")) ?? "" }));
       for (const a of field.arguments ?? [])
-        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator", "showTimeForDateFilter", "matchersType", "lookup"].includes(a.name.value))
+        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator", "showTimeForDateFilter", "matchersType", "lookup", "options"].includes(a.name.value))
           this.note(`${where}: filter ${alias(field)} argument ${a.name.value} has no term; left out`);
       result.push(filter);
     }
@@ -770,6 +814,7 @@ export class Extractor {
         const base = BASE_FIELDS[type];
         const key = input(child(field, "key")) ?? alias(field);
         const multilingual = input(child(field, "isMultilingual")) === "true";
+        const validation = this.validation(child(widget, "validation"), `${where} form ${queryName} field ${key}`);
         form.fields.push({
           key,
           alias: alias(field) !== key ? alias(field) : undefined,
@@ -777,7 +822,9 @@ export class Extractor {
           editor: multilingual ? (base?.editor === "shui:TextAreaEditor" ? "shui:TextAreaWithLangEditor" : "shui:TextFieldWithLangEditor") : base?.editor,
           datatype: base?.datatype,
           single: true,
-          required: this.required(child(widget, "validation"), `${where} form ${queryName} field ${key}`),
+          required: validation.required,
+          validationRule: validation.rule,
+          validationValue: validation.value,
           clientField: base ? undefined : type,
         });
       } else if (field.name.value === "action") {
@@ -879,6 +926,8 @@ export class Extractor {
     if (p.valueLabelRootKey) lines.push(`    elody:valueLabelRootKey ${q(p.valueLabelRootKey)} ;`);
     if (p.editor || p.datatype || p.clientField) lines.push(`    sh:maxCount 1 ;`);
     if (p.required) lines.push(`    sh:minCount 1 ;`);
+    if (p.validationRule) lines.push(`    elody:validationRule ${q(p.validationRule)} ;`);
+    if (p.validationValue !== undefined) lines.push(`    elody:validationValue ${q(p.validationValue)} ;`);
     if (p.labelRole) lines.push(`    shui:propertyRole shui:LabelRole ;`);
     const editor = p.multilingual ? (p.editor === "shui:TextAreaEditor" ? "shui:TextAreaWithLangEditor" : "shui:TextFieldWithLangEditor") : p.editor;
     if (editor) lines.push(`    shui:editor ${editor} ;`);
@@ -930,8 +979,11 @@ export class Extractor {
     if (f.matchersType) lines.push(`    elody:matchersType ${q(f.matchersType)} ;`);
     if (f.lookup)
       lines.push(`    elody:lookup [ elody:lookupFrom ${q(f.lookup.from)} ; elody:lookupLocalField ${q(f.lookup.localField)} ; elody:lookupForeignField ${q(f.lookup.foreignField)} ; elody:lookupAs ${q(f.lookup.as)} ] ;`);
+    for (const [i, option] of (f.staticOptions ?? []).entries())
+      lines.push(`    elody:option [ sh:order ${i + 1} ; elody:labelKey ${q(option.label)} ; elody:value ${q(option.value)} ] ;`);
     if (f.options) {
-      lines.push(`    elody:optionsType ${q(f.options.type)} ;`, `    elody:optionsKey ${q(f.options.key)} ;`);
+      lines.push(`    elody:optionsType ${q(f.options.type)} ;`);
+      if (f.options.key !== undefined) lines.push(`    elody:optionsKey ${q(f.options.key)} ;`);
       if (f.options.matchExact !== undefined) lines.push(`    elody:optionsMatchExact ${f.options.matchExact} ;`);
       if (f.options.distinctBy) lines.push(`    elody:optionsDistinctBy ${q(f.options.distinctBy)} ;`);
     }
@@ -985,6 +1037,7 @@ export class Extractor {
     if (entity.documents.length) out.push(`  elody:documents ${entity.documents.map(q).join(" , ")} ;`);
     if (entity.typePills) out.push(`  elody:typePills true ;`);
     if (entity.relationValues !== undefined) out.push(`  elody:relationValues ${entity.relationValues} ;`);
+    if (entity.readsPermissions) out.push(`  elody:readsPermissions true ;`);
     if (entity.detailFormatters === false) out.push(`  elody:detailFormatters false ;`);
     if (entity.excludeBaseSortOptions) out.push(`  elody:excludeBaseSortOptions true ;`);
     if (entity.filtersFragmentName) out.push(`  elody:filtersFragmentName ${q(entity.filtersFragmentName)} ;`);
@@ -1009,6 +1062,7 @@ export class Extractor {
     if (entity.columns.length) {
       const columns = entity.columns.map((column, c) => {
         const lines = [`    [ sh:order ${c + 1} ;`];
+        if (column.alias) lines.push(`    elody:alias ${q(column.alias)} ;`);
         if (column.size) lines.push(`    elody:size ${column.size} ;`);
         const elements = column.elements.map((element, e) => {
           if (element.kind === "window") {
@@ -1018,6 +1072,7 @@ export class Extractor {
               p.push(`  elody:collapsed ${panel.collapsed} ;`);
               if (!panel.editable) p.push(`  dash:readOnly true ;`);
               if (panel.multipleColumns !== undefined) p.push(`  elody:multipleColumns ${panel.multipleColumns} ;`);
+              if (panel.can) p.push(`  elody:can ${q(panel.can)} ;`);
               for (const s of panel.spreads) p.push(`  elody:spread ${q(s)} ;`);
               p.push(`  elody:panelKind ${panel.kind ?? "elody:MetadataPanel"} ;`);
               if (panel.fields.length) p.push(`  elody:field ${panel.fields.map((f) => `em:${f}`).join(" , ")} ;`);
@@ -1130,6 +1185,8 @@ export class Extractor {
         if (field.datatype) s.push(`      sh:datatype ${field.datatype} ;`);
         s.push(`      sh:maxCount 1 ;`);
         if (field.required) s.push(`      sh:minCount 1 ;`);
+        if (field.validationRule) s.push(`      elody:validationRule ${q(field.validationRule)} ;`);
+        if (field.validationValue !== undefined) s.push(`      elody:validationValue ${q(field.validationValue)} ;`);
         if (field.editor) s.push(`      shui:editor ${field.editor} ;`);
         if (field.clientField) s.push(`      elody:clientInputField ${q(field.clientField)} ;`);
         if (field.label) s.push(`      elody:labelKey ${q(field.label)} ;`);
@@ -1169,6 +1226,7 @@ export class Extractor {
     for (const lq of [...entity.listQueries, ...entity.pickers.map((p) => ({ ...p, picker: true }))]) {
       const lines = [`ui:${lq.node ?? lq.name}`, `  a ${"picker" in lq ? "elody:Picker" : "elody:ListQuery"} ;`, `  elody:queryName ${q(lq.name)} ;`];
       if (lq.filtersName) lines.push(`  elody:filtersQuery ${q(lq.filtersName)} ;`);
+      if (lq.filtersType) lines.push(`  elody:filtersType ${q(lq.filtersType)} ;`);
       if (lq.results.length) lines.push(`  elody:result`, lq.results.map((r, i) => `    [ elody:graphqlType ${q(r.type)} ; sh:order ${i + 1} ; elody:fragment ${q(r.fragment)} ]`).join(" ,\n") + " ;");
       const filters = lq.filters;
       filters.forEach((f, i) => (f.order = i + 1));

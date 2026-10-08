@@ -737,6 +737,7 @@ class Parse {
       thumbnail: this.thumbnail(r.node(subject, elody("thumbnail"))),
       excludeBaseSortOptions: r.literal(subject, elody("excludeBaseSortOptions")) === true,
       filtersFragmentName: r.value(subject, elody("filtersFragmentName")) || undefined,
+      readsPermissions: r.literal(subject, elody("readsPermissions")) === true,
       spreads: {
         listingValues: r.literals(subject, elody("listingValuesSpread")),
         detailValues: r.literals(subject, elody("detailValuesSpread")),
@@ -825,6 +826,8 @@ class Parse {
       // set by entity() for the properties an editable panel shows
       editInputType: undefined,
       required: Number(r.value(node, sh("minCount")) ?? 0) >= 1,
+      validationRule: r.value(node, elody("validationRule")) || undefined,
+      validationValue: r.value(node, elody("validationValue")) || undefined,
       panelElement,
     };
   }
@@ -897,10 +900,13 @@ class Parse {
       options: r.value(node, elody("optionsType"))
         ? {
             type: String(r.value(node, elody("optionsType"))),
-            key: String(r.value(node, elody("optionsKey")) ?? ""),
+            key: r.value(node, elody("optionsKey")) || undefined,
             matchExact: this.optionalFlag(node, elody("optionsMatchExact")),
             distinctBy: r.value(node, elody("optionsDistinctBy")) || undefined,
           }
+        : undefined,
+      staticOptions: r.nodes(node, elody("option")).length
+        ? r.byOrder(r.nodes(node, elody("option"))).map((option) => ({ label: String(r.value(option, elody("labelKey")) ?? ""), value: String(r.value(option, elody("value")) ?? ""), order: r.order(option) }))
         : undefined,
       label: r.value(node, rdfs("label")),
       defaultValues,
@@ -1085,6 +1091,8 @@ class Parse {
       order: r.order(node),
       inputType,
       required,
+      validationRule: r.value(node, elody("validationRule")) || undefined,
+      validationValue: r.value(node, elody("validationValue")) || undefined,
       editor,
       multilingual: this.o.multilingual(editor) || this.languageInOf(node).length > 0,
       languageIn: this.languageInOf(node),
@@ -1181,6 +1189,7 @@ class Parse {
         };
       }),
       filters: r.byOrder(r.nodes(node, elody("filter"))).map((filter) => this.filter(filter)),
+      filtersType: r.value(node, elody("filtersType")) || undefined,
     };
   }
 
@@ -1206,6 +1215,7 @@ class Parse {
       fragmentFields: r.literals(node, elody("fragmentField")),
       columns: r.byOrder(r.nodes(node, elody("column"))).map((column): M.UiColumn => ({
         order: r.order(column),
+        alias: r.value(column, elody("alias")) || undefined,
         size: this.enumValue(column, elody("size"), elody("ColumnSize")),
         elements: r.byOrder(r.nodes(column, elody("element"))).map((element) => this.element(element, pathToKey)),
       })),
@@ -1302,6 +1312,7 @@ class Parse {
         collapsed: r.literal(panel, elody("collapsed")) === true,
         editable,
         multipleColumns: this.optionalFlag(panel, elody("multipleColumns")),
+        can: r.value(panel, elody("can")) || undefined,
         spreads: r.literals(panel, elody("spread")),
         fields: [
           ...(this.groupFields.get(panel) ?? []),
@@ -1330,6 +1341,7 @@ class Parse {
       collapsed: r.literal(panel, elody("collapsed")) === true,
       editable,
       multipleColumns: this.optionalFlag(panel, elody("multipleColumns")),
+      can: r.value(panel, elody("can")) || undefined,
       spreads: r.literals(panel, elody("spread")),
       fields,
     };

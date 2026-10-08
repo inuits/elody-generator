@@ -13,8 +13,20 @@ export const DEFAULT_VALUE_LABEL_KEY = "title|name|label";
 const stringList = (values: string[]) => `[${values.map((value) => `"${value}"`).join(", ")}]`;
 
 /** The listing fragment leaves out the detail-only properties; the detail fragment reads them all. */
+/** validation(input: { value: ... }): required (sh:minCount 1) and the declared rule, with its argument. */
+export function renderValidation(field: { required: boolean; validationRule?: string; validationValue?: string }, depth: number): string[] {
+  const rules = [...(field.required ? ["required"] : []), ...(field.validationRule ? [field.validationRule] : [])];
+  if (!rules.length) return [];
+  const value = rules.length === 1 ? rules[0] : `[${rules.join(", ")}]`;
+  // the rule's argument goes under its own name: regex for a regex, customValue for the rest
+  const extra = field.validationValue !== undefined ? `, ${field.validationRule === "regex" ? "regex" : "customValue"}: "${field.validationValue}"` : "";
+  return [`${pad(depth)}validation(input: { value: ${value}${extra} }) {`, `${pad(depth + 2)}...validation`, `${pad(depth)}}`];
+}
+
 export function renderInitialValues(entity: M.UiEntity, indent: number, withFormatters = true, listing = false): string {
-  return entity.properties
+  // the detail values read the permissions first (canUpdate, canDelete) when declared
+  const permissions = !listing && entity.readsPermissions ? [`${pad(indent)}canUpdate`, `${pad(indent)}canDelete`] : [];
+  const values = entity.properties
     .filter((property) => property.readsValue && (listing ? !property.detailOnly : !property.listingOnly))
     .map((property) => {
       const alias = property.alias ?? property.key;
@@ -29,8 +41,8 @@ export function renderInitialValues(entity: M.UiEntity, indent: number, withForm
       if (property.relationType)
         return `${pad(indent)}${alias}: keyValue(key: "${property.relationType}", source: relations${labelKey}${index}${formatter})`;
       return `${pad(indent)}${alias}: keyValue(key: "${property.key}", source: ${property.source ?? "metadata"}${index}${formatter})`;
-    })
-    .join("\n");
+    });
+  return [...permissions, ...values].join("\n");
 }
 
 /**
@@ -169,26 +181,30 @@ export function renderFilters(entity: M.UiEntity, indent: number): string {
 
 /** The option search of a selection filter: a text search on the options key, scoped to the type. */
 function renderFilterOptions(options: NonNullable<M.UiFilter["options"]>, indent: number): { args: string[]; fields: string[] } {
+  // a text search over a key, when one is declared; else the options are every entity of the type
   const args = [
     `${pad(indent)}advancedFilterInputForRetrievingOptions: [`,
-    `${pad(indent + 2)}{`,
-    `${pad(indent + 4)}type: text`,
-    `${pad(indent + 4)}key: ["${options.key}"]`,
-    `${pad(indent + 4)}value: "*"`,
-    ...(options.distinctBy ? [`${pad(indent + 4)}distinct_by: "${options.distinctBy}"`] : []),
-    ...(options.matchExact !== undefined ? [`${pad(indent + 4)}match_exact: ${options.matchExact}`] : []),
-    `${pad(indent + 2)}}`,
+    ...(options.key
+      ? [
+          `${pad(indent + 2)}{`,
+          `${pad(indent + 4)}type: text`,
+          `${pad(indent + 4)}key: ["${options.key}"]`,
+          `${pad(indent + 4)}value: "*"`,
+          ...(options.distinctBy ? [`${pad(indent + 4)}distinct_by: "${options.distinctBy}"`] : []),
+          ...(options.matchExact !== undefined ? [`${pad(indent + 4)}match_exact: ${options.matchExact}`] : []),
+          `${pad(indent + 2)}}`,
+        ]
+      : []),
     `${pad(indent + 2)}{ type: type, value: "${options.type}" }`,
     `${pad(indent)}]`,
   ];
-  // the inputs asked back: clients that search with distinct_by write type, key, value, distinct_by, match_exact;
-  // the plain search is written type, value, key, match_exact (vliz, the most of them)
-  // match_exact is asked back when it is passed, or when the search is made distinct (those clients ask it back regardless)
+  // the inputs asked back, every one of them (what is asked back beyond the client's does not count):
+  // clients that search with distinct_by write type, key, value, distinct_by, match_exact; the others type, value, key, match_exact
   const fields = [
     `${pad(indent)}advancedFilterInputForRetrievingOptions {`,
     `${pad(indent + 2)}type`,
     ...(options.distinctBy ? [`${pad(indent + 2)}key`, `${pad(indent + 2)}value`, `${pad(indent + 2)}distinct_by`] : [`${pad(indent + 2)}value`, `${pad(indent + 2)}key`]),
-    ...(options.matchExact !== undefined || options.distinctBy ? [`${pad(indent + 2)}match_exact`] : []),
+    `${pad(indent + 2)}match_exact`,
     `${pad(indent)}}`,
   ];
   return { args, fields };
@@ -207,7 +223,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ].join("\n");
 
     // a scoping selection filter (no label, no option search) is compact; a visible one reads like the other kinds
-    if (filter.kind === "selection" && !filter.label && !filter.options && !filter.lookup && !filter.matchersType) {
+    if (filter.kind === "selection" && !filter.label && !filter.options && !filter.staticOptions && !filter.lookup && !filter.matchersType) {
       const key = filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`;
       const parent = filter.parentKey ? `, parentKey: "${filter.parentKey}"` : "";
       const operator = filter.operator ? `, operator: ${filter.operator}` : "";
@@ -262,6 +278,9 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(filter.showTime !== undefined ? [`${pad(indent + 4)}showTimeForDateFilter: ${filter.showTime}`] : []),
       ...(filter.displayedByDefault ? [`${pad(indent + 4)}isDisplayedByDefault: true`] : []),
       ...mapping,
+      ...(filter.staticOptions?.length
+        ? [`${pad(indent + 4)}options: [`, ...filter.staticOptions.map((option) => `${pad(indent + 6)}{ label: "${option.label}", value: "${option.value}" }`), `${pad(indent + 4)}]`]
+        : []),
       ...(options ? options.args : []),
     ];
     const fetchesOptions = filter.kind === "selection" && Boolean(options);
@@ -278,6 +297,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(filter.showTime !== undefined ? [`${pad(indent + 4)}showTimeForDateFilter`] : []),
       ...(filter.displayedByDefault ? [`${pad(indent + 4)}isDisplayedByDefault`] : []),
       ...(mapping.length || fetchesOptions ? [`${pad(indent + 4)}filterOptionsMapping {`, `${pad(indent + 6)}label`, `${pad(indent + 6)}value`, `${pad(indent + 4)}}`] : []),
+      ...(filter.staticOptions?.length ? [`${pad(indent + 4)}options {`, `${pad(indent + 6)}label`, `${pad(indent + 6)}value`, `${pad(indent + 4)}}`] : []),
       ...(options ? options.fields : []),
       ...(filter.tooltip ? [`${pad(indent + 4)}tooltip(value: true)`] : []),
       ...(filter.defaultValues.length > 0 || filter.defaultValueAsList ? [`${pad(indent + 4)}defaultValue(value: ${filterDefaultLiteral(filter)})`] : []),
@@ -379,11 +399,7 @@ export function renderCreateForm(form: M.UiCreateForm): string {
       `            inputField(type: ${field.inputType}) {`,
       "              ...inputfield",
     ];
-    if (field.required) {
-      lines.push("              validation(input: { value: required }) {");
-      lines.push("                ...validation");
-      lines.push("              }");
-    }
+    lines.push(...renderValidation(field, 14));
     lines.push("            }");
     lines.push("          }");
     return lines.join("\n");
@@ -542,13 +558,11 @@ export function renderListQuery(picker: M.UiPicker): string {
 }
 
 export function renderListFilters(picker: M.UiPicker): string {
-  return [
-    `  query ${picker.filtersQueryName}($entityType: String!) {`,
-    "    EntityTypeFilters(type: $entityType) {",
-    renderFilterList(picker.filters, 6),
-    "    }",
-    "  }",
-  ].join("\n");
+  // the filters narrowed to a type when declared (... on X { advancedFilters })
+  const filters = picker.filtersType
+    ? [`      ... on ${picker.filtersType} {`, renderFilterList(picker.filters, 8), "      }"]
+    : [renderFilterList(picker.filters, 6)];
+  return [`  query ${picker.filtersQueryName}($entityType: String!) {`, "    EntityTypeFilters(type: $entityType) {", ...filters, "    }", "  }"].join("\n");
 }
 
 export function renderDetailView(entity: M.UiEntity, indent: number): string {
@@ -570,6 +584,7 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
       `${pad(depth + 2)}isCollapsed(input: ${panel.collapsed})`,
       `${pad(depth + 2)}isEditable(input: ${panel.editable})`,
       ...(panel.multipleColumns !== undefined ? [`${pad(depth + 2)}canBeMultipleColumns(input: ${panel.multipleColumns})`] : []),
+      ...(panel.can ? [`${pad(depth + 2)}can(input: "${panel.can}")`] : []),
     ];
     for (const key of panel.fields) {
       const property = propertyByKey.get(key);
@@ -589,11 +604,7 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
       if (inputType) {
         lines.push(`${pad(depth + 4)}inputField(type: ${inputType}) {`);
         lines.push(`${pad(depth + 6)}...inputfield`);
-        if (property.required && panel.editable) {
-          lines.push(`${pad(depth + 6)}validation(input: { value: required }) {`);
-          lines.push(`${pad(depth + 8)}...validation`);
-          lines.push(`${pad(depth + 6)}}`);
-        }
+        if (panel.editable) lines.push(...renderValidation(property, depth + 6));
         lines.push(`${pad(depth + 4)}}`);
       }
       lines.push(`${pad(depth + 2)}}`);
@@ -662,7 +673,7 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
   };
 
   const columns = detail.columns.map((column, index) => {
-    const alias = index === 0 ? "column" : `column${index + 1}: column`;
+    const alias = column.alias ? `${column.alias}: column` : index === 0 ? "column" : `column${index + 1}: column`;
     return [
       `${pad(indent + 2)}${alias} {`,
       ...(column.size ? [`${pad(indent + 4)}size(size: ${column.size})`] : []),
@@ -777,10 +788,14 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   if (entity.detail) {
     const full: string[] = [`  fragment full${type} on ${onType} {`];
     if (entity.detail.shapeDriven) full.push("    shapeFields");
-    full.push("    intialValues {");
-    for (const spread of entity.spreads.detailValues) full.push(`      ...${spread}`);
-    full.push(renderInitialValues(entity, 6, entity.detailFormatters !== false));
-    full.push("    }");
+    // no block when nothing is read on the detail page (an empty selection set is not GraphQL)
+    const detailValues = renderInitialValues(entity, 6, entity.detailFormatters !== false);
+    if (detailValues || entity.spreads.detailValues.length) {
+      full.push("    intialValues {");
+      for (const spread of entity.spreads.detailValues) full.push(`      ...${spread}`);
+      if (detailValues) full.push(detailValues);
+      full.push("    }");
+    }
     if (readsRelationValues(entity, "detail")) full.push("    relationValues");
     for (const field of entity.detail.fragmentFields) full.push(`    ${field}`);
     full.push(renderDetailView(entity, 4));

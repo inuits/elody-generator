@@ -200,7 +200,7 @@ describe("a selection filter that fetches its options", () => {
     );
   });
 
-  it("leaves match_exact out of the option search when not declared", async () => {
+  it("leaves match_exact out of the option search when not declared, asking it back regardless", async () => {
     const file = await render(
       entity(`sh:property ${label} ; elody:filter
         [ rdfs:label "metadata.labels.access" ; sh:order 1 ; elody:alias "access" ; elody:key "dams:1|metadata.access.value" ; elody:displayedByDefault true ;
@@ -215,7 +215,8 @@ describe("a selection filter that fetches its options", () => {
         [ rdfs:label "metadata.labels.id" ; sh:order 1 ; elody:alias "id" ; elody:key "aicap:1|id" ; elody:displayedByDefault true ;
           elody:optionsType "site" ; elody:optionsKey "aicap:1|id" ; elody:filterKind elody:SelectionFilter ]`),
     );
-    expect(fragment(plain, "filtersForKeyword")).not.toContain("match_exact");
+    expect(fragment(plain, "filtersForKeyword")).not.toContain("match_exact: ");
+    expect(fragment(plain, "filtersForKeyword")).toContain("          match_exact\n");
   });
 
   it("places the thumbnail among the card's fields by sh:order", async () => {
