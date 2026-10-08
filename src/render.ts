@@ -12,23 +12,37 @@ const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slic
 export const DEFAULT_VALUE_LABEL_KEY = "title|name|label";
 const stringList = (values: string[]) => `[${values.map((value) => `"${value}"`).join(", ")}]`;
 
-export function renderInitialValues(entity: M.UiEntity, indent: number, withFormatters = true): string {
+/** The listing fragment leaves out the detail-only properties; the detail fragment reads them all. */
+export function renderInitialValues(entity: M.UiEntity, indent: number, withFormatters = true, listing = false): string {
   return entity.properties
+    .filter((property) => !listing || !property.detailOnly)
     .map((property) => {
+      const alias = property.alias ?? property.key;
       const formatter = withFormatters && property.formatter ? `, formatter: "${property.formatter}"` : "";
       if (property.relationType)
-        return `${pad(indent)}${property.key}: keyValue(key: "${property.relationType}", source: relations, metadataKeyAsLabel: "${property.valueLabelKey ?? DEFAULT_VALUE_LABEL_KEY}"${formatter})`;
-      return `${pad(indent)}${property.key}: keyValue(key: "${property.key}", source: ${property.source ?? "metadata"}${formatter})`;
+        return `${pad(indent)}${alias}: keyValue(key: "${property.relationType}", source: relations, metadataKeyAsLabel: "${property.valueLabelKey ?? DEFAULT_VALUE_LABEL_KEY}"${formatter})`;
+      return `${pad(indent)}${alias}: keyValue(key: "${property.key}", source: ${property.source ?? "metadata"}${formatter})`;
     })
     .join("\n");
 }
+
+/** Whether the type's fragments read relationValues: declared, else needed by a relation, a list or a context menu. */
+export const readsRelationValues = (entity: M.UiEntity): boolean =>
+  entity.relationValues ??
+  (entity.properties.some((property) => property.relationType || property.panelElement?.kind === "list") ||
+    entity.contextMenu !== undefined ||
+    (entity.detail?.columns ?? []).some((column) => column.elements.some((element) => element.kind === "list")));
+
+/** Whether the type carries a bulk operations fragment: declared, else when it declares operations or asks for the document. */
+export const carriesBulkOperations = (entity: M.UiEntity): boolean =>
+  entity.bulkOperationsFragment ?? (entity.bulkOperations.length > 0 || entity.documents.includes("bulkOperations"));
 
 export function renderTeaserFields(entity: M.UiEntity, indent: number): string {
   return entity.properties
     .filter((property) => property.teaser)
     .map((property) => {
       const lines = [
-        `${pad(indent)}${property.key}: metaData {`,
+        `${pad(indent)}${property.alias ?? property.key}: metaData {`,
         `${pad(indent + 2)}label(input: "${property.label ?? property.key}")`,
         `${pad(indent + 2)}key(input: "${property.key}")`,
       ];
@@ -81,7 +95,12 @@ export function renderViewModes(entity: M.UiEntity, indent: number): string {
 }
 
 export function renderSortOptions(entity: M.UiEntity, indent: number): string {
-  const sortable = entity.properties.filter((property) => property.sortable);
+  // the sort options in their own order (elody:sortOrder), else the properties' order
+  const sortable = entity.properties
+    .filter((property) => property.sortable)
+    .map((property, index) => ({ property, index }))
+    .sort((a, b) => (a.property.sortOrder ?? a.index) - (b.property.sortOrder ?? b.index) || a.index - b.index)
+    .map(({ property }) => property);
   if (sortable.length === 0) return "";
 
   const options = sortable
@@ -89,7 +108,7 @@ export function renderSortOptions(entity: M.UiEntity, indent: number): string {
       [
         `${pad(indent + 6)}{`,
         `${pad(indent + 8)}icon: NoIcon`,
-        `${pad(indent + 8)}label: "${property.label ?? property.key}"`,
+        `${pad(indent + 8)}label: "${property.sortLabelKey ?? property.label ?? property.key}"`,
         `${pad(indent + 8)}value: "${property.key}"`,
         `${pad(indent + 6)}}`,
       ].join("\n"),
@@ -137,14 +156,17 @@ export function renderFilterList(filters: M.UiFilter[], indent: number): string 
 
     if (filter.kind === "selection") {
       const key = filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`;
+      const parent = filter.parentKey ? `, parentKey: "${filter.parentKey}"` : "";
       const selection = [
         "type",
+        ...(filter.parentKey ? ["parentKey"] : []),
         "key",
-        ...(filter.defaultValues.length > 0 ? [`defaultValue(value: ${filterDefaultLiteral(filter)})`] : []),
+        ...(filter.tooltip ? ["tooltip(value: true)"] : []),
+        ...(filter.defaultValues.length > 0 || filter.defaultValueAsList ? [`defaultValue(value: ${filterDefaultLiteral(filter)})`] : []),
         ...(filter.hidden ? ["hidden(value: true)"] : []),
       ];
       return [
-        `${pad(indent + 2)}${filter.alias}: advancedFilter(type: selection, key: ${key}) {`,
+        `${pad(indent + 2)}${filter.alias}: advancedFilter(type: selection${parent}, key: ${key}) {`,
         ...selection.map((field) => `${pad(indent + 4)}${field}`),
         `${pad(indent + 2)}}`,
       ].join("\n");
@@ -426,7 +448,10 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
   const detail = entity.detail;
   if (!detail || detail.columns.length === 0) return "";
 
-  const propertyByKey = new Map(entity.properties.map((property) => [property.key, property]));
+  // a panel shows a field once, under its key: the shape without an alias describes it, an aliased twin only reads it
+  const propertyByKey = new Map<string, M.UiProperty>();
+  for (const property of [...entity.properties.filter((p) => !p.alias), ...entity.properties.filter((p) => p.alias)])
+    if (!propertyByKey.has(property.key)) propertyByKey.set(property.key, property);
 
   const renderPanel = (panel: M.UiPanel, depth: number): string => {
     const lines = [
@@ -612,12 +637,13 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
         : `    dynamicFormConfig: ${entity.dynamicFormConfigField}`,
     );
   if (entity.portsField) minimal.push(entity.portsField === "ports" ? "    ports" : `    ports: ${entity.portsField}`);
+  const relationValues = readsRelationValues(entity);
   minimal.push("    intialValues {");
   if (entity.typePills) minimal.push("      ...typePillsIntialValues");
-  minimal.push(renderInitialValues(entity, 6));
+  minimal.push(renderInitialValues(entity, 6, true, true));
   minimal.push("    }");
-  minimal.push("    relationValues");
-  minimal.push(renderViewModes(entity, 4));
+  if (relationValues) minimal.push("    relationValues");
+  if (entity.viewModes.length > 0) minimal.push(renderViewModes(entity, 4));
   minimal.push("    teaserMetadata {");
   if (entity.typePills) minimal.push("      ...typePillsTeaserMetadata");
   const contextMenu = renderContextMenu(entity, 6);
@@ -634,7 +660,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
     full.push("    intialValues {");
     full.push(renderInitialValues(entity, 6, false));
     full.push("    }");
-    full.push("    relationValues");
+    if (relationValues) full.push("    relationValues");
     for (const field of entity.detail.fragmentFields) full.push(`    ${field}`);
     full.push(renderDetailView(entity, 4));
     full.push("  }");
@@ -647,9 +673,11 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   if (entity.filters.length > 0)
     fragments.push([`  fragment filtersFor${type} on ${onType} {`, renderFilters(entity, 4), "  }"].join("\n"));
 
-  fragments.push(
-    [`  fragment ${low}BulkOperations on ${onType} {`, renderBulkOperationOptions(entity.bulkOperations, 4), "  }"].join("\n"),
-  );
+  const bulkOperations = carriesBulkOperations(entity);
+  if (bulkOperations)
+    fragments.push(
+      [`  fragment ${low}BulkOperations on ${onType} {`, renderBulkOperationOptions(entity.bulkOperations, 4), "  }"].join("\n"),
+    );
 
   const documents: string[] = [];
   if (entity.documents.includes("entities"))
@@ -711,7 +739,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
         "  }",
       ].join("\n"),
     );
-  if (entity.documents.includes("bulkOperations"))
+  if (bulkOperations && entity.documents.includes("bulkOperations"))
     documents.push(
       [
         `  query Get${type}BulkOperations($entityType: String!) {`,

@@ -247,6 +247,13 @@ class Migration {
       else if (p === elody("picker")) this.add(subject, p, this.picker(o.value));
       else this.add(subject, p, o);
     }
+    // 0.3.0 reads relationValues and carries the bulk operations fragment only when the type needs or
+    // declares them; the legacy dialect always did, so a migrated declaration says so explicitly
+    for (const flag of ["relationValues", "bulkOperations"] as const)
+      if (!r.has(entity, elody(flag))) {
+        this.add(subject, elody(flag), this.bool(true));
+        this.note(`elody:${flag} true made explicit: the generator no longer emits it by default`);
+      }
   }
 
   /** Copy every triple of `node` except the handled predicates. */

@@ -70,14 +70,16 @@ graphql-js. Per definition (fragment or operation, by name) the verdict is
 client has it, the generator does not), `extra` (generated, no such client
 definition) or `out-of-scope` (excluded by the scope file, with the gap id
 that explains why). Whitespace, comments, `__typename` and the quoting of a
-string literal do not count; the order of fields and arguments does, because
-it drives the order in the UI. An entity that emits `regions` is generated
+string literal do not count, nor where a fragment is spread in a selection
+set; the order of fields and arguments does, because it drives the order in
+the UI. An entity that emits `regions` is generated
 into a copy of the client's file, so its hand-written parts compare equal by
 construction. The report is text on stdout and, with `--json`, the full
 result; exit 1 when anything differs, is missing or extra. The scope file:
 
 ```json
-{ "outOfScope": { "getTenants": "G-003" }, "outOfScopeFiles": { "queries/flows.queries.ts": "G-007" } }
+{ "outOfScope": { "getTenants": "G-003" }, "outOfScopeFiles": { "queries/flows.queries.ts": "G-007" },
+  "outOfScopeGenerated": { "filtersForTenant": "G-009" } }
 ```
 
 `tests/compare.test.ts` proves the comparer on the dishacled golden: every
@@ -152,6 +154,32 @@ Whatever Elody cannot render is listed as a gap on the field.
 - Old use (`rdfs:label` as a property's translation key, `sh:name` as the key)
   is read with a warning; `elody-ui migrate --translations src/translations`
   rewrites it and fills `sh:name` per language from the client's bundles.
+
+## What a type reads and carries (ontology 0.3.0)
+
+- `elody:alias` on a property shape reads the value under another GraphQL
+  field name (`title: keyValue(key: "email")`); several shapes may share one
+  `sh:path` under different aliases. A panel shows the field once, described
+  by the shape without an alias.
+- `elody:detailOnly true` keeps a field out of the listing fragment's initial
+  values and off the card; the detail fragment reads every property.
+- `elody:sortLabelKey` and `elody:sortOrder` give a sort option its own label
+  and position; without them the sortable properties sort in their own order
+  under their labels.
+- `relationValues` is read when a property reads a relation, a panel lists
+  related entities or the card has a context menu, else not;
+  `elody:relationValues true|false` overrides. The bulk operations fragment is
+  emitted when an `elody:bulkOperation` is declared or `elody:documents` names
+  `bulkOperations`, else not; `elody:bulkOperations true|false` overrides. A
+  declaration in the retired dialect keeps the old always-on defaults, and
+  `migrate` makes them explicit.
+- A type may declare no `elody:viewMode`: no `allowedViewModes` block.
+- A selection filter renders `elody:parentFilterKey`, `elody:showTooltip` and
+  an empty default list (`elody:defaultValueAsList true` without values).
+
+The vocabulary is read from `ELODY_ONTOLOGY` when set, else from the installed
+package or the checkout next to this one, whichever is the newer version
+(so an untagged ontology change in `../elody-ontology` is picked up).
 
 ## Detail elements
 

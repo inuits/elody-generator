@@ -10,7 +10,7 @@ import { Scorer } from "./score.js";
 import * as M from "./model.js";
 import { Ontology, defaultOntology } from "./ontology.js";
 import { Reading, type Literal, type Warning } from "./reading.js";
-import { DASH, compact, dash, elody, localName, rdf, rdfs, sh, shui } from "./vocab.js";
+import { DASH, ELODY_LEGACY, compact, dash, elody, localName, rdf, rdfs, sh, shui } from "./vocab.js";
 
 /** Label texts per language and translation key, from sh:name / rdfs:label literals. */
 export type Translations = Record<string, Record<string, string>>;
@@ -104,11 +104,20 @@ class Parse {
   /** lower-cased GraphQL type of the entity being parsed, for minted label keys */
   private type = "";
 
+  /**
+   * A declaration in the retired dialect (the old namespace, or any retired term): it was written
+   * when the generator always read relationValues and always emitted the bulk operations fragment,
+   * so those stay its defaults until it is migrated (migrate makes them explicit).
+   */
+  private readonly legacy: boolean;
+
   constructor(
     private readonly r: Reading,
     private readonly o: Ontology,
     private readonly scoredEditors: Map<string, string> = new Map(),
-  ) {}
+  ) {
+    this.legacy = r.quads().some((quad) => quad.predicate.value.startsWith(ELODY_LEGACY) || o.isDeprecated(quad.predicate.value));
+  }
 
   // -- keys and labels (sh:name = label text, sh:path = key) ----------------------
 
@@ -661,6 +670,12 @@ class Parse {
     return { list, filters: pickerFiltersNameFor(list) };
   }
 
+  /** A boolean the declaration may leave out: true, false or undefined. */
+  private optionalFlag(node: string, predicate: string): boolean | undefined {
+    const value = this.r.literal(node, predicate);
+    return typeof value === "boolean" ? value : undefined;
+  }
+
   private hidden(node: string): boolean {
     if (this.r.has(node, dash("hidden"))) return this.r.literal(node, dash("hidden")) === true;
     if (this.r.has(node, elody("hidden"))) {
@@ -697,6 +712,8 @@ class Parse {
       emit: r.value(subject, elody("emit")) === "file" ? "file" : "regions",
       documents: r.literals(subject, elody("documents")),
       typePills: r.literal(subject, elody("typePills")) === true,
+      relationValues: this.optionalFlag(subject, elody("relationValues")) ?? (this.legacy ? true : undefined),
+      bulkOperationsFragment: this.optionalFlag(subject, elody("bulkOperations")) ?? (this.legacy ? true : undefined),
       dynamicFormConfigField: r.value(subject, elody("dynamicFormConfig")) || undefined,
       portsField: r.value(subject, elody("ports")) || undefined,
       viewModes: r.byOrder(r.nodes(subject, elody("viewMode"))).map((node) => this.viewMode(node)),
@@ -741,8 +758,14 @@ class Parse {
     const key = this.keyOf(node);
     const editor = this.scoredEditors.get(node);
     const panelElement = this.panelElementOf(node, editor);
+    const detailOnly = r.literal(node, elody("detailOnly")) === true;
+    const sortOrder = r.literal(node, elody("sortOrder"));
     return {
       key,
+      alias: r.value(node, elody("alias")) || undefined,
+      detailOnly,
+      sortLabelKey: r.value(node, elody("sortLabelKey")) || undefined,
+      sortOrder: typeof sortOrder === "number" ? sortOrder : undefined,
       path: r.node(node, sh("path")),
       label: this.propertyLabel(node, key, `ui.${this.type}.${key}`),
       order: r.order(node),
@@ -750,7 +773,7 @@ class Parse {
       unit: this.enumValue(node, elody("unit"), elody("Unit")),
       formatter: panelElement ? undefined : this.formatter(node),
       role,
-      teaser: r.literal(node, elody("teaser")) !== false,
+      teaser: r.literal(node, elody("teaser")) !== false && !detailOnly,
       sortable: r.literal(node, elody("sortable")) === true,
       defaultSortDirection: this.enumValue(node, elody("defaultSortDirection"), elody("SortDirection")),
       source: this.enumValue(node, elody("source"), elody("ValueSource")),
@@ -820,6 +843,7 @@ class Parse {
       order: r.order(node),
       key: r.value(node, elody("key")),
       keyAsList: r.literal(node, elody("keyAsList")) !== false,
+      parentKey: r.value(node, elody("parentFilterKey")) || undefined,
       label: r.value(node, rdfs("label")),
       defaultValues,
       defaultValueAsList: r.literal(node, elody("defaultValueAsList")) === true,

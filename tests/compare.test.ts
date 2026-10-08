@@ -93,6 +93,12 @@ describe("normalizeDefinition", () => {
     expect(normalizeDefinition(block)).toBe(normalizeDefinition(quoted));
   });
 
+  it("ignores where a fragment is spread in a selection set", () => {
+    const first = definition("fragment a on A { ...base x { y ...inner z } }");
+    const last = definition("fragment a on A { x { ...inner y z } ...base }");
+    expect(normalizeDefinition(first)).toBe(normalizeDefinition(last));
+  });
+
   it("keeps field order and argument order", () => {
     const ab = definition("fragment a on A { x y }");
     const ba = definition("fragment a on A { y x }");
@@ -183,6 +189,13 @@ describe("compareDefinitions", () => {
     expect(byName.getTenants).toMatchObject({ status: "out-of-scope", gap: "G-002" });
     expect(byName.minimalAlert.status).toBe("missing");
     expect(report.summary).toMatchObject({ total: 4, missing: 2, outOfScope: 2, percentEqual: 0 });
+  });
+
+  it("puts a generated definition the client lacks out of scope with its gap", () => {
+    const generated = readDefinitions([gqlFile("entities/alert.queries.ts", "fragment filtersForAlert on Alert { id }")]).definitions;
+    const report = compareDefinitions([], generated, { outOfScopeGenerated: { filtersForAlert: "G-009" } });
+    expect(report.definitions[0]).toMatchObject({ status: "out-of-scope", gap: "G-009", generatedFile: "entities/alert.queries.ts" });
+    expect(report.summary).toMatchObject({ total: 1, extra: 0, outOfScope: 1 });
   });
 
   it("rolls the results up per client file", () => {

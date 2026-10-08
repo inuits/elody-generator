@@ -17,7 +17,14 @@ export type UiProperty = {
   formatter?: string;
   role?: string;
   teaser: boolean;
+  /** elody:alias: the GraphQL field name the value is read under, when not the key */
+  alias?: string;
+  /** elody:detailOnly: read on the detail page only, not in the listing fragment */
+  detailOnly: boolean;
   sortable: boolean;
+  /** elody:sortLabelKey / elody:sortOrder: the sort option's own label and position */
+  sortLabelKey?: string;
+  sortOrder?: number;
   defaultSortDirection?: string;
   source?: string;
   index?: number;
@@ -51,6 +58,8 @@ export type UiFilter = {
   order: number;
   key?: string;
   keyAsList: boolean;
+  /** elody:parentFilterKey: the parentKey argument of a selection filter */
+  parentKey?: string;
   label?: string;
   defaultValues: string[];
   defaultValueAsList: boolean;
@@ -195,6 +204,10 @@ export type UiEntity = {
   emit: "file" | "regions";
   documents: string[];
   typePills: boolean;
+  /** elody:relationValues: read relationValues; undefined derives it from what the type needs */
+  relationValues?: boolean;
+  /** elody:bulkOperations: carry the bulk operations fragment; undefined derives it */
+  bulkOperationsFragment?: boolean;
   dynamicFormConfigField?: string;
   portsField?: string;
   viewModes: UiViewMode[];

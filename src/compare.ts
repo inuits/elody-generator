@@ -81,6 +81,8 @@ export type Summary = {
 export type Scope = {
   outOfScope?: Record<string, string>;
   outOfScopeFiles?: Record<string, string>;
+  /** generated definitions the client has no counterpart for, each with the gap that explains it */
+  outOfScopeGenerated?: Record<string, string>;
 };
 
 export type Comparison = {
@@ -188,6 +190,15 @@ export function readDefinitions(files: QueryFile[]): ReadResult {
 export function normalizeNode<T extends ASTNode>(node: T): T {
   return visit(node, {
     Field: (field) => (field.name.value === "__typename" ? null : undefined),
+    // where a fragment is spread in a selection set does not change what the PWA receives: spreads go last
+    SelectionSet: {
+      leave(set) {
+        const spreads = set.selections.filter((selection) => selection.kind === Kind.FRAGMENT_SPREAD);
+        if (spreads.length === 0) return undefined;
+        const rest = set.selections.filter((selection) => selection.kind !== Kind.FRAGMENT_SPREAD);
+        return { ...set, selections: [...rest, ...spreads] };
+      },
+    },
     StringValue: (value) => (value.block ? { ...value, block: false } : undefined),
     enter(current) {
       if ("loc" in current && current.loc) {
@@ -298,8 +309,11 @@ export function compareDefinitions(client: Definition[], generated: Definition[]
     else results.push({ ...base, status: "differs", path: firstDifference(normalizeNode(own.node), normalizeNode(other.node)) });
   }
   const clientNames = new Set(client.map((definition) => definition.name));
-  for (const own of generated)
-    if (!clientNames.has(own.name)) results.push({ name: own.name, kind: own.kind, status: "extra", generatedFile: own.file });
+  for (const own of generated) {
+    if (clientNames.has(own.name)) continue;
+    const gap = scope.outOfScopeGenerated?.[own.name];
+    results.push({ name: own.name, kind: own.kind, status: gap ? "out-of-scope" : "extra", generatedFile: own.file, ...(gap ? { gap } : {}) });
+  }
 
   const perFile = new Map<string, FileResult>();
   for (const result of results) {

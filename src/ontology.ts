@@ -25,10 +25,29 @@ function vocabularyDir(): string {
     if (!existsSync(join(chosen, "ui", "elody-ui.ttl"))) throw new Error(`ELODY_ONTOLOGY=${chosen} has no ui/elody-ui.ttl`);
     return join(chosen, "ui");
   }
-  const candidates = [join(moduleRoot, "node_modules", "elody-ontology"), join(moduleRoot, "..", "elody-ontology")];
-  const found = candidates.find((dir) => existsSync(join(dir, "ui", "elody-ui.ttl")));
-  if (!found) throw new Error(`elody-ontology not found (looked in ${candidates.join(", ")}): install it or set ELODY_ONTOLOGY`);
-  return join(found, "ui");
+  const candidates = [join(moduleRoot, "node_modules", "elody-ontology"), join(moduleRoot, "..", "elody-ontology")]
+    .filter((dir) => existsSync(join(dir, "ui", "elody-ui.ttl")))
+    // the checkout next to this one wins over the installed package when it is newer (an untagged version in progress)
+    .sort((a, b) => compareVersions(packageVersion(b), packageVersion(a)));
+  if (!candidates.length)
+    throw new Error("elody-ontology not found (looked in node_modules/elody-ontology and ../elody-ontology): install it or set ELODY_ONTOLOGY");
+  return join(candidates[0], "ui");
+}
+
+function packageVersion(dir: string): string {
+  try {
+    return String(JSON.parse(readFileSync(join(dir, "package.json"), "utf-8")).version ?? "0.0.0");
+  } catch {
+    return "0.0.0";
+  }
+}
+
+/** Semantic-version order: negative when a < b. */
+function compareVersions(a: string, b: string): number {
+  const parse = (version: string) => version.split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const [x, y] = [parse(a), parse(b)];
+  for (let index = 0; index < 3; index += 1) if ((x[index] ?? 0) !== (y[index] ?? 0)) return (x[index] ?? 0) - (y[index] ?? 0);
+  return 0;
 }
 
 /** The vocabulary: what a declaration may say (elody-ontology, ui/). */
