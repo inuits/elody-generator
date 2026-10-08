@@ -565,6 +565,8 @@ export class Extractor {
           if (!byAlias.has(alias(field))) byAlias.set(alias(field), property);
         }
         if (input(child(field, "isMultilingual")) === "true") property.multilingual = true;
+        const unit = input(child(field, "unit"));
+        if (unit && !property.unit) property.unit = this.instance("Unit", unit, `${where} ${key}`);
         const label = input(child(field, "label"));
         if (label && !property.labelKey) property.labelKey = label;
         else if (label && property.labelKey && label !== property.labelKey) this.note(`${where}: panel field ${key} is labelled ${label}, the card ${property.labelKey}; the card's label is kept`);

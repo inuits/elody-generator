@@ -49,6 +49,15 @@ describe("ugent-aicap", () => {
     expect(file).toContain("        lookup {\n          from\n          local_field\n          foreign_field\n          as\n        }");
   });
 
+  it("renders a panel field's unit", async () => {
+    const file = await render(
+      entity(`sh:property ${label} , [ sh:path em:gps ; sh:order 2 ; elody:unit elody:CoordinatesDefault ; elody:labelKey "metadata.labels.gps" ; elody:detailOnly true ] ;
+        elody:detail [ elody:column [ sh:order 1 ; elody:size elody:Width50 ; elody:element [ a elody:WindowElement ; sh:order 1 ; rdfs:label "w" ; elody:panel ui:Info ] ] ]`,
+        `ui:Info a elody:Panel ; elody:alias "info" ; rdfs:label "p" ; elody:field em:gps .`),
+    );
+    expect(file).toContain('key(input: "gps")\n                unit(input: COORDINATES_DEFAULT)');
+  });
+
   it("renders canBeMultipleColumns false when declared so", async () => {
     const file = await render(
       entity(`sh:property ${label} ; elody:detail [ elody:column [ sh:order 1 ; elody:size elody:Width50 ; elody:element [ a elody:WindowElement ; sh:order 1 ; rdfs:label "w" ; elody:panel ui:Info ] ] ]`,
