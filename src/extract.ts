@@ -186,8 +186,24 @@ type Operation = {
   kind?: string;
   primary?: boolean;
   can: string[];
-  context?: { mode?: string; selection?: string; tooltip?: string; requiresSameType?: boolean; minSelectedItems?: number; maxSelectedItems?: number };
-  modal?: { kind?: string; form?: string; relationType?: string; closeConfirmation?: boolean; permission?: string; pickerNode?: string; navigateAfterCreation?: string };
+  context?: { mode?: string; selection?: string; tooltip?: string; requiresSameType?: boolean; minSelectedItems?: number; maxSelectedItems?: number; matches?: { key: string; value: string }[] };
+  modal?: {
+    kind?: string;
+    form?: string;
+    /** several forms offered (formQueries with more than one name) */
+    forms?: string[];
+    relationType?: string;
+    closeConfirmation?: boolean;
+    permission?: string;
+    pickerNode?: string;
+    navigateAfterCreation?: string;
+    skipRelatedItems?: string[];
+    imageCrop?: boolean;
+    cropCoordinatesKey?: string;
+    replaceExistingRelations?: boolean;
+    selectionLimit?: number;
+    survivorSuggestion?: { strategy?: string; autoSelect?: boolean; requireRecommendedSurvivor?: boolean; hiddenVerdicts: string[] };
+  };
   subOptions?: Operation[];
 };
 
@@ -695,8 +711,8 @@ export class Extractor {
     if (bulk) entity.operations = this.operations(child(child(bulk, "bulkOperationOptions"), "options"), where, entity);
     // the forms the operations open: declared when these files hold them as dynamic forms
     const opened = Extractor.flattenOperations([...(entity.operations ?? []), ...entity.customOperations.flatMap((c) => c.operations)])
-      .map((op) => op.modal?.form)
-      .filter((form): form is string => form !== undefined && form !== entity.form?.queryName);
+      .flatMap((op) => op.modal?.forms ?? (op.modal?.form ? [op.modal.form] : []))
+      .filter((form) => form !== entity.form?.queryName);
     for (const formName of new Set(opened)) {
       const query = this.operation(formName);
       if (query && fields(query.selectionSet).some((f) => f.name.value === "GetDynamicForm") && !entity.forms.some((f) => f.queryName === formName)) {
@@ -1294,7 +1310,9 @@ export class Extractor {
           minSelectedItems: minItems === undefined ? undefined : Number(minItems),
           maxSelectedItems: maxItems === undefined ? undefined : Number(maxItems),
         };
-        for (const extra of context.fields.map((f) => f.name.value).filter((n) => !["activeViewMode", "entitiesSelectionType", "labelForTooltip", "requiresSameType", "minSelectedItems", "maxSelectedItems"].includes(n)))
+        const matches = list(objectField(context, "matchMetadataValue")).filter((m): m is ObjectValueNode => m.kind === Kind.OBJECT);
+        if (matches.length) operation.context.matches = matches.map((m) => ({ key: scalar(objectField(m, "matchKey")) ?? "", value: scalar(objectField(m, "matchValue")) ?? "" }));
+        for (const extra of context.fields.map((f) => f.name.value).filter((n) => !["activeViewMode", "entitiesSelectionType", "labelForTooltip", "requiresSameType", "minSelectedItems", "maxSelectedItems", "matchMetadataValue"].includes(n)))
           this.note(`${where}: bulk operation context field ${extra} has no term; left out`);
       }
       const modal = objectField(entry, "bulkOperationModal");
@@ -1303,9 +1321,31 @@ export class Extractor {
         if (objectField(modal, "formQuery")) this.note(`${where}: a bulk operation modal uses formQuery (singular), the old form; declared as a form reference`);
         const close = scalar(objectField(modal, "askForCloseConfirmation"));
         const pickerList = scalar(objectField(modal, "customQueryEntityPickerList"));
+        const formNames = list(forms).map((f) => scalar(f)).filter((f): f is string => f !== undefined);
+        const flag = (name: string) => ((v) => (v === undefined ? undefined : v === "true"))(scalar(objectField(modal, name)));
+        const skipped = list(objectField(modal, "skipItemsWithRelationDuringBulkDelete")).map((v) => scalar(v) ?? "");
+        const limit = scalar(objectField(modal, "selectionLimit"));
+        const suggestion = objectField(modal, "survivorSuggestion");
         operation.modal = {
           kind: this.instance("ModalKind", scalar(objectField(modal, "typeModal")), `${where} bulk operation`),
-          form: scalar(list(forms)[0]),
+          form: formNames[0],
+          forms: formNames.length > 1 ? formNames : undefined,
+          skipRelatedItems: skipped.length ? skipped : undefined,
+          imageCrop: flag("enableImageCrop"),
+          cropCoordinatesKey: scalar(objectField(modal, "keyToSaveCropCoordinates")),
+          replaceExistingRelations: flag("replaceExistingRelations"),
+          selectionLimit: limit === undefined ? undefined : Number(limit),
+          survivorSuggestion:
+            suggestion?.kind === Kind.OBJECT
+              ? {
+                  strategy: this.instance("SurvivorStrategy", scalar(objectField(suggestion, "strategy")), `${where} survivor suggestion`),
+                  autoSelect: ((v) => (v === undefined ? undefined : v === "true"))(scalar(objectField(suggestion, "autoSelect"))),
+                  requireRecommendedSurvivor: ((v) => (v === undefined ? undefined : v === "true"))(scalar(objectField(suggestion, "requireRecommendedSurvivor"))),
+                  hiddenVerdicts: list(objectField(suggestion, "hiddenVerdicts"))
+                    .map((v) => this.instance("MergeVerdict", scalar(v), `${where} survivor suggestion`))
+                    .filter((v): v is string => v !== undefined),
+                }
+              : undefined,
           relationType: scalar(objectField(modal, "formRelationType")),
           closeConfirmation: close === undefined ? undefined : close === "true",
           permission: this.instance("Permission", scalar(objectField(modal, "neededPermission")), `${where} bulk operation`),
@@ -1313,7 +1353,7 @@ export class Extractor {
           navigateAfterCreation: scalar(objectField(modal, "pageToNavigateToAfterCreation")),
         };
         for (const f of modal.fields)
-          if (!["typeModal", "formQueries", "formQuery", "formRelationType", "askForCloseConfirmation", "neededPermission", "customQueryEntityPickerList", "customQueryEntityPickerListFilters", "pageToNavigateToAfterCreation"].includes(f.name.value))
+          if (!["typeModal", "formQueries", "formQuery", "formRelationType", "askForCloseConfirmation", "neededPermission", "customQueryEntityPickerList", "customQueryEntityPickerListFilters", "pageToNavigateToAfterCreation", "skipItemsWithRelationDuringBulkDelete", "enableImageCrop", "keyToSaveCropCoordinates", "replaceExistingRelations", "selectionLimit", "survivorSuggestion"].includes(f.name.value))
             this.note(`${where}: bulk operation modal field ${f.name.value} has no term; left out`);
       }
       // the operations offered under this one (a dropdown)
@@ -1477,11 +1517,15 @@ export class Extractor {
         ...(op.context.requiresSameType !== undefined ? [`      elody:requiresSameType ${op.context.requiresSameType} ;`] : []),
         ...(op.context.minSelectedItems !== undefined ? [`      elody:minSelectedItems ${op.context.minSelectedItems} ;`] : []),
         ...(op.context.maxSelectedItems !== undefined ? [`      elody:maxSelectedItems ${op.context.maxSelectedItems} ;`] : []),
+        ...(op.context.matches ?? []).map((m) => `      elody:matchMetadataValue [ elody:matchKey ${q(m.key)} ; elody:matchValue ${q(m.value)} ] ;`),
         `      elody:tooltipLabel ${q(op.context.tooltip ?? "")} ] ;`,
       );
     if (op.modal) {
       const modal = [`      [ elody:modalKind ${op.modal.kind ?? "elody:DynamicFormModal"} ;`];
-      if (op.modal.form) {
+      if (op.modal.forms) {
+        modal.push(`      elody:forms ( ${op.modal.forms.map((f) => `ui:${f}`).join(" ")} ) ;`);
+        for (const f of op.modal.forms) if (!forms.has(f)) stubs.add(f);
+      } else if (op.modal.form) {
         modal.push(`      elody:form ui:${op.modal.form} ;`);
         if (!forms.has(op.modal.form)) stubs.add(op.modal.form);
       }
@@ -1490,6 +1534,19 @@ export class Extractor {
       if (op.modal.permission) modal.push(`      elody:permission ${op.modal.permission} ;`);
       if (op.modal.pickerNode) modal.push(`      elody:picker ui:${op.modal.pickerNode} ;`);
       if (op.modal.navigateAfterCreation) modal.push(`      elody:navigateAfterCreation ${q(op.modal.navigateAfterCreation)} ;`);
+      for (const t of op.modal.skipRelatedItems ?? []) modal.push(`      elody:skipRelatedItems ${q(t)} ;`);
+      if (op.modal.imageCrop !== undefined) modal.push(`      elody:imageCrop ${op.modal.imageCrop} ;`);
+      if (op.modal.cropCoordinatesKey) modal.push(`      elody:cropCoordinatesKey ${q(op.modal.cropCoordinatesKey)} ;`);
+      if (op.modal.replaceExistingRelations !== undefined) modal.push(`      elody:replaceExistingRelations ${op.modal.replaceExistingRelations} ;`);
+      if (op.modal.selectionLimit !== undefined) modal.push(`      elody:selectionLimit ${op.modal.selectionLimit} ;`);
+      const suggestion = op.modal.survivorSuggestion;
+      if (suggestion) {
+        const parts = [`elody:survivorStrategy ${suggestion.strategy ?? "elody:IdentifierIntegrityStrategy"}`];
+        if (suggestion.autoSelect !== undefined) parts.push(`elody:autoSelectSurvivor ${suggestion.autoSelect}`);
+        if (suggestion.requireRecommendedSurvivor !== undefined) parts.push(`elody:requireRecommendedSurvivor ${suggestion.requireRecommendedSurvivor}`);
+        for (const v of suggestion.hiddenVerdicts) parts.push(`elody:hiddenVerdict ${v}`);
+        modal.push(`      elody:survivorSuggestion [ ${parts.join(" ; ")} ] ;`);
+      }
       modal[modal.length - 1] = modal[modal.length - 1].replace(/ ;$/, " ] ;");
       lines.push(`    elody:modal`, ...modal);
     }

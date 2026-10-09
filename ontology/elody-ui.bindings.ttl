@@ -180,6 +180,10 @@ elody:CanCreate elody:enumValue "cancreate" .
 elody:CanDelete elody:enumValue "candelete" .
 elody:CanRead elody:enumValue "canread" .
 elody:CanUpdate elody:enumValue "canupdate" .
+elody:IdentifierIntegrityStrategy elody:enumValue "identifierIntegrity" .
+elody:ValidVerdict elody:enumValue "valid" .
+elody:InvalidVerdict elody:enumValue "invalid" .
+elody:UnknownVerdict elody:enumValue "unknown" .
 elody:ColorExtension elody:enumValue "color" .
 elody:ConfirmModal elody:enumValue "Confirm" .
 elody:CoordinatesDefault elody:enumValue "COORDINATES_DEFAULT" .

@@ -144,7 +144,13 @@ export type UiAction = {
 /** elody:menuInButtons renders the menu as buttons { contextMenu { ... } } (the newer form) */
 export type UiContextMenu = { forceShow: boolean; includeBasicActions: boolean; inButtons?: boolean; actions: UiAction[] };
 
-export type UiBulkOpContext = { activeViewMode?: string; selection: string; tooltip: string; requiresSameType?: boolean; minSelectedItems?: number; maxSelectedItems?: number };
+/** elody:matchMetadataValue: a metadata key and the value it must hold (matchMetadataValue) */
+export type UiMetadataMatch = { key: string; value: string };
+
+export type UiBulkOpContext = { activeViewMode?: string; selection: string; tooltip: string; requiresSameType?: boolean; minSelectedItems?: number; maxSelectedItems?: number; matchMetadataValue?: UiMetadataMatch[] };
+
+/** elody:survivorSuggestion on a merge modal (survivorSuggestion), enum values resolved */
+export type UiSurvivorSuggestion = { strategy: string; autoSelect?: boolean; requireRecommendedSurvivor?: boolean; hiddenVerdicts?: string[] };
 
 export type UiBulkOpModal = {
   typeModal: string;
@@ -158,6 +164,16 @@ export type UiBulkOpModal = {
   pickerFilters?: string;
   /** elody:navigateAfterCreation: pageToNavigateToAfterCreation */
   navigateAfterCreation?: string;
+  /** elody:forms: several forms offered (formQueries with several names); wins over formQuery */
+  formQueries?: string[];
+  /** elody:skipRelatedItems: skipItemsWithRelationDuringBulkDelete */
+  skipRelatedItems?: string[];
+  /** elody:imageCrop / elody:cropCoordinatesKey: enableImageCrop / keyToSaveCropCoordinates */
+  imageCrop?: boolean;
+  cropCoordinatesKey?: string;
+  replaceExistingRelations?: boolean;
+  selectionLimit?: number;
+  survivorSuggestion?: UiSurvivorSuggestion;
 };
 
 export type UiBulkOperation = {

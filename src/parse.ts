@@ -1057,6 +1057,8 @@ class Parse {
         minSelectedItems: typeof minItems === "number" ? minItems : undefined,
         maxSelectedItems: typeof maxItems === "number" ? maxItems : undefined,
       };
+      const matches = r.byOrder(r.nodes(contextNode, elody("matchMetadataValue")));
+      if (matches.length) context.matchMetadataValue = matches.map((m) => ({ key: r.value(m, elody("matchKey")) ?? "", value: r.value(m, elody("matchValue")) ?? "" }));
     }
     return {
       value: this.enumValue(node, elody("operationKind"), elody("BulkOperationKind"), elody("value")) ?? "",
@@ -1075,10 +1077,37 @@ class Parse {
             closeConfirmation: this.optionalFlag(modalNode, elody("closeConfirmation")),
             permission: this.enumValue(modalNode, elody("permission"), elody("Permission")),
             navigateAfterCreation: r.value(modalNode, elody("navigateAfterCreation")) || undefined,
+            ...this.modalSettings(modalNode),
             ...(r.node(modalNode, elody("picker")) ? (({ list, filters }) => ({ pickerList: list, pickerFilters: filters }))(this.pickerNames(r.node(modalNode, elody("picker"))!)) : {}),
           }
         : undefined,
     };
+  }
+
+  /** The modal settings of batch 15: several forms, skipped relations, image crop, relation replacement, selection limit, survivor suggestion. */
+  private modalSettings(modalNode: string): Partial<M.UiBulkOpModal> {
+    const r = this.r;
+    const out: Partial<M.UiBulkOpModal> = {};
+    const forms = r.listTerms(r.node(modalNode, elody("forms")));
+    if (forms?.length) out.formQueries = forms.map((term) => (term.termType === "Literal" ? term.value : this.queryNameOf(term.value, "form")));
+    const skipped = r.literals(modalNode, elody("skipRelatedItems"));
+    if (skipped.length) out.skipRelatedItems = skipped;
+    out.imageCrop = this.optionalFlag(modalNode, elody("imageCrop"));
+    out.cropCoordinatesKey = r.value(modalNode, elody("cropCoordinatesKey")) || undefined;
+    out.replaceExistingRelations = this.optionalFlag(modalNode, elody("replaceExistingRelations"));
+    const limit = r.literal(modalNode, elody("selectionLimit"));
+    if (typeof limit === "number") out.selectionLimit = limit;
+    const suggestion = r.node(modalNode, elody("survivorSuggestion"));
+    if (suggestion) {
+      const verdicts = r.nodes(suggestion, elody("hiddenVerdict")).map((v) => this.o.enumValue(v) ?? v);
+      out.survivorSuggestion = {
+        strategy: this.enumValue(suggestion, elody("survivorStrategy"), elody("SurvivorStrategy")) ?? "",
+        autoSelect: this.optionalFlag(suggestion, elody("autoSelectSurvivor")),
+        requireRecommendedSurvivor: this.optionalFlag(suggestion, elody("requireRecommendedSurvivor")),
+        hiddenVerdicts: verdicts.length ? verdicts : undefined,
+      };
+    }
+    return out;
   }
 
   /** elody:copyFromParent: the form's copyFromParent block. */

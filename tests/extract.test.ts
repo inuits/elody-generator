@@ -235,6 +235,7 @@ describe("extract: vlacc constructs", () => {
   }
   fragment workBulkOperations on Work {
     bulkOperationOptions { options(input: [{ icon: Edit, label: "bulk-operations.edit", value: "edit", actionContext: { entitiesSelectionType: someSelected, labelForTooltip: "t", requiresSameType: true, minSelectedItems: 2, maxSelectedItems: 2 } }
+      { label: "bulk-operations.merge", value: "mergeEntities", primary: false, actionContext: { entitiesSelectionType: someSelected, matchMetadataValue: [{ matchKey: "ocr_locked", matchValue: "false" }], labelForTooltip: "t" }, bulkOperationModal: { typeModal: BulkOperationsMerge, formQueries: ["GetFullWorkCreateForm", "GetBasicWorkCreateForm"], askForCloseConfirmation: true, neededPermission: canupdate, skipItemsWithRelationDuringBulkDelete: ["isAssetFor"], enableImageCrop: true, keyToSaveCropCoordinates: "coordinates", replaceExistingRelations: true, selectionLimit: 1, survivorSuggestion: { strategy: identifierIntegrity, autoSelect: true, requireRecommendedSurvivor: true, hiddenVerdicts: [invalid] } } }
       { icon: PlusCircle, label: "bulk-operations.create", value: "openDropdown", primary: true, subOptions: [{ icon: PlusCircle, label: "bulk-operations.create-word", value: "createEntity", bulkOperationModal: { typeModal: DynamicForm, formQueries: ["GetFullWorkCreateForm"], askForCloseConfirmation: true, neededPermission: cancreate, pageToNavigateToAfterCreation: detailPage } }] }]) { icon label value subOptions { ...subOptions } } }
   }
   fragment workSortOptions on Work {
@@ -285,6 +286,11 @@ describe("extract: vlacc constructs", () => {
     expect(ttl).toContain("elody:sortPrimary true");
     expect(ttl).toMatch(/elody:operationKind elody:OpenDropdownOperation ;\n    elody:primary true ;\n    elody:subOperation\n      \[ rdfs:label "bulk-operations.create-word" ;/);
     expect(ttl).toContain('elody:navigateAfterCreation "detailPage"');
+    expect(ttl).toContain('elody:matchMetadataValue [ elody:matchKey "ocr_locked" ; elody:matchValue "false" ] ;');
+    expect(ttl).toContain("elody:forms ( ui:GetFullWorkCreateForm ui:GetBasicWorkCreateForm ) ;");
+    expect(ttl).toContain('elody:skipRelatedItems "isAssetFor" ;\n      elody:imageCrop true ;\n      elody:cropCoordinatesKey "coordinates" ;\n      elody:replaceExistingRelations true ;\n      elody:selectionLimit 1 ;');
+    expect(ttl).toContain("elody:survivorSuggestion [ elody:survivorStrategy elody:IdentifierIntegrityStrategy ; elody:autoSelectSurvivor true ; elody:requireRecommendedSurvivor true ; elody:hiddenVerdict elody:InvalidVerdict ] ]");
+    expect(notes.filter((n) => n.includes("has no term"))).toEqual([]);
     // every Get*CreateForm of the type's file is a form of the type, spreads said
     expect(ttl).toContain("elody:form ui:GetFullWorkCreateForm , ui:GetBasicWorkCreateForm");
     expect(ttl).toContain('elody:copyFromParent [ elody:autoCopy true ; elody:copyKey [ sh:order 1 ; elody:key "ref_languages" ; elody:fromKey "ref_work_languages" ] ] ;');

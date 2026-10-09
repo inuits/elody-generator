@@ -380,6 +380,8 @@ function renderOperationEntry(operation: M.UiBulkOperation, indent: number): str
     lines.push(`${pad(indent + 2)}actionContext: {`);
     if (operation.context.activeViewMode) lines.push(`${pad(indent + 4)}activeViewMode: ${operation.context.activeViewMode}`);
     lines.push(`${pad(indent + 4)}entitiesSelectionType: ${operation.context.selection}`);
+    if (operation.context.matchMetadataValue?.length)
+      lines.push(`${pad(indent + 4)}matchMetadataValue: [${operation.context.matchMetadataValue.map((m) => `{ matchKey: "${m.key}", matchValue: "${m.value}" }`).join(", ")}]`);
     if (operation.context.requiresSameType !== undefined) lines.push(`${pad(indent + 4)}requiresSameType: ${operation.context.requiresSameType}`);
     if (operation.context.minSelectedItems !== undefined) lines.push(`${pad(indent + 4)}minSelectedItems: ${operation.context.minSelectedItems}`);
     if (operation.context.maxSelectedItems !== undefined) lines.push(`${pad(indent + 4)}maxSelectedItems: ${operation.context.maxSelectedItems}`);
@@ -389,13 +391,27 @@ function renderOperationEntry(operation: M.UiBulkOperation, indent: number): str
   if (operation.modal) {
     lines.push(`${pad(indent + 2)}bulkOperationModal: {`);
     lines.push(`${pad(indent + 4)}typeModal: ${operation.modal.typeModal}`);
-    if (operation.modal.formQuery) lines.push(`${pad(indent + 4)}formQueries: ["${operation.modal.formQuery}"]`);
+    if (operation.modal.formQueries?.length) lines.push(`${pad(indent + 4)}formQueries: [${operation.modal.formQueries.map((f) => `"${f}"`).join(", ")}]`);
+    else if (operation.modal.formQuery) lines.push(`${pad(indent + 4)}formQueries: ["${operation.modal.formQuery}"]`);
     if (operation.modal.formRelationType) lines.push(`${pad(indent + 4)}formRelationType: "${operation.modal.formRelationType}"`);
     if (operation.modal.closeConfirmation !== undefined) lines.push(`${pad(indent + 4)}askForCloseConfirmation: ${operation.modal.closeConfirmation}`);
     if (operation.modal.permission) lines.push(`${pad(indent + 4)}neededPermission: ${operation.modal.permission}`);
     if (operation.modal.pickerList) lines.push(`${pad(indent + 4)}customQueryEntityPickerList: "${operation.modal.pickerList}"`);
     if (operation.modal.pickerFilters) lines.push(`${pad(indent + 4)}customQueryEntityPickerListFilters: "${operation.modal.pickerFilters}"`);
     if (operation.modal.navigateAfterCreation) lines.push(`${pad(indent + 4)}pageToNavigateToAfterCreation: ${operation.modal.navigateAfterCreation}`);
+    if (operation.modal.skipRelatedItems?.length) lines.push(`${pad(indent + 4)}skipItemsWithRelationDuringBulkDelete: [${operation.modal.skipRelatedItems.map((t) => `"${t}"`).join(", ")}]`);
+    if (operation.modal.imageCrop !== undefined) lines.push(`${pad(indent + 4)}enableImageCrop: ${operation.modal.imageCrop}`);
+    if (operation.modal.cropCoordinatesKey) lines.push(`${pad(indent + 4)}keyToSaveCropCoordinates: "${operation.modal.cropCoordinatesKey}"`);
+    if (operation.modal.replaceExistingRelations !== undefined) lines.push(`${pad(indent + 4)}replaceExistingRelations: ${operation.modal.replaceExistingRelations}`);
+    if (operation.modal.selectionLimit !== undefined) lines.push(`${pad(indent + 4)}selectionLimit: ${operation.modal.selectionLimit}`);
+    const suggestion = operation.modal.survivorSuggestion;
+    if (suggestion) {
+      lines.push(`${pad(indent + 4)}survivorSuggestion: {`, `${pad(indent + 6)}strategy: ${suggestion.strategy}`);
+      if (suggestion.autoSelect !== undefined) lines.push(`${pad(indent + 6)}autoSelect: ${suggestion.autoSelect}`);
+      if (suggestion.requireRecommendedSurvivor !== undefined) lines.push(`${pad(indent + 6)}requireRecommendedSurvivor: ${suggestion.requireRecommendedSurvivor}`);
+      if (suggestion.hiddenVerdicts?.length) lines.push(`${pad(indent + 6)}hiddenVerdicts: [${suggestion.hiddenVerdicts.join(", ")}]`);
+      lines.push(`${pad(indent + 4)}}`);
+    }
     lines.push(`${pad(indent + 2)}}`);
   }
   if (operation.subOptions?.length) {
