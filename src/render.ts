@@ -216,10 +216,22 @@ function renderFilterOptions(options: NonNullable<M.UiFilter["options"]>, indent
           `${pad(indent + 4)}value: "*"`,
           ...(options.distinctBy ? [`${pad(indent + 4)}distinct_by: "${options.distinctBy}"`] : []),
           ...(options.matchExact !== undefined ? [`${pad(indent + 4)}match_exact: ${options.matchExact}`] : []),
+          ...(options.operator ? [`${pad(indent + 4)}operator: ${options.operator}`] : []),
           `${pad(indent + 2)}}`,
         ]
       : []),
-    `${pad(indent + 2)}{ type: type, value: "${options.type}" }`,
+    // the further inputs, between the search and the type
+    ...(options.inputs ?? []).flatMap((input) => [
+      `${pad(indent + 2)}{`,
+      `${pad(indent + 4)}type: ${input.kind}`,
+      `${pad(indent + 4)}key: ["${input.key}"]`,
+      `${pad(indent + 4)}value: ${Array.isArray(input.value) ? `[${input.value.map((v) => `"${v}"`).join(", ")}]` : `"${input.value}"`}`,
+      ...(input.distinctBy ? [`${pad(indent + 4)}distinct_by: "${input.distinctBy}"`] : []),
+      ...(input.matchExact !== undefined ? [`${pad(indent + 4)}match_exact: ${input.matchExact}`] : []),
+      ...(input.operator ? [`${pad(indent + 4)}operator: ${input.operator}`] : []),
+      `${pad(indent + 2)}}`,
+    ]),
+    ...(options.type ? [`${pad(indent + 2)}{ type: type, value: "${options.type}"${options.typeOperator ? `, operator: ${options.typeOperator}` : ""} }`] : []),
     `${pad(indent)}]`,
   ];
   // the inputs asked back, every one of them (what is asked back beyond the client's does not count):

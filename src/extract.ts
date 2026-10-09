@@ -164,7 +164,16 @@ type Filter = {
   defaults: string[];
   defaultAsList: boolean;
   hidden: boolean;
-  options?: { type: string; key?: string; matchExact?: boolean; distinctBy?: string };
+  options?: {
+    type?: string;
+    key?: string;
+    matchExact?: boolean;
+    distinctBy?: string;
+    operator?: string;
+    typeOperator?: string;
+    /** the inputs beyond the search and the type, in order */
+    inputs?: { kind?: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; operator?: string }[];
+  };
   staticOptions?: { label: string; value: string }[];
   selectionSpread?: string;
   optionsLabel?: string;
@@ -1116,17 +1125,35 @@ export class Extractor {
       const retrieving = argument(field, "advancedFilterInputForRetrievingOptions");
       if (retrieving) {
         const inputs = list(retrieving).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT);
-        const text = inputs.find((o) => scalar(objectField(o, "type")) === "text");
+        // the search: the first text input over "*"; the type input; every other input is a further one
+        const text = inputs.find((o) => scalar(objectField(o, "type")) === "text" && scalar(objectField(o, "value")) === "*");
         const type = inputs.find((o) => scalar(objectField(o, "type")) === "type");
         const typeValue = type ? scalar(objectField(type, "value")) : undefined;
-        if (typeValue)
+        const flag = (o: ObjectValueNode, name: string) => ((v) => (v === undefined ? undefined : v === "true"))(scalar(objectField(o, name)));
+        const others = inputs.filter((o) => o !== text && o !== type);
+        if (typeValue || text || others.length)
           filter.options = {
             type: typeValue,
             key: text ? scalar(list(objectField(text, "key"))[0]) : undefined,
-            matchExact: text && scalar(objectField(text, "match_exact")) !== undefined ? scalar(objectField(text, "match_exact")) === "true" : undefined,
+            matchExact: text ? flag(text, "match_exact") : undefined,
             distinctBy: text ? scalar(objectField(text, "distinct_by")) : undefined,
+            operator: text ? scalar(objectField(text, "operator")) : undefined,
+            typeOperator: type ? scalar(objectField(type, "operator")) : undefined,
+            inputs: others.length
+              ? others.map((o) => {
+                  const value = objectField(o, "value");
+                  return {
+                    kind: this.instance("FilterKind", scalar(objectField(o, "type")), `${where} filter ${alias(field)} option input`),
+                    key: scalar(list(objectField(o, "key"))[0]) ?? "",
+                    value: value?.kind === Kind.LIST ? list(value).map((v) => scalar(v) ?? "") : (scalar(value) ?? ""),
+                    matchExact: flag(o, "match_exact"),
+                    distinctBy: scalar(objectField(o, "distinct_by")),
+                    operator: scalar(objectField(o, "operator")),
+                  };
+                })
+              : undefined,
           };
-        else this.note(`${where}: filter ${alias(field)} fetches its options in a way the vocabulary cannot say (no type input); its option source is left out`);
+        else this.note(`${where}: filter ${alias(field)} fetches its options without any input; its option source is left out`);
       }
       // a shared fragment as the selection set (...advancedFilter)
       const selectionSpreads = spreads(field.selectionSet);
@@ -1488,10 +1515,19 @@ export class Extractor {
     for (const [i, option] of (f.staticOptions ?? []).entries())
       lines.push(`    elody:option [ sh:order ${i + 1} ; elody:labelKey ${q(option.label)} ; elody:value ${q(option.value)} ] ;`);
     if (f.options) {
-      lines.push(`    elody:optionsType ${q(f.options.type)} ;`);
+      if (f.options.type !== undefined) lines.push(`    elody:optionsType ${q(f.options.type)} ;`);
       if (f.options.key !== undefined) lines.push(`    elody:optionsKey ${q(f.options.key)} ;`);
       if (f.options.matchExact !== undefined) lines.push(`    elody:optionsMatchExact ${f.options.matchExact} ;`);
       if (f.options.distinctBy) lines.push(`    elody:optionsDistinctBy ${q(f.options.distinctBy)} ;`);
+      if (f.options.operator) lines.push(`    elody:optionsOperator ${q(f.options.operator)} ;`);
+      if (f.options.typeOperator) lines.push(`    elody:optionsTypeOperator ${q(f.options.typeOperator)} ;`);
+      for (const [i, input] of (f.options.inputs ?? []).entries()) {
+        const parts = [`sh:order ${i + 1}`, `elody:inputKind ${input.kind ?? "elody:TextFilter"}`, `elody:key ${q(input.key)}`, `elody:value ${Array.isArray(input.value) ? `( ${input.value.map(q).join(" ")} )` : q(input.value)}`];
+        if (input.distinctBy) parts.push(`elody:inputDistinctBy ${q(input.distinctBy)}`);
+        if (input.matchExact !== undefined) parts.push(`elody:inputMatchExact ${input.matchExact}`);
+        if (input.operator) parts.push(`elody:inputOperator ${q(input.operator)}`);
+        lines.push(`    elody:optionsInput [ ${parts.join(" ; ")} ] ;`);
+      }
     }
     lines.push(`    elody:filterKind ${f.kind} ;`);
     if (!f.keyAsList && f.key !== undefined && !f.keys) lines.push(`    elody:keyAsList false ;`);

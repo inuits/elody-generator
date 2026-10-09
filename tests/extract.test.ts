@@ -81,7 +81,7 @@ describe("extract: what hand-written documents say", () => {
     advancedFilters {
       type: advancedFilter(type: type) { type defaultValue(value: "user") hidden(value: true) }
       language: advancedFilter(type: selection key: ["vliz:1|properties.has_language.value"] label: "metadata.labels.language" isDisplayedByDefault: true
-        advancedFilterInputForRetrievingOptions: [{ type: text key: ["vliz:1|properties.title.value"] value: "*" match_exact: false } { type: type, value: "language" }]) {
+        advancedFilterInputForRetrievingOptions: [{ type: text key: ["vliz:1|properties.title.value"] value: "*" match_exact: false operator: or } { type: selection key: ["vliz:1|properties.level.value"] value: ["Rug", "Groeirubriek"] distinct_by: "properties.level.value" match_exact: true } { type: text key: ["vliz:1|properties.audience.value"] value: "ZIZO jeugd" match_exact: true operator: or } { type: type, value: "language", operator: and }]) {
         type key label isDisplayedByDefault advancedFilterInputForRetrievingOptions { type key value match_exact } tooltip(value: true)
       }
     }
@@ -99,6 +99,10 @@ describe("extract: what hand-written documents say", () => {
     expect(ttl).toContain("dash:readOnly true");
     expect(ttl).toContain("elody:mode elody:TableView");
     expect(ttl).toContain('elody:optionsType "language"');
+    expect(ttl).toContain('elody:optionsOperator "or" ;');
+    expect(ttl).toContain('elody:optionsTypeOperator "and" ;');
+    expect(ttl).toContain('elody:optionsInput [ sh:order 1 ; elody:inputKind elody:SelectionFilter ; elody:key "vliz:1|properties.level.value" ; elody:value ( "Rug" "Groeirubriek" ) ; elody:inputDistinctBy "properties.level.value" ; elody:inputMatchExact true ] ;');
+    expect(ttl).toContain('elody:optionsInput [ sh:order 2 ; elody:inputKind elody:TextFilter ; elody:key "vliz:1|properties.audience.value" ; elody:value "ZIZO jeugd" ; elody:inputMatchExact true ; elody:inputOperator "or" ] ;');
     expect(ttl).toContain("elody:field em:first_name , em:language , em:email");
     // relationValues on the detail page only, which the generator derives: nothing to say
     expect(ttl).not.toContain("elody:relationValues");

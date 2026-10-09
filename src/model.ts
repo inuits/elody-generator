@@ -99,7 +99,8 @@ export type UiFilter = {
   /** elody:parentFilterKey: the parentKey argument of a selection filter */
   parentKey?: string;
   /** elody:optionsType & co: a selection filter fetches its options from the entities of a type */
-  options?: { type: string; key?: string; matchExact?: boolean; distinctBy?: string };
+  /** type left out: the search is scoped by its inputs alone */
+  options?: { type?: string; key?: string; matchExact?: boolean; distinctBy?: string; operator?: string; typeOperator?: string; inputs?: UiOptionsInput[] };
   /** elody:keys: several keys, in order (key: ["a", "b"]) */
   keys?: string[];
   /** elody:selectionSpread: a shared fragment as the filter's selection set (...advancedFilter) */
@@ -143,6 +144,9 @@ export type UiAction = {
 
 /** elody:menuInButtons renders the menu as buttons { contextMenu { ... } } (the newer form) */
 export type UiContextMenu = { forceShow: boolean; includeBasicActions: boolean; inButtons?: boolean; actions: UiAction[] };
+
+/** elody:optionsInput: a further input of a selection filter's option search; value a string or a list */
+export type UiOptionsInput = { kind: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; operator?: string; order: number };
 
 /** elody:matchMetadataValue: a metadata key and the value it must hold (matchMetadataValue) */
 export type UiMetadataMatch = { key: string; value: string };

@@ -987,12 +987,15 @@ class Parse {
             as: String(r.value(r.node(node, elody("lookup"))!, elody("lookupAs")) ?? ""),
           }
         : undefined,
-      options: r.value(node, elody("optionsType"))
+      options: r.has(node, elody("optionsType")) || r.has(node, elody("optionsKey")) || r.has(node, elody("optionsInput"))
         ? {
-            type: String(r.value(node, elody("optionsType"))),
+            type: r.value(node, elody("optionsType")) || undefined,
             key: r.value(node, elody("optionsKey")) || undefined,
             matchExact: this.optionalFlag(node, elody("optionsMatchExact")),
             distinctBy: r.value(node, elody("optionsDistinctBy")) || undefined,
+            operator: r.value(node, elody("optionsOperator")) || undefined,
+            typeOperator: r.value(node, elody("optionsTypeOperator")) || undefined,
+            inputs: r.nodes(node, elody("optionsInput")).length ? r.byOrder(r.nodes(node, elody("optionsInput"))).map((input) => this.optionsInput(input)) : undefined,
           }
         : undefined,
       selectionSpread: r.value(node, elody("selectionSpread")) || undefined,
@@ -1081,6 +1084,22 @@ class Parse {
             ...(r.node(modalNode, elody("picker")) ? (({ list, filters }) => ({ pickerList: list, pickerFilters: filters }))(this.pickerNames(r.node(modalNode, elody("picker"))!)) : {}),
           }
         : undefined,
+    };
+  }
+
+  /** elody:optionsInput: a further input of the option search; its value a string or an RDF list. */
+  private optionsInput(node: string): M.UiOptionsInput {
+    const r = this.r;
+    const valueTerm = r.term(node, elody("value"));
+    const value = valueTerm && valueTerm.termType !== "Literal" ? r.list(valueTerm.value) : (valueTerm?.value ?? "");
+    return {
+      kind: this.enumValue(node, elody("inputKind"), elody("FilterKind")) ?? "text",
+      key: r.value(node, elody("key")) ?? "",
+      value,
+      matchExact: this.optionalFlag(node, elody("inputMatchExact")),
+      distinctBy: r.value(node, elody("inputDistinctBy")) || undefined,
+      operator: r.value(node, elody("inputOperator")) || undefined,
+      order: r.order(node),
     };
   }
 
