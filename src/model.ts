@@ -54,6 +54,16 @@ export type UiProperty = {
   detailLabelKey?: string;
   /** elody:cardKey: the key the card field reads under when neither the key nor the alias (typePill) */
   cardKey?: string;
+  /** elody:cardField / elody:cardEditable: the card shows the property as this field (relationRootData), with its input field */
+  cardField?: string;
+  cardEditable?: boolean;
+  /** elody:relationKey, elody:readsHost (uuid: $userUuid), elody:relationDirection: a value read on a relation of the host entity */
+  relationKey?: string;
+  readsHost?: boolean;
+  relationDirection?: string;
+  /** elody:parentEntityType / elody:parentKey: the parent entity found by a key (parentRelations: [{ entityType, key }]) */
+  parentEntityType?: string;
+  parentKey?: string;
   /** elody:repeatableMetadataKey (source repeatableMetadata), elody:parentRelationType (source parentRoot) */
   repeatableMetadataKey?: string;
   parentRelationType?: string;
@@ -234,6 +244,8 @@ export type UiPicker = {
   filtersType?: string;
   /** elody:relationValues on the list query: relationValues read on every result */
   relationValues?: boolean;
+  /** elody:readsHost on the list query: the document declares $userUuid */
+  readsHost?: boolean;
   /** false when an earlier type already emitted the document of that name */
   emitList?: boolean;
   emitFilters?: boolean;

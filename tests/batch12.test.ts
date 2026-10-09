@@ -24,16 +24,9 @@ describe("results rendered from an inline listing", () => {
     expect(warnings.map((w) => w.message)).toEqual([]);
     const work = renderEntityFile(entities.find((e) => e.graphqlType === "Work")!, "x");
     expect(work).toContain(
-      [
-        "        ... on Person {",
-        "          intialValues {",
-        '            name: keyValue(key: "name", source: metadata)',
-        '            life_dates: keyValue(key: "life_dates", source: metadata)',
-        "          }",
-        "          relationValues",
-        "          allowedViewModes {",
-      ].join("\n"),
+      ["        ... on Person {", "          intialValues {", '            name: keyValue(key: "name", source: metadata)', '            life_dates: keyValue(key: "life_dates", source: metadata)'].join("\n"),
     );
+    expect(work).toContain("          }\n          relationValues\n          allowedViewModes {");
     // the buttons form of the menu follows the fields; a link action has no action kind
     expect(work).toContain('        ... on Corporation {\n          ...minimalCorporation\n          teaserMetadata {\n            name: metaData {\n              label(input: "metadata.labels.name")\n              key(input: "name")\n            }\n            buttons {\n              contextMenu {\n                doLinkAction {\n                  label(input: "contextMenu.contextMenuLinkAction.followLink")\n                  icon(input: "AngleRight")\n                  __typename\n                }\n              }\n            }\n          }\n        }');
     expect(work).toContain("        uuid\n        type\n        relationValues\n        ... on Person {");

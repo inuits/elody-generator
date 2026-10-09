@@ -244,8 +244,13 @@ class Parse {
   private withEditWidgets(detail: M.UiDetail | undefined, parsed: { node: string; property: M.UiProperty }[], fragments: M.UiElementsFragment[] = []): M.UiDetail | undefined {
     // the panels of the detail columns and of the elements fragments the file holds
     const elements = [...(detail?.columns.flatMap((column) => column.elements) ?? []), ...fragments.flatMap((fragment) => fragment.elements)];
-    if (!elements.length) return detail;
+    if (!elements.length) {
+      for (const { node, property } of parsed) if (property.cardEditable && !property.editInputType) property.editInputType = this.editWidget(node);
+      return detail;
+    }
     const edited = new Set(elements.flatMap((element) => element.panels.filter((panel) => panel.editable).flatMap((panel) => panel.fields)));
+    // a card edited in place carries the property's widget too
+    for (const { node, property } of parsed) if (property.cardEditable && !property.editInputType) property.editInputType = this.editWidget(node);
     for (const { node, property } of parsed)
       if (edited.has(property.key) && !property.readOnly && !property.panelElement) property.editInputType = this.editWidget(node);
     return detail;
@@ -899,6 +904,13 @@ class Parse {
       validationAmount: typeof r.literal(node, elody("validationAmount")) === "number" ? (r.literal(node, elody("validationAmount")) as number) : undefined,
       validationExact: this.optionalFlag(node, elody("validationExact")),
       cardKey: r.value(node, elody("cardKey")) || undefined,
+      cardField: r.value(node, elody("cardField")) || undefined,
+      cardEditable: r.literal(node, elody("cardEditable")) === true,
+      relationKey: r.value(node, elody("relationKey")) || undefined,
+      readsHost: r.literal(node, elody("readsHost")) === true,
+      relationDirection: r.value(node, elody("relationDirection")) || undefined,
+      parentEntityType: r.value(node, elody("parentEntityType")) || undefined,
+      parentKey: r.value(node, elody("parentKey")) || undefined,
       detailLabelKey: r.value(node, elody("detailLabelKey")) || undefined,
       sortPrimary: r.literal(node, elody("sortPrimary")) === true,
       listingFormatter: this.optionalFlag(node, elody("listingFormatter")),
@@ -1284,6 +1296,7 @@ class Parse {
       queryName: names.list,
       filtersQueryName: names.filters,
       relationValues: r.literal(node, elody("relationValues")) === true,
+      readsHost: r.literal(node, elody("readsHost")) === true,
       // the document of a name goes with the first node that renders it: one with results, one with filters
       emitList: r.nodes(node, elody("result")).length ? this.emitsOnce(`document:${names.list}`) : false,
       emitFilters: r.nodes(node, elody("filter")).length ? this.emitsOnce(`document:${names.filters}`) : false,

@@ -261,6 +261,8 @@ elody:ReadMode elody:enumValue "readMode" .
 elody:RelationMetadataSource elody:enumValue "relationMetadata" .
 elody:RepeatableMetadataSource elody:enumValue "repeatableMetadata" .
 elody:ParentRootSource elody:enumValue "parentRoot" .
+elody:ParentMetadataSource elody:enumValue "parentMetadata" .
+elody:RelationRootdataSource elody:enumValue "relationRootdata" .
 elody:RelationPanel elody:enumValue "relation" .
 elody:RelationsSource elody:enumValue "relations" .
 elody:ReorderEntitiesOperation elody:enumValue "reorderEntities" .

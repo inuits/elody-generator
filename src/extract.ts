@@ -88,6 +88,13 @@ type Property = {
   validationAmount?: number;
   validationExact?: boolean;
   cardKey?: string;
+  cardField?: string;
+  cardEditable?: boolean;
+  relationKey?: string;
+  readsHost?: boolean;
+  relationDirection?: string;
+  parentEntityType?: string;
+  parentKey?: string;
   detailLabelKey?: string;
   sortPrimary?: boolean;
   listingFormatter?: boolean;
@@ -202,7 +209,7 @@ type FieldsFragment = { name: string; fields: FormField[] };
 type ElementsFragment = { name: string; elements: Element[] };
 type ValuesFragment = { name: string; cardName?: string; fields: string[] };
 
-type ListQuery = { node?: string; name: string; filtersName?: string; filtersType?: string; relationValues?: boolean; results: { type: string; fragments: string[]; listingNode?: string }[]; filters: Filter[] };
+type ListQuery = { node?: string; name: string; filtersName?: string; filtersType?: string; relationValues?: boolean; readsHost?: boolean; results: { type: string; fragments: string[]; listingNode?: string }[]; filters: Filter[] };
 type Picker = ListQuery;
 
 type Entity = {
@@ -279,6 +286,11 @@ export class Extractor {
    * The results of a list document: per type its fragment spreads and, for fields selected inline,
    * a listing of that document alone (minimal<Type>In<Query>, emitted inline).
    */
+  /** Whether a list document declares the host's uuid ($userUuid). */
+  private queryReadsHost(query: OperationDefinitionNode | undefined): boolean {
+    return (query?.variableDefinitions ?? []).some((v) => v.variable.name.value === "userUuid");
+  }
+
   /** Whether a list document reads relationValues on every result (outside the per-type selections). */
   private resultsRelationValues(query: OperationDefinitionNode | undefined): boolean {
     const entities = query ? fields(query.selectionSet).find((f) => f.name.value === "Entities") : undefined;
@@ -454,7 +466,21 @@ export class Extractor {
       const repeatable = str(field, "repeatableMetadataKey");
       if (repeatable !== undefined) property.repeatableMetadataKey = repeatable;
       const parent = list(argument(field, "parentRelations"))[0];
-      if (parent?.kind === Kind.OBJECT) property.parentRelationType = scalar(objectField(parent, "relationType"));
+      if (parent?.kind === Kind.OBJECT) {
+        property.parentRelationType = scalar(objectField(parent, "relationType"));
+        property.parentEntityType = scalar(objectField(parent, "entityType"));
+        property.parentKey = scalar(list(objectField(parent, "key"))[0]);
+      }
+      // a value on a relation of the host entity: relationKey, uuid: $userUuid, relationDirection
+      const relationKey = str(field, "relationKey");
+      if (relationKey !== undefined) property.relationKey = relationKey;
+      const uuid = argument(field, "uuid");
+      if (uuid) {
+        if (uuid.kind === Kind.VARIABLE && uuid.name.value === "userUuid") property.readsHost = true;
+        else this.note(`${where}: value ${a} reads uuid from something other than $userUuid; left out`);
+      }
+      const direction = str(field, "relationDirection");
+      if (direction !== undefined) property.relationDirection = direction;
       const containsKey = str(field, "containsRelationPropertyKey");
       if (containsKey !== undefined) {
         property.containsRelationPropertyKey = containsKey;
@@ -494,7 +520,7 @@ export class Extractor {
     const teaser = child(listing, "teaserMetadata");
     const cardIndex = new Map<Property, number>();
     for (const field of fields(teaser?.selectionSet)) {
-      if (field.name.value === "metaData") {
+      if (["metaData", "relationRootData", "relationMetaData"].includes(field.name.value)) {
         const key = input(child(field, "key")) ?? alias(field);
         // the value read under the card field's alias, when there is one (title: metaData { key(input: "key") } shows the title alias of key)
         const candidates = entity.properties.filter((p) => p.key === key || (p.alias ?? p.key) === key);
@@ -520,6 +546,24 @@ export class Extractor {
         if (unit) property.unit = this.instance("Unit", unit, `${where} ${key}`);
         const colSpan = input(child(field, "colSpan"));
         if (colSpan) property.colSpan = Number(colSpan);
+        if (field.name.value !== "metaData") property.cardField = field.name.value;
+        // a card edited in place: the input field sits on the card field
+        const widget = child(field, "inputField");
+        if (widget) {
+          property.cardEditable = true;
+          const type = str(widget, "type") ?? "baseTextField";
+          const base = BASE_FIELDS[type];
+          if (base) {
+            property.editor = property.editor ?? base.editor;
+            property.datatype = property.datatype ?? base.datatype;
+          } else property.clientField = property.clientField ?? type;
+          const validation = this.validation(child(widget, "validation"), `${where} card field ${key}`);
+          if (validation.required) property.required = true;
+          if (validation.rule) {
+            property.validationRule = validation.rule;
+            property.validationValue = validation.value;
+          }
+        }
       } else if (field.name.value === "thumbnail") {
         const filename = child(field, "filename");
         const before = fields(teaser?.selectionSet).slice(0, fields(teaser?.selectionSet).indexOf(field)).filter((f) => f.name.value === "metaData").length;
@@ -953,7 +997,7 @@ export class Extractor {
     const { block, filtersType } = this.advancedFiltersOf(filters);
     const node = this.mint(name, `${name}Picker`);
     this.pickerNodes.set(`${name}|${filtersName ?? ""}`, node);
-    entity.pickers.push({ node, name, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
+    entity.pickers.push({ node, name, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, readsHost: results.length ? this.queryReadsHost(query) || undefined : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
     return node;
   }
 
@@ -982,7 +1026,7 @@ export class Extractor {
     }
     const filters = filtersName ? this.operation(filtersName) : undefined;
     const { block, filtersType } = this.advancedFiltersOf(filters);
-    entity.listQueries.push({ node, name, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
+    entity.listQueries.push({ node, name, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, readsHost: results.length ? this.queryReadsHost(query) || undefined : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
     if (filtersName && !filters) this.note(`${where}: filters document ${filtersName} is not in these files; the list query declares no filters and the name stays`);
     return node;
   }
@@ -1311,6 +1355,13 @@ export class Extractor {
     if (p.editor || p.datatype || p.clientField) lines.push(`    sh:maxCount 1 ;`);
     if (p.required) lines.push(`    sh:minCount 1 ;`);
     if (p.cardKey) lines.push(`    elody:cardKey ${q(p.cardKey)} ;`);
+    if (p.cardField) lines.push(`    elody:cardField ${q(p.cardField)} ;`);
+    if (p.cardEditable) lines.push(`    elody:cardEditable true ;`);
+    if (p.relationKey) lines.push(`    elody:relationKey ${q(p.relationKey)} ;`);
+    if (p.readsHost) lines.push(`    elody:readsHost true ;`);
+    if (p.relationDirection) lines.push(`    elody:relationDirection ${q(p.relationDirection)} ;`);
+    if (p.parentEntityType) lines.push(`    elody:parentEntityType ${q(p.parentEntityType)} ;`);
+    if (p.parentKey) lines.push(`    elody:parentKey ${q(p.parentKey)} ;`);
     if (p.detailLabelKey) lines.push(`    elody:detailLabelKey ${q(p.detailLabelKey)} ;`);
     if (p.sortPrimary) lines.push(`    elody:sortPrimary true ;`);
     if (p.listingFormatter === false) lines.push(`    elody:listingFormatter false ;`);
@@ -1726,6 +1777,7 @@ export class Extractor {
       if (lq.filtersName) lines.push(`  elody:filtersQuery ${q(lq.filtersName)} ;`);
       if (lq.filtersType) lines.push(`  elody:filtersType ${q(lq.filtersType)} ;`);
       if (lq.relationValues) lines.push(`  elody:relationValues true ;`);
+      if (lq.readsHost) lines.push(`  elody:readsHost true ;`);
       if (lq.results.length)
         lines.push(
           `  elody:result`,

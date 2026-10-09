@@ -45,7 +45,15 @@ export function renderInitialValues(entity: M.UiEntity, indent: number, withForm
       // what the value is read with beyond its key: the key inside a repeatable group, the parent's relation, a relation property
       const extras = [
         property.repeatableMetadataKey !== undefined ? `, repeatableMetadataKey: "${property.repeatableMetadataKey}"` : "",
-        property.parentRelationType ? `, parentRelations: [{ relationType: "${property.parentRelationType}" }]` : "",
+        property.parentEntityType
+          ? `, parentRelations: [{ entityType: ${property.parentEntityType}${property.parentKey ? `, key: ["${property.parentKey}"]` : ""} }]`
+          : property.parentRelationType
+            ? `, parentRelations: [{ relationType: "${property.parentRelationType}" }]`
+            : "",
+        // a value on a relation of the host entity: the relation, the host's uuid (a query variable), the direction
+        property.readsHost ? ", uuid: $userUuid" : "",
+        property.relationDirection ? `, relationDirection: ${property.relationDirection}` : "",
+        property.relationKey ? `, relationKey: "${property.relationKey}"` : "",
         property.containsRelationPropertyKey ? `, containsRelationPropertyKey: "${property.containsRelationPropertyKey}"` : "",
         property.containsRelationPropertyValue !== undefined ? `, containsRelationPropertyValue: "${property.containsRelationPropertyValue}"` : "",
       ].join("");
@@ -87,7 +95,7 @@ export function renderTeaserFields(entity: M.UiEntity, indent: number): string {
   const at = Math.min(Math.max(entity.thumbnail?.order ?? 0, 0), fields.length);
   const rendered = fields.map((property) => {
       const lines = [
-        `${pad(indent)}${property.alias ?? property.key}: metaData {`,
+        `${pad(indent)}${property.alias ?? property.key}: ${property.cardField ?? "metaData"} {`,
         `${pad(indent + 2)}label(input: "${property.label ?? property.key}")`,
         `${pad(indent + 2)}key(input: "${property.cardKey ?? property.alias ?? property.key}")`,
       ];
@@ -95,6 +103,9 @@ export function renderTeaserFields(entity: M.UiEntity, indent: number): string {
       if (property.languageIn.length) lines.push(`${pad(indent + 2)}languageIn(input: ${stringList(property.languageIn)})`);
       if (property.colSpan !== undefined) lines.push(`${pad(indent + 2)}colSpan(input: "${property.colSpan}")`);
       if (property.unit) lines.push(`${pad(indent + 2)}unit(input: ${property.unit})`);
+      // a card edited in place carries the property's input field
+      const widget = property.cardEditable ? (property.editInputType ?? property.inputType) : undefined;
+      if (widget) lines.push(`${pad(indent + 2)}inputField(type: ${widget}) {`, `${pad(indent + 4)}...inputfield`, ...renderValidation(property, indent + 4), `${pad(indent + 2)}}`);
       lines.push(`${pad(indent)}}`);
       return lines.join("\n");
     });
@@ -585,6 +596,9 @@ export function renderListQueryDocuments(picker: M.UiPicker): string[] {
   ];
 }
 
+/** Whether a list document reads values relative to the host entity: it then takes $userUuid. */
+const readsHost = (picker: M.UiPicker): boolean => picker.readsHost === true || picker.results.some((result) => result.listing?.properties.some((property) => property.readsHost));
+
 export function renderListQuery(picker: M.UiPicker): string {
   // a result spreads its fragments and/or renders an inline listing
   const results = picker.results
@@ -603,6 +617,7 @@ export function renderListQuery(picker: M.UiPicker): string {
     "    $advancedSearchValue: [FilterInput]",
     "    $advancedFilterInputs: [AdvancedFilterInput!]!",
     "    $searchInputType: SearchInputType",
+    ...(readsHost(picker) ? ["    $userUuid: String!"] : []),
     "  ) {",
     "    Entities(",
     "      type: $type",

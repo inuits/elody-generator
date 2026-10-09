@@ -363,10 +363,10 @@ describe("extract: results selected inline", () => {
   fragment minimalWork on Work { intialValues { title: keyValue(key: "title", source: metadata) } teaserMetadata { title: metaData { label(input: "l") key(input: "title") } } ...minimalBaseEntity }
   fragment fullWork on Work { intialValues { title: keyValue(key: "title", source: metadata) } relationValues entityView { column { elements {
     Authors: entityListElement { label(input: "a") isCollapsed(input: false) entityTypes(input: [person]) relationType: label(input: "refAuthors") customQuery(input: "GetAuthors") customQueryFilters(input: "GetAuthorsInWorkFilters") } } } } }
-  query GetAuthors($type: Entitytyping!, $limit: Int, $skip: Int, $searchValue: SearchFilter!, $advancedSearchValue: [FilterInput], $advancedFilterInputs: [AdvancedFilterInput!]!, $searchInputType: SearchInputType) {
+  query GetAuthors($type: Entitytyping!, $limit: Int, $skip: Int, $searchValue: SearchFilter!, $advancedSearchValue: [FilterInput], $advancedFilterInputs: [AdvancedFilterInput!]!, $searchInputType: SearchInputType, $userUuid: String!) {
     Entities(type: $type, limit: $limit, skip: $skip, searchValue: $searchValue, advancedSearchValue: $advancedSearchValue, advancedFilterInputs: $advancedFilterInputs, searchInputType: $searchInputType) {
       count limit results { id uuid type
-        ... on Person { intialValues { name: keyValue(key: "name", source: metadata) } relationValues allowedViewModes { viewModes(input: [{ viewMode: ViewModesList }]) { ...viewModes } } teaserMetadata { name: metaData { label(input: "metadata.labels.name") key(input: "name") } } }
+        ... on Person { intialValues { name: keyValue(key: "name", source: metadata) main_author: keyValue(key: "main_author", source: relationMetadata, uuid: $userUuid, relationKey: "refAuthors") roles: keyValue(key: "roles", source: relationRootdata, uuid: $userUuid, relationKey: "isUserFor") } relationValues allowedViewModes { viewModes(input: [{ viewMode: ViewModesList }]) { ...viewModes } } teaserMetadata { name: metaData { label(input: "metadata.labels.name") key(input: "name") } roles: relationRootData { label(input: "metadata.labels.roles") key(input: "roles") inputField(type: rolesTypeField) { ...inputfield } } } }
         ... on Corporation { ...minimalCorporation __typename teaserMetadata { buttons { contextMenu { ...basicContextMenuActions doLinkAction { label(input: "l") icon(input: "AngleRight") __typename } } } name: metaData { label(input: "metadata.labels.name") key(input: "name") } } }
       } __typename } }
   query GetAuthorsInWorkFilters($entityType: String!) { EntityTypeFilters(type: $entityType) { advancedFilters { type: advancedFilter(type: type) { type defaultValue(value: "person") hidden(value: true) } } } }
@@ -378,6 +378,10 @@ describe("extract: results selected inline", () => {
     expect(ttl).toContain('[ elody:graphqlType "Person" ; sh:order 1 ; elody:listing ui:PersonInGetAuthorsUi ]');
     expect(ttl).toContain('[ elody:graphqlType "Corporation" ; sh:order 2 ; elody:fragment "minimalCorporation" ; elody:listing ui:CorporationInGetAuthorsUi ]');
     expect(ttl).toMatch(/ui:PersonInGetAuthorsUi\n  a elody:EntityUi ;\n  elody:graphqlType "Person" ;\n  elody:documentName "PersonInGetAuthors" ;\n  elody:emit "inline" ;/);
+    expect(ttl).toContain('elody:source elody:RelationMetadataSource ;');
+    expect(ttl).toContain('elody:relationKey "refAuthors" ;\n    elody:readsHost true ;');
+    expect(ttl).toContain('elody:cardField "relationRootData" ;\n    elody:cardEditable true ;');
+    expect(ttl).toContain('elody:clientInputField "rolesTypeField"');
     expect(ttl).toMatch(/ui:CorporationInGetAuthorsUi\n(?:.*\n)*?    elody:readsValue false/);
     expect(ttl).toMatch(/ui:CorporationInGetAuthorsUi\n(?:.*\n)*?  elody:contextMenu\n    \[ elody:includeBasicActions true ;\n    elody:menuInButtons true ;/);
     expect(ttl).toContain('elody:alias "doLinkAction" ;\n      elody:actionForm "doLinkAction" ;');
