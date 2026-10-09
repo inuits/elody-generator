@@ -234,7 +234,8 @@ describe("extract: vlacc constructs", () => {
     }
   }
   fragment workBulkOperations on Work {
-    bulkOperationOptions { options(input: [{ icon: Edit, label: "bulk-operations.edit", value: "edit", actionContext: { entitiesSelectionType: someSelected, labelForTooltip: "t", requiresSameType: true, minSelectedItems: 2, maxSelectedItems: 2 } }]) { icon label value } }
+    bulkOperationOptions { options(input: [{ icon: Edit, label: "bulk-operations.edit", value: "edit", actionContext: { entitiesSelectionType: someSelected, labelForTooltip: "t", requiresSameType: true, minSelectedItems: 2, maxSelectedItems: 2 } }
+      { icon: PlusCircle, label: "bulk-operations.create", value: "openDropdown", primary: true, subOptions: [{ icon: PlusCircle, label: "bulk-operations.create-word", value: "createEntity", bulkOperationModal: { typeModal: DynamicForm, formQueries: ["GetFullWorkCreateForm"], askForCloseConfirmation: true, neededPermission: cancreate, pageToNavigateToAfterCreation: detailPage } }] }]) { icon label value subOptions { ...subOptions } } }
   }
   fragment workSortOptions on Work {
     sortOptions { options(input: [{ icon: NoIcon, label: "metadata.labels.title", value: "title", primary: true }]) { icon label value } isAsc(input: asc) }
@@ -282,6 +283,8 @@ describe("extract: vlacc constructs", () => {
     expect(ttl).not.toContain("elody:activeViewMode");
     expect(ttl).toContain("elody:requiresSameType true ;\n      elody:minSelectedItems 2 ;\n      elody:maxSelectedItems 2 ;");
     expect(ttl).toContain("elody:sortPrimary true");
+    expect(ttl).toMatch(/elody:operationKind elody:OpenDropdownOperation ;\n    elody:primary true ;\n    elody:subOperation\n      \[ rdfs:label "bulk-operations.create-word" ;/);
+    expect(ttl).toContain('elody:navigateAfterCreation "detailPage"');
     // every Get*CreateForm of the type's file is a form of the type, spreads said
     expect(ttl).toContain("elody:form ui:GetFullWorkCreateForm , ui:GetBasicWorkCreateForm");
     expect(ttl).toContain('elody:copyFromParent [ elody:autoCopy true ; elody:copyKey [ sh:order 1 ; elody:key "ref_languages" ; elody:fromKey "ref_work_languages" ] ] ;');

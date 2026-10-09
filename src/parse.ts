@@ -1066,6 +1066,7 @@ class Parse {
       primary: typeof primary === "boolean" ? primary : undefined,
       can: r.literals(node, elody("can")),
       context,
+      subOptions: r.nodes(node, elody("subOperation")).length ? r.byOrder(r.nodes(node, elody("subOperation"))).map((sub) => this.bulkOperation(sub)) : undefined,
       modal: modalNode
         ? {
             typeModal: this.enumValue(modalNode, elody("modalKind"), elody("ModalKind"), elody("typeModal")) ?? "",
@@ -1073,6 +1074,7 @@ class Parse {
             formRelationType: r.value(modalNode, elody("formRelationType")),
             closeConfirmation: this.optionalFlag(modalNode, elody("closeConfirmation")),
             permission: this.enumValue(modalNode, elody("permission"), elody("Permission")),
+            navigateAfterCreation: r.value(modalNode, elody("navigateAfterCreation")) || undefined,
             ...(r.node(modalNode, elody("picker")) ? (({ list, filters }) => ({ pickerList: list, pickerFilters: filters }))(this.pickerNames(r.node(modalNode, elody("picker"))!)) : {}),
           }
         : undefined,

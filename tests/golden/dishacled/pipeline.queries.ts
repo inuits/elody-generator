@@ -154,6 +154,9 @@ export const pipelineQueries = gql`
         bulkOperationModal {
           ...bulkOperationModal
         }
+        subOptions {
+          ...subOptions
+        }
       }
     }
   }
@@ -298,6 +301,9 @@ export const pipelineQueries = gql`
           bulkOperationModal {
             ...bulkOperationModal
           }
+          subOptions {
+            ...subOptions
+          }
         }
       }
     }
@@ -353,6 +359,9 @@ export const pipelineQueries = gql`
           }
           bulkOperationModal {
             ...bulkOperationModal
+          }
+          subOptions {
+            ...subOptions
           }
         }
       }

@@ -187,7 +187,8 @@ type Operation = {
   primary?: boolean;
   can: string[];
   context?: { mode?: string; selection?: string; tooltip?: string; requiresSameType?: boolean; minSelectedItems?: number; maxSelectedItems?: number };
-  modal?: { kind?: string; form?: string; relationType?: string; closeConfirmation?: boolean; permission?: string; pickerNode?: string };
+  modal?: { kind?: string; form?: string; relationType?: string; closeConfirmation?: boolean; permission?: string; pickerNode?: string; navigateAfterCreation?: string };
+  subOptions?: Operation[];
 };
 
 type FlowStep = {
@@ -693,7 +694,7 @@ export class Extractor {
     const bulk = this.fragment(`${name.charAt(0).toLowerCase() + name.slice(1)}BulkOperations`);
     if (bulk) entity.operations = this.operations(child(child(bulk, "bulkOperationOptions"), "options"), where, entity);
     // the forms the operations open: declared when these files hold them as dynamic forms
-    const opened = [...(entity.operations ?? []), ...entity.customOperations.flatMap((c) => c.operations)]
+    const opened = Extractor.flattenOperations([...(entity.operations ?? []), ...entity.customOperations.flatMap((c) => c.operations)])
       .map((op) => op.modal?.form)
       .filter((form): form is string => form !== undefined && form !== entity.form?.queryName);
     for (const formName of new Set(opened)) {
@@ -985,7 +986,8 @@ export class Extractor {
 
   /** An entity picker's documents: the list (results per type) and the scoping filters. */
   private picker(name: string, filtersName: string | undefined, where: string, entity: Entity): string {
-    const known = entity.pickers.find((p) => p.name === name);
+    // one node per list and filters document pair: the same list with other filters is another picker
+    const known = entity.pickers.find((p) => p.name === name && (p.filtersName ?? "") === (filtersName ?? ""));
     if (known) return known.node ?? name;
     // a picker several types use keeps one node: the first type declares it, the others reference it
     const shared = this.pickerNodes.get(`${name}|${filtersName ?? ""}`);
@@ -1261,8 +1263,13 @@ export class Extractor {
   }
 
   private operations(options: FieldNode | undefined, where: string, entity: Entity): Operation[] {
+    return this.operationsOf(list(options ? argument(options, "input") : undefined), where, entity);
+  }
+
+  /** The operations in a list of input objects (the options, or the subOptions of one of them). */
+  private operationsOf(entries: ValueNode[], where: string, entity: Entity): Operation[] {
     const result: Operation[] = [];
-    for (const entry of list(options ? argument(options, "input") : undefined)) {
+    for (const entry of entries) {
       if (entry.kind !== Kind.OBJECT) continue;
       const operation: Operation = {
         label: scalar(objectField(entry, "label")),
@@ -1303,14 +1310,25 @@ export class Extractor {
           closeConfirmation: close === undefined ? undefined : close === "true",
           permission: this.instance("Permission", scalar(objectField(modal, "neededPermission")), `${where} bulk operation`),
           pickerNode: pickerList ? this.picker(pickerList, scalar(objectField(modal, "customQueryEntityPickerListFilters")), `${where} bulk operation`, entity) : undefined,
+          navigateAfterCreation: scalar(objectField(modal, "pageToNavigateToAfterCreation")),
         };
         for (const f of modal.fields)
-          if (!["typeModal", "formQueries", "formQuery", "formRelationType", "askForCloseConfirmation", "neededPermission", "customQueryEntityPickerList", "customQueryEntityPickerListFilters"].includes(f.name.value))
+          if (!["typeModal", "formQueries", "formQuery", "formRelationType", "askForCloseConfirmation", "neededPermission", "customQueryEntityPickerList", "customQueryEntityPickerListFilters", "pageToNavigateToAfterCreation"].includes(f.name.value))
             this.note(`${where}: bulk operation modal field ${f.name.value} has no term; left out`);
       }
+      // the operations offered under this one (a dropdown)
+      const subs = list(objectField(entry, "subOptions"));
+      if (subs.length) operation.subOptions = this.operationsOf(subs, where, entity);
+      for (const f of entry.fields.map((f) => f.name.value).filter((n) => !["icon", "label", "value", "primary", "can", "actionContext", "bulkOperationModal", "subOptions"].includes(n)))
+        this.note(`${where}: bulk operation field ${f} has no term; left out`);
       result.push(operation);
     }
     return result;
+  }
+
+  /** An operation and, recursively, the ones under it. */
+  private static flattenOperations(operations: Operation[]): Operation[] {
+    return operations.flatMap((op) => [op, ...Extractor.flattenOperations(op.subOptions ?? [])]);
   }
 
   // -- writing ----------------------------------------------------------------
@@ -1471,8 +1489,13 @@ export class Extractor {
       if (op.modal.closeConfirmation !== undefined) modal.push(`      elody:closeConfirmation ${op.modal.closeConfirmation} ;`);
       if (op.modal.permission) modal.push(`      elody:permission ${op.modal.permission} ;`);
       if (op.modal.pickerNode) modal.push(`      elody:picker ui:${op.modal.pickerNode} ;`);
+      if (op.modal.navigateAfterCreation) modal.push(`      elody:navigateAfterCreation ${q(op.modal.navigateAfterCreation)} ;`);
       modal[modal.length - 1] = modal[modal.length - 1].replace(/ ;$/, " ] ;");
       lines.push(`    elody:modal`, ...modal);
+    }
+    if (op.subOptions?.length) {
+      op.subOptions.forEach((sub, i) => (sub.order = i + 1));
+      lines.push(`    elody:subOperation`, op.subOptions.map((sub) => this.writeOperation(sub, stubs, forms).replace(/^/gm, "  ")).join(" ,\n") + " ;");
     }
     lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " ]");
     lines[0] = `    [ ${lines[0].trim()}`;

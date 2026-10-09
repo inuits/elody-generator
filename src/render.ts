@@ -368,41 +368,47 @@ export function renderContextMenu(entity: M.UiEntity, indent: number): string {
   return lines.join("\n");
 }
 
+/** One bulk operation as an input object at an indentation, with its sub-operations nested. */
+function renderOperationEntry(operation: M.UiBulkOperation, indent: number): string {
+  const lines = [`${pad(indent)}{`];
+  if (operation.icon) lines.push(`${pad(indent + 2)}icon: ${operation.icon}`);
+  if (operation.label) lines.push(`${pad(indent + 2)}label: "${operation.label}"`);
+  lines.push(`${pad(indent + 2)}value: "${operation.value}"`);
+  if (operation.primary !== undefined) lines.push(`${pad(indent + 2)}primary: ${operation.primary}`);
+  if (operation.can.length > 0) lines.push(`${pad(indent + 2)}can: [${operation.can.map((entry) => `"${entry}"`).join(", ")}]`);
+  if (operation.context) {
+    lines.push(`${pad(indent + 2)}actionContext: {`);
+    if (operation.context.activeViewMode) lines.push(`${pad(indent + 4)}activeViewMode: ${operation.context.activeViewMode}`);
+    lines.push(`${pad(indent + 4)}entitiesSelectionType: ${operation.context.selection}`);
+    if (operation.context.requiresSameType !== undefined) lines.push(`${pad(indent + 4)}requiresSameType: ${operation.context.requiresSameType}`);
+    if (operation.context.minSelectedItems !== undefined) lines.push(`${pad(indent + 4)}minSelectedItems: ${operation.context.minSelectedItems}`);
+    if (operation.context.maxSelectedItems !== undefined) lines.push(`${pad(indent + 4)}maxSelectedItems: ${operation.context.maxSelectedItems}`);
+    lines.push(`${pad(indent + 4)}labelForTooltip: "${operation.context.tooltip}"`);
+    lines.push(`${pad(indent + 2)}}`);
+  }
+  if (operation.modal) {
+    lines.push(`${pad(indent + 2)}bulkOperationModal: {`);
+    lines.push(`${pad(indent + 4)}typeModal: ${operation.modal.typeModal}`);
+    if (operation.modal.formQuery) lines.push(`${pad(indent + 4)}formQueries: ["${operation.modal.formQuery}"]`);
+    if (operation.modal.formRelationType) lines.push(`${pad(indent + 4)}formRelationType: "${operation.modal.formRelationType}"`);
+    if (operation.modal.closeConfirmation !== undefined) lines.push(`${pad(indent + 4)}askForCloseConfirmation: ${operation.modal.closeConfirmation}`);
+    if (operation.modal.permission) lines.push(`${pad(indent + 4)}neededPermission: ${operation.modal.permission}`);
+    if (operation.modal.pickerList) lines.push(`${pad(indent + 4)}customQueryEntityPickerList: "${operation.modal.pickerList}"`);
+    if (operation.modal.pickerFilters) lines.push(`${pad(indent + 4)}customQueryEntityPickerListFilters: "${operation.modal.pickerFilters}"`);
+    if (operation.modal.navigateAfterCreation) lines.push(`${pad(indent + 4)}pageToNavigateToAfterCreation: ${operation.modal.navigateAfterCreation}`);
+    lines.push(`${pad(indent + 2)}}`);
+  }
+  if (operation.subOptions?.length) {
+    lines.push(`${pad(indent + 2)}subOptions: [`);
+    for (const sub of operation.subOptions) lines.push(renderOperationEntry(sub, indent + 4));
+    lines.push(`${pad(indent + 2)}]`);
+  }
+  lines.push(`${pad(indent)}}`);
+  return lines.join("\n");
+}
+
 export function renderBulkOperationOptions(operations: M.UiBulkOperation[], indent: number): string {
-  const entries = operations.map((operation) => {
-    const lines = [`${pad(indent + 6)}{`];
-    if (operation.icon) lines.push(`${pad(indent + 8)}icon: ${operation.icon}`);
-    if (operation.label) lines.push(`${pad(indent + 8)}label: "${operation.label}"`);
-    lines.push(`${pad(indent + 8)}value: "${operation.value}"`);
-    if (operation.primary !== undefined) lines.push(`${pad(indent + 8)}primary: ${operation.primary}`);
-    if (operation.can.length > 0)
-      lines.push(`${pad(indent + 8)}can: [${operation.can.map((entry) => `"${entry}"`).join(", ")}]`);
-    if (operation.context) {
-      lines.push(`${pad(indent + 8)}actionContext: {`);
-      if (operation.context.activeViewMode) lines.push(`${pad(indent + 10)}activeViewMode: ${operation.context.activeViewMode}`);
-      lines.push(`${pad(indent + 10)}entitiesSelectionType: ${operation.context.selection}`);
-      if (operation.context.requiresSameType !== undefined) lines.push(`${pad(indent + 10)}requiresSameType: ${operation.context.requiresSameType}`);
-      if (operation.context.minSelectedItems !== undefined) lines.push(`${pad(indent + 10)}minSelectedItems: ${operation.context.minSelectedItems}`);
-      if (operation.context.maxSelectedItems !== undefined) lines.push(`${pad(indent + 10)}maxSelectedItems: ${operation.context.maxSelectedItems}`);
-      lines.push(`${pad(indent + 10)}labelForTooltip: "${operation.context.tooltip}"`);
-      lines.push(`${pad(indent + 8)}}`);
-    }
-    if (operation.modal) {
-      lines.push(`${pad(indent + 8)}bulkOperationModal: {`);
-      lines.push(`${pad(indent + 10)}typeModal: ${operation.modal.typeModal}`);
-      if (operation.modal.formQuery) lines.push(`${pad(indent + 10)}formQueries: ["${operation.modal.formQuery}"]`);
-      if (operation.modal.formRelationType)
-        lines.push(`${pad(indent + 10)}formRelationType: "${operation.modal.formRelationType}"`);
-      if (operation.modal.closeConfirmation !== undefined)
-        lines.push(`${pad(indent + 10)}askForCloseConfirmation: ${operation.modal.closeConfirmation}`);
-      if (operation.modal.permission) lines.push(`${pad(indent + 10)}neededPermission: ${operation.modal.permission}`);
-      if (operation.modal.pickerList) lines.push(`${pad(indent + 10)}customQueryEntityPickerList: "${operation.modal.pickerList}"`);
-      if (operation.modal.pickerFilters) lines.push(`${pad(indent + 10)}customQueryEntityPickerListFilters: "${operation.modal.pickerFilters}"`);
-      lines.push(`${pad(indent + 8)}}`);
-    }
-    lines.push(`${pad(indent + 6)}}`);
-    return lines.join("\n");
-  });
+  const entries = operations.map((operation) => renderOperationEntry(operation, indent + 6));
 
   const input =
     operations.length === 0
@@ -422,6 +428,10 @@ export function renderBulkOperationOptions(operations: M.UiBulkOperation[], inde
     `${pad(indent + 4)}}`,
     `${pad(indent + 4)}bulkOperationModal {`,
     `${pad(indent + 6)}...bulkOperationModal`,
+    `${pad(indent + 4)}}`,
+    // the sub-operations asked back regardless: what is asked back beyond the client's does not count
+    `${pad(indent + 4)}subOptions {`,
+    `${pad(indent + 6)}...subOptions`,
     `${pad(indent + 4)}}`,
     `${pad(indent + 2)}}`,
     `${pad(indent)}}`,

@@ -233,6 +233,9 @@ export const githubProcessorQueries = gql`
         bulkOperationModal {
           ...bulkOperationModal
         }
+        subOptions {
+          ...subOptions
+        }
       }
     }
   }

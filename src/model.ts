@@ -156,6 +156,8 @@ export type UiBulkOpModal = {
   /** elody:picker on the modal: the entity picker it opens (customQueryEntityPickerList / ...Filters) */
   pickerList?: string;
   pickerFilters?: string;
+  /** elody:navigateAfterCreation: pageToNavigateToAfterCreation */
+  navigateAfterCreation?: string;
 };
 
 export type UiBulkOperation = {
@@ -167,6 +169,8 @@ export type UiBulkOperation = {
   can: string[];
   context?: UiBulkOpContext;
   modal?: UiBulkOpModal;
+  /** elody:subOperation: the operations offered under this one (subOptions) */
+  subOptions?: UiBulkOperation[];
 };
 
 export type UiCustomBulkOperations = { queryName: string; operations: UiBulkOperation[] };

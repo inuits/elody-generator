@@ -105,6 +105,9 @@ export const alertQueries = gql`
         bulkOperationModal {
           ...bulkOperationModal
         }
+        subOptions {
+          ...subOptions
+        }
       }
     }
   }
