@@ -91,7 +91,7 @@ export const pickerFiltersNameFor = (queryName: string): string =>
 
 /** Element classes the ontology defines but the generator cannot render yet. */
 const UNRENDERED_ELEMENTS = [
-  "MediaFileElement", "SingleMediaFileElement", "MapElement", "GraphElement", "HierarchyListElement",
+  "MediaFileElement", "GraphElement", "HierarchyListElement",
   "ManifestViewerElement", "EntityViewerElement", "ActionElement", "WysiwygElement", "CommentsElement",
 ].map((name) => elody(name));
 
@@ -788,6 +788,13 @@ class Parse {
       excludeBaseSortOptions: r.literal(subject, elody("excludeBaseSortOptions")) === true,
       filtersFragmentName: r.value(subject, elody("filtersFragmentName")) || undefined,
       readsPermissions: r.literal(subject, elody("readsPermissions")) === true,
+      mapFeatureFields: r.nodes(subject, elody("mapFeatureField")).length
+        ? r.nodes(subject, elody("mapFeatureField")).map((path) => {
+            const key = pathToKey.get(path);
+            if (!key) throw new Error(`elody:mapFeatureField references ${compact(path)}, which no property shape declares as sh:path`);
+            return key;
+          })
+        : undefined,
       listingCore: r.literal(subject, elody("listingCore")) === true,
       deleteOptions: this.deleteOptions(r.node(subject, elody("deleteOptions"))),
       interface: r.literal(subject, elody("interface")) === true,
@@ -843,12 +850,7 @@ class Parse {
     return {
       mode: this.enumValue(node, elody("mode"), elody("ViewMode")) ?? "",
       order: r.order(node),
-      config: r.nodes(node, elody("config")).map((entry): M.UiConfigEntry => {
-        const term = r.term(entry, elody("value"));
-        const value =
-          term && term.termType !== "Literal" ? r.list(term.value) : (r.literal(entry, elody("value")) ?? "");
-        return { key: String(r.value(entry, elody("key")) ?? ""), value };
-      }),
+      config: this.configEntries(node),
     };
   }
 
@@ -1411,7 +1413,11 @@ class Parse {
         ? "list"
         : types.includes(elody("MarkdownElement"))
           ? "markdown"
-          : "window";
+          : types.includes(elody("SingleMediaFileElement"))
+            ? "singleMedia"
+            : types.includes(elody("MapElement"))
+              ? "map"
+              : "window";
 
     let customBulkOperations: string | undefined;
     const customTerm = r.term(element, elody("customBulkOperations"));
@@ -1445,6 +1451,8 @@ class Parse {
       pickerFilters = r.value(element, elody("pickerFilters"));
     }
 
+    const statusNode = r.node(element, elody("windowStatus"));
+    const actionsNode = r.node(element, elody("actionsOnResult"));
     return {
       kind,
       order: r.order(element),
@@ -1472,7 +1480,41 @@ class Parse {
       collapsed: r.literal(element, elody("collapsed")) === true,
       expandButton: this.optionalFlag(element, elody("expandButton")),
       panels: r.byOrder(r.nodes(element, elody("panel"))).map((panel) => this.panel(panel, pathToKey)),
+      windowStatus: statusNode
+        ? {
+            labelKey: r.value(statusNode, elody("labelKey")) || undefined,
+            statusKey: String(r.value(statusNode, elody("statusKey")) ?? ""),
+            statusInputField: String(r.value(statusNode, elody("statusInputField")) ?? ""),
+          }
+        : undefined,
+      actionsOnResult: actionsNode
+        ? {
+            resultKind: this.enumValue(actionsNode, elody("resultKind"), elody("ResultKind")) ?? "NoResult",
+            operations: r.byOrder(r.nodes(actionsNode, elody("operation"))).map((op) => this.bulkOperation(op)),
+          }
+        : undefined,
+      addEntitiesToForms: this.optionalFlag(element, elody("addEntitiesToForms")),
+      cropCoordinatesKey: r.value(element, elody("cropCoordinatesKey")) || undefined,
+      mapType: this.enumValue(element, elody("mapType"), elody("MapType")),
+      center: r.value(element, elody("center")) || undefined,
+      wktKey: r.value(element, elody("wktKey")) || undefined,
+      config: r.nodes(element, elody("config")).length ? this.configEntries(element) : undefined,
     };
+  }
+
+  /** elody:config entries of a node: a value is a literal, an RDF list, or a node of entries (an object). */
+  private configEntries(node: string): M.UiConfigEntry[] {
+    const r = this.r;
+    return r.nodes(node, elody("config")).map((entry): M.UiConfigEntry => {
+      const term = r.term(entry, elody("value"));
+      let value: M.UiConfigEntry["value"];
+      if (term?.termType === "NamedNode") value = { enum: this.o.enumValue(term.value) ?? localName(term.value) };
+      else if (term && term.termType !== "Literal") {
+        const members = r.listTerms(term.value);
+        value = members ? members.map((m) => m.value) : Object.fromEntries(this.configEntries(term.value).map((e) => [e.key, String(e.value)]));
+      } else value = r.literal(entry, elody("value")) ?? "";
+      return { key: String(r.value(entry, elody("key")) ?? ""), value };
+    });
   }
 
   private panel(panel: string, pathToKey: Map<string, string>): M.UiPanel {

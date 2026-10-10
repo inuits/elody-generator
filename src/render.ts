@@ -118,7 +118,13 @@ const configLiteral = (value: M.UiConfigEntry["value"]): string =>
     ? `[${value.map((entry) => `"${entry}"`).join(", ")}]`
     : typeof value === "string"
       ? `"${value}"`
-      : String(value);
+      : typeof value === "object"
+        ? "enum" in value
+          ? String(value.enum)
+          : `{ ${Object.entries(value)
+              .map(([k, v]) => `${k}: "${v}"`)
+              .join(", ")} }`
+        : String(value);
 
 export function renderViewModes(entity: M.UiEntity, indent: number): string {
   const modes = entity.viewModes
@@ -435,35 +441,39 @@ function renderOperationEntry(operation: M.UiBulkOperation, indent: number): str
   return lines.join("\n");
 }
 
-export function renderBulkOperationOptions(operations: M.UiBulkOperation[], indent: number): string {
-  const entries = operations.map((operation) => renderOperationEntry(operation, indent + 6));
-
+/** options(input: [...]) { ...the fields asked back } at an indentation: a bulk operations set or a list's actions on its result. */
+function renderOptionsBlock(operations: M.UiBulkOperation[], indent: number, contextAsFields = false): string {
+  const entries = operations.map((operation) => renderOperationEntry(operation, indent + 4));
   const input =
     operations.length === 0
-      ? `${pad(indent + 2)}options(input: []) {`
-      : [`${pad(indent + 2)}options(`, `${pad(indent + 4)}input: [`, ...entries, `${pad(indent + 4)}]`, `${pad(indent + 2)}) {`].join("\n");
-
+      ? `${pad(indent)}options(input: []) {`
+      : [`${pad(indent)}options(`, `${pad(indent + 2)}input: [`, ...entries, `${pad(indent + 2)}]`, `${pad(indent)}) {`].join("\n");
   return [
-    `${pad(indent)}bulkOperationOptions {`,
     input,
-    `${pad(indent + 4)}icon`,
-    `${pad(indent + 4)}label`,
-    `${pad(indent + 4)}value`,
-    `${pad(indent + 4)}primary`,
-    `${pad(indent + 4)}can`,
-    `${pad(indent + 4)}actionContext {`,
-    `${pad(indent + 6)}...actionContext`,
-    `${pad(indent + 4)}}`,
-    `${pad(indent + 4)}bulkOperationModal {`,
-    `${pad(indent + 6)}...bulkOperationModal`,
-    `${pad(indent + 4)}}`,
+    `${pad(indent + 2)}icon`,
+    `${pad(indent + 2)}label`,
+    `${pad(indent + 2)}value`,
+    `${pad(indent + 2)}primary`,
+    `${pad(indent + 2)}can`,
+    `${pad(indent + 2)}actionContext {`,
+    // the context's fields spelled out where the client reads a few (what is asked back beyond the client's does not count)
+    ...(contextAsFields
+      ? ["entitiesSelectionType", "activeViewMode", "matchMetadataValue {", "  matchKey", "  matchValue", "}", "labelForTooltip", "requiresSameType", "minSelectedItems", "maxSelectedItems"].map((f) => `${pad(indent + 4)}${f}`)
+      : [`${pad(indent + 4)}...actionContext`]),
+    `${pad(indent + 2)}}`,
+    `${pad(indent + 2)}bulkOperationModal {`,
+    `${pad(indent + 4)}...bulkOperationModal`,
+    `${pad(indent + 2)}}`,
     // the sub-operations asked back regardless: what is asked back beyond the client's does not count
-    `${pad(indent + 4)}subOptions {`,
-    `${pad(indent + 6)}...subOptions`,
-    `${pad(indent + 4)}}`,
+    `${pad(indent + 2)}subOptions {`,
+    `${pad(indent + 4)}...subOptions`,
     `${pad(indent + 2)}}`,
     `${pad(indent)}}`,
   ].join("\n");
+}
+
+export function renderBulkOperationOptions(operations: M.UiBulkOperation[], indent: number): string {
+  return [`${pad(indent)}bulkOperationOptions {`, renderOptionsBlock(operations, indent + 2), `${pad(indent)}}`].join("\n");
 }
 
 /** The copyFromParent block of a form tab: prefilled from the entity the form is opened on. */
@@ -710,7 +720,14 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
       ...(panel.multipleColumns !== undefined ? [`${pad(depth + 2)}canBeMultipleColumns(input: ${panel.multipleColumns})`] : []),
       ...(panel.can ? [`${pad(depth + 2)}can(input: "${panel.can}")`] : []),
     ];
-    for (const key of panel.fields) {
+    // the panel's items: its fields in order, each element at its sh:order position among them
+    const items: (string | M.UiElement)[] = [...panel.fields];
+    for (const element of [...panel.elements].sort((a, b) => a.order - b.order)) items.splice(Math.min(Math.max(element.order - 1, 0), items.length), 0, element);
+    for (const key of items) {
+      if (typeof key !== "string") {
+        lines.push(renderElement(key, depth + 2));
+        continue;
+      }
       const property = propertyByKey.get(key);
       if (!property) throw new Error(`panel "${panel.alias}" references undeclared property "${key}"`);
       if (property.panelElement) {
@@ -733,7 +750,6 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
       }
       lines.push(`${pad(depth + 2)}}`);
     }
-    for (const element of panel.elements) lines.push(renderElement(element, depth + 2));
     for (const spread of panel.spreads) lines.push(`${pad(depth + 2)}...${spread}`);
     lines.push(`${pad(depth)}}`);
     return lines.join("\n");
@@ -754,6 +770,7 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
       if (element.libraryMode) lines.push(`${pad(depth + 2)}baseLibraryMode(input: ${element.libraryMode})`);
       if (element.entityTypes.length > 0) lines.push(`${pad(depth + 2)}entityTypes(input: [${element.entityTypes.join(", ")}])`);
       if (element.relationType) lines.push(`${pad(depth + 2)}relationType: label(input: "${element.relationType}")`);
+      if (element.cropCoordinatesKey) lines.push(`${pad(depth + 2)}cropMediafileCoordinatesKey(input: "${element.cropCoordinatesKey}")`);
       if (element.listViewMode) lines.push(`${pad(depth + 2)}viewMode(input: ${element.listViewMode})`);
       if (element.can.length) lines.push(`${pad(depth + 2)}can(input: [${element.can.map((c) => `"${c}"`).join(", ")}])`);
       if (element.customQuery) lines.push(`${pad(depth + 2)}customQuery(input: "${element.customQuery}")`);
@@ -765,6 +782,31 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
       if (element.pickerList) lines.push(`${pad(depth + 2)}customQueryEntityPickerList(input: "${element.pickerList}")`);
       if (element.pickerFilters)
         lines.push(`${pad(depth + 2)}customQueryEntityPickerListFilters(input: "${element.pickerFilters}")`);
+      if (element.addEntitiesToForms !== undefined) lines.push(`${pad(depth + 2)}addEntitiesToForms(input: ${element.addEntitiesToForms})`);
+      if (element.actionsOnResult) {
+        lines.push(`${pad(depth + 2)}actionsOnResult {`, `${pad(depth + 4)}type(input: ${element.actionsOnResult.resultKind})`);
+        lines.push(renderOptionsBlock(element.actionsOnResult.operations, depth + 4, true));
+        lines.push(`${pad(depth + 2)}}`);
+      }
+      lines.push(`${pad(depth)}}`);
+      return lines.join("\n");
+    }
+    if (element.kind === "singleMedia")
+      return [
+        `${pad(depth)}singleMediaFileElement {`,
+        `${pad(depth + 2)}label(input: "${element.label ?? ""}")`,
+        `${pad(depth + 2)}isCollapsed(input: ${element.collapsed ?? false})`,
+        `${pad(depth)}}`,
+      ].join("\n");
+    if (element.kind === "map") {
+      const lines = [`${pad(depth)}mapElement {`, `${pad(depth + 2)}label(input: "${element.label ?? ""}")`, `${pad(depth + 2)}isCollapsed(input: ${element.collapsed ?? false})`];
+      if (element.mapType) lines.push(`${pad(depth + 2)}type(input: ${element.mapType})`);
+      if (element.center) lines.push(`${pad(depth + 2)}center(input: "${element.center}")`);
+      if (element.wktKey) lines.push(`${pad(depth + 2)}wkt: metaData {`, `${pad(depth + 4)}key(input: "${element.wktKey}")`, `${pad(depth + 2)}}`);
+      if (element.config?.length) {
+        const entries = element.config.map((entry) => `{ key: "${entry.key}", value: ${configLiteral(entry.value)} }`);
+        lines.push(`${pad(depth + 2)}config(input: [${entries.join(", ")}]) {`, `${pad(depth + 4)}key`, `${pad(depth + 4)}value`, `${pad(depth + 2)}}`);
+      }
       lines.push(`${pad(depth)}}`);
       return lines.join("\n");
     }
@@ -797,6 +839,11 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
       lines.push(`${pad(depth + 2)}}`);
     }
     if (element.hideInHistory) lines.push(`${pad(depth + 2)}hideInHistory(input: true)`);
+    if (element.windowStatus) {
+      const status = element.windowStatus;
+      const parts = [...(status.labelKey ? [`label: "${status.labelKey}"`] : []), `statusMetadataKey: "${status.statusKey}"`, `statusInputFieldType: ${status.statusInputField}`];
+      lines.push(`${pad(depth + 2)}windowElementStatus(windowElementStatusInput: { ${parts.join(", ")} }) {`, `${pad(depth + 4)}...windowElementStatus`, `${pad(depth + 2)}}`);
+    }
     for (const panel of element.panels) lines.push(renderPanel(panel, depth + 2));
     lines.push(`${pad(depth)}}`);
     return lines.join("\n");
@@ -944,6 +991,16 @@ export function listingParts(entity: M.UiEntity, indent: number): { head: string
     if (teaserFields) card.push(teaserFields);
     if (contextMenu && entity.contextMenu?.inButtons) card.push(contextMenu);
     card.push(`${pad(indent)}}`);
+  }
+  // the map view's popup fields, after the card
+  if (entity.mapFeatureFields?.length) {
+    card.push(`${pad(indent)}mapElement {`, `${pad(indent + 2)}mapFeatureMetadata {`);
+    for (const key of entity.mapFeatureFields) {
+      const property = entity.properties.find((p) => p.key === key && !p.alias) ?? entity.properties.find((p) => p.key === key);
+      if (!property) throw new Error(`elody:mapFeatureField references undeclared property "${key}"`);
+      card.push(`${pad(indent + 4)}${property.alias ?? key}: metaData {`, `${pad(indent + 6)}label(input: "${property.label ?? key}")`, `${pad(indent + 6)}key(input: "${key}")`, `${pad(indent + 4)}}`);
+    }
+    card.push(`${pad(indent + 2)}}`, `${pad(indent)}}`);
   }
   return { head, values, relation, modes, card };
 }

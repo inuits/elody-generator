@@ -132,6 +132,12 @@ export class Ontology {
       .find((candidate) => this.reading.hasType(candidate, classIri));
   }
 
+  /** The elody: instance of any enumeration whose enumValue is `value` (a config value written as an enum). */
+  instanceForAny(value: string): string | undefined {
+    const candidates = this.reading.subjectsWith(elody("enumValue"), value);
+    return candidates.find((candidate) => candidate.startsWith(elody(""))) ?? candidates[0];
+  }
+
   isDeprecated(iri: string): boolean {
     return this.reading.hasType(iri, `${OWL}DeprecatedProperty`);
   }

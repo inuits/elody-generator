@@ -73,8 +73,8 @@ describe("declaring the new elements", () => {
   });
 
   it("refuses an element the generator cannot render yet, naming it", async () => {
-    await expect(readUiDeclaration(declaration(`[ a elody:MapElement ; elody:mapType elody:PointsMap ]`))).rejects.toThrow(
-      /elody:MapElement .* not rendered by the generator yet/,
+    await expect(readUiDeclaration(declaration(`[ a elody:GraphElement ; rdfs:label "load" ; elody:graphType elody:LineGraph ; elody:datasource "measurements" ]`))).rejects.toThrow(
+      /elody:GraphElement .* not rendered by the generator yet/,
     );
   });
 });

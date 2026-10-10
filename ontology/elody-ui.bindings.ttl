@@ -180,6 +180,12 @@ elody:CanCreate elody:enumValue "cancreate" .
 elody:CanDelete elody:enumValue "candelete" .
 elody:CanRead elody:enumValue "canread" .
 elody:CanUpdate elody:enumValue "canupdate" .
+elody:NoResult elody:enumValue "NoResult" .
+elody:SatelliteView elody:enumValue "satellite" .
+elody:StandardView elody:enumValue "standard" .
+elody:HeatMode elody:enumValue "heatMode" .
+elody:DefaultMode elody:enumValue "default" .
+elody:PointsMode elody:enumValue "points" .
 elody:IdentifierIntegrityStrategy elody:enumValue "identifierIntegrity" .
 elody:ValidVerdict elody:enumValue "valid" .
 elody:InvalidVerdict elody:enumValue "invalid" .

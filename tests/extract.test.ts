@@ -226,7 +226,7 @@ describe("extract: vlacc constructs", () => {
     }
     relationValues
     entityView { column2: column { size(size: fifty) elements {
-      windowElement { label(input: "w") hideInHistory(input: true) expandButtonOptions { shown(input: false) } panels { panelType(input: metadata) isCollapsed(input: true) Awards: entityListElement { isCollapsed(input: false) entityTypes(input: [award]) relationType: label(input: "refAwards") customQuery(input: "GetAwardsInDetail") customQueryFilters(input: "GetAwardsInEntityFilters") } } }
+      windowElement { label(input: "w") hideInHistory(input: true) expandButtonOptions { shown(input: false) } windowElementStatus(windowElementStatusInput: { label: "metadata.labels.status" statusMetadataKey: "status_field" statusInputFieldType: recordVerifiedStatusTypeField }) { ...windowElementStatus } panels { panelType(input: metadata) isCollapsed(input: true) Awards: entityListElement { isCollapsed(input: false) entityTypes(input: [award]) relationType: label(input: "refAwards") customQuery(input: "GetAwardsInDetail") customQueryFilters(input: "GetAwardsInEntityFilters") addEntitiesToForms(input: true) actionsOnResult { type(input: NoResult) options(input: [{ icon: PlusCircle, label: "bulk-operations.create-award", value: "addRelation", primary: true, actionContext: { entitiesSelectionType: noneSelected, labelForTooltip: "t" }, bulkOperationModal: { typeModal: DynamicForm, formQueries: ["GetBasicWorkCreateForm"], formRelationType: "refAwards", askForCloseConfirmation: true, neededPermission: cancreate } }]) { icon label value primary actionContext { entitiesSelectionType labelForTooltip } bulkOperationModal { ...bulkOperationModal } } } } } }
       other: windowElement { label(input: "o") panels { panelType(input: metadata) isCollapsed(input: false) title: metaData { label(input: "metadata.labels.title") key(input: "title") } } }
       windowElement { label(input: "w") info: panels { panelHeaderContent(panelHeaderContentInput: { label: "p" }) { label } panelType(input: metadata) isCollapsed(input: false) isEditable(input: true) title: metaData { label(input: "metadata.labels.title") key(input: "title") } } }
       ...entityHistoryVersionList
@@ -291,6 +291,9 @@ describe("extract: vlacc constructs", () => {
     expect(ttl).toMatch(/elody:operationKind elody:OpenDropdownOperation ;\n    elody:primary true ;\n    elody:subOperation\n      \[ rdfs:label "bulk-operations.create-word" ;/);
     expect(ttl).toContain('elody:navigateAfterCreation "detailPage"');
     expect(ttl).toContain('elody:matchMetadataValue [ elody:matchKey "ocr_locked" ; elody:matchValue "false" ] ;');
+    expect(ttl).toContain('elody:windowStatus [ elody:labelKey "metadata.labels.status" ; elody:statusKey "status_field" ; elody:statusInputField "recordVerifiedStatusTypeField" ] ;');
+    expect(ttl).toContain("elody:addEntitiesToForms true ;");
+    expect(ttl).toMatch(/elody:actionsOnResult \[ elody:resultKind elody:NoResult ;\n\s+elody:operation\n\s+\[ rdfs:label "bulk-operations.create-award" ;/);
     expect(ttl).toContain("elody:forms ( ui:GetFullWorkCreateForm ui:GetBasicWorkCreateForm ) ;");
     expect(ttl).toContain('elody:skipRelatedItems "isAssetFor" ;\n      elody:imageCrop true ;\n      elody:cropCoordinatesKey "coordinates" ;\n      elody:replaceExistingRelations true ;\n      elody:selectionLimit 1 ;');
     expect(ttl).toContain("elody:survivorSuggestion [ elody:survivorStrategy elody:IdentifierIntegrityStrategy ; elody:autoSelectSurvivor true ; elody:requireRecommendedSurvivor true ; elody:hiddenVerdict elody:InvalidVerdict ] ]");

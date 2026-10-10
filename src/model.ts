@@ -3,7 +3,9 @@
  * render contract: every string here is already resolved (enum literals,
  * document names), so the renderers know nothing about RDF.
  */
-export type UiConfigEntry = { key: string; value: string | number | boolean | string[] };
+/** a config value: a scalar, a list of strings, an enum (an elody: instance, rendered bare), or an object of string values (elody:value holding elody:config entries) */
+export type UiConfigValue = string | number | boolean | string[] | { enum: string } | Record<string, string>;
+export type UiConfigEntry = { key: string; value: UiConfigValue };
 
 export type UiViewMode = { mode: string; order: number; config: UiConfigEntry[] };
 
@@ -293,7 +295,12 @@ export type UiPanel = {
   elements: UiElement[];
 };
 
-export type UiElementKind = "shaclShape" | "window" | "list" | "markdown";
+export type UiElementKind = "shaclShape" | "window" | "list" | "markdown" | "singleMedia" | "map";
+
+/** elody:windowStatus: the status edited in a window's header (windowElementStatus) */
+export type UiWindowStatus = { labelKey?: string; statusKey: string; statusInputField: string };
+/** elody:actionsOnResult: operations a list offers on its result (actionsOnResult) */
+export type UiActionsOnResult = { resultKind: string; operations: UiBulkOperation[] };
 
 export type UiElement = {
   kind: UiElementKind;
@@ -328,6 +335,17 @@ export type UiElement = {
   customBulkOperations?: string;
   pickerList?: string;
   pickerFilters?: string;
+  windowStatus?: UiWindowStatus;
+  actionsOnResult?: UiActionsOnResult;
+  /** elody:addEntitiesToForms on a list */
+  addEntitiesToForms?: boolean;
+  /** elody:cropCoordinatesKey on a media list (cropMediafileCoordinatesKey) */
+  cropCoordinatesKey?: string;
+  /** a map element: elody:mapType, elody:center, elody:wktKey, elody:config */
+  mapType?: string;
+  center?: string;
+  wktKey?: string;
+  config?: UiConfigEntry[];
 };
 
 export type UiColumn = { order: number; alias?: string; size?: string; elements: UiElement[]; /** elody:elementSpread: shared elements spread in the column */ elementSpreads: string[] };
@@ -376,6 +394,8 @@ export type UiEntity = {
   filtersFragmentName?: string;
   /** elody:readsPermissions: the detail values read canUpdate and canDelete */
   readsPermissions?: boolean;
+  /** elody:mapFeatureField: the properties (keys) shown in the map view's popup (mapElement { mapFeatureMetadata }) */
+  mapFeatureFields?: string[];
   /** elody:listingCore: the listing fragment is split into minimal<Type>Core (values, card) and minimal<Type> (spread + view modes) */
   listingCore?: boolean;
   /** elody:deleteOptions: the deleteQueryOptions block of the detail fragment */

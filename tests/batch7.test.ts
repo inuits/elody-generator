@@ -88,7 +88,7 @@ describe("vlacc detail extras", () => {
       entity(
         `sh:property ${label} ; elody:detail [ elody:column [ sh:order 1 ; elody:element [ a elody:WindowElement ; sh:order 1 ; rdfs:label "w" ; elody:panel ui:P ] ] ]`,
         `ui:P a elody:Panel ; elody:alias "awards" ; rdfs:label "metadata.labels.awards" ; elody:collapsed true ; elody:field em:title ;
-           elody:element [ a elody:ListElement ; sh:order 1 ; elody:alias "Awards" ; elody:collapsed false ; elody:entityTypes "award" ; elody:relationType "refAwards" ; elody:disableLibraryBar true ; elody:customQuery "GetAwardsInDetail" ; elody:customQueryFilters "GetAwardsInEntityFilters" ] .`,
+           elody:element [ a elody:ListElement ; sh:order 2 ; elody:alias "Awards" ; elody:collapsed false ; elody:entityTypes "award" ; elody:relationType "refAwards" ; elody:disableLibraryBar true ; elody:customQuery "GetAwardsInDetail" ; elody:customQueryFilters "GetAwardsInEntityFilters" ] .`,
       ),
     );
     expect(file).toContain('                }\n              }\n              Awards: entityListElement {\n                isCollapsed(input: false)\n                disableLibraryBar(input: true)\n                entityTypes(input: [award])\n                relationType: label(input: "refAwards")\n                customQuery(input: "GetAwardsInDetail")\n                customQueryFilters(input: "GetAwardsInEntityFilters")\n              }\n            }');

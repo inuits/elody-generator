@@ -110,13 +110,21 @@ type Property = {
 };
 
 type Panel = { alias: string; label?: string; kind?: string; collapsed: boolean; editable: boolean; multipleColumns?: boolean; can?: string; fields: string[]; spreads: string[]; elements: Element[] };
+type WindowStatus = { labelKey?: string; statusKey: string; statusInputField: string };
 type Element =
-  | { kind: "window"; alias?: string; label?: string; expandButton?: boolean; editButton?: boolean; hideInHistory?: boolean; panels: Panel[] }
+  | { kind: "window"; alias?: string; label?: string; expandButton?: boolean; editButton?: boolean; hideInHistory?: boolean; windowStatus?: WindowStatus; panels: Panel[] }
   | { kind: "shaclShape"; label?: string; fieldsKey?: string; collapsed: boolean }
   | { kind: "markdown"; label?: string; metadataKey?: string; collapsed: boolean }
+  | { kind: "singleMedia"; label?: string; collapsed: boolean }
+  | { kind: "map"; label?: string; collapsed: boolean; mapType?: string; center?: string; wktKey?: string; config: { key: string; value: ValueNode | undefined }[] }
   | {
       kind: "list";
+      /** inside a panel: the position among the panel's items (fields and elements), from 1 */
+      order?: number;
       alias?: string;
+      addEntitiesToForms?: boolean;
+      cropCoordinatesKey?: string;
+      actionsOnResult?: { kind?: string; operations: Operation[] };
       label?: string;
       mediaKind?: string;
       customQueryRelationType?: string;
@@ -248,6 +256,10 @@ type Entity = {
   spreads: { listingValues: string[]; detailValues: string[]; card: string[]; filters: string[] };
   relationValues?: boolean;
   readsPermissions?: boolean;
+  /** the properties (keys) shown in the map view's popup (mapElement { mapFeatureMetadata }) */
+  mapFeatureFields?: string[];
+  /** the operations the lists offer on their result: their forms are opened too */
+  resultOperations?: Operation[];
   /** the listing is split: minimal<X> spreads minimal<X>Core */
   listingCore?: boolean;
   deleteOptions?: DeleteOptions;
@@ -619,6 +631,7 @@ export class Extractor {
       if (["intialValues", "relationValues", "allowedViewModes", "teaserMetadata"].includes(field.name.value)) continue;
       if (alias(field) === "dynamicFormConfig") entity.dynamicFormConfig = field.name.value;
       else if (alias(field) === "ports") entity.ports = field.name.value;
+      else if (field.name.value === "mapElement") this.mapFeatures(field, where, entity);
       else this.note(`${where}: listing fragment field ${field.name.value} has no term; left out`);
     }
 
@@ -719,7 +732,7 @@ export class Extractor {
     const bulk = this.fragment(`${name.charAt(0).toLowerCase() + name.slice(1)}BulkOperations`);
     if (bulk) entity.operations = this.operations(child(child(bulk, "bulkOperationOptions"), "options"), where, entity);
     // the forms the operations open: declared when these files hold them as dynamic forms
-    const opened = Extractor.flattenOperations([...(entity.operations ?? []), ...entity.customOperations.flatMap((c) => c.operations)])
+    const opened = Extractor.flattenOperations([...(entity.operations ?? []), ...entity.customOperations.flatMap((c) => c.operations), ...(entity.resultOperations ?? [])])
       .flatMap((op) => op.modal?.forms ?? (op.modal?.form ? [op.modal.form] : []))
       .filter((form) => form !== entity.form?.queryName);
     for (const formName of new Set(opened)) {
@@ -813,6 +826,14 @@ export class Extractor {
   private configLiteral(value: ValueNode | undefined): string {
     if (!value) return '""';
     if (value.kind === Kind.LIST) return value.values.map((v) => this.configLiteral(v)).join(" , ");
+    if (value.kind === Kind.OBJECT) return `[ elody:config ${value.fields.map((f) => `[ elody:key ${q(f.name.value)} ; elody:value ${this.configLiteral(f.value)} ]`).join(" , ")} ]`;
+    if (value.kind === Kind.ENUM) {
+      // an enum value: the elody: instance bound to it, else the literal with a note
+      const instance = this.o.instanceForAny(value.value);
+      if (instance) return `elody:${localName(instance)}`;
+      this.note(`config value ${value.value} is an enum no elody: instance is bound to; declared as a string`);
+      return q(value.value);
+    }
     if (value.kind === Kind.BOOLEAN) return String(value.value);
     if (value.kind === Kind.INT || value.kind === Kind.FLOAT) return value.value;
     return q(scalar(value) ?? "");
@@ -866,6 +887,29 @@ export class Extractor {
     return menu;
   }
 
+  /** mapElement { mapFeatureMetadata { ... } } in the listing: the properties shown in the map view's popup. */
+  private mapFeatures(element: FieldNode, where: string, entity: Entity): void {
+    const keys: string[] = [];
+    for (const field of fields(child(element, "mapFeatureMetadata")?.selectionSet)) {
+      if (field.name.value !== "metaData") {
+        this.note(`${where}: map feature field ${alias(field)} (${field.name.value}) is not a metaData field; left out`);
+        continue;
+      }
+      const key = input(child(field, "key")) ?? alias(field);
+      let property = entity.properties.find((p) => p.key === key && !p.alias) ?? entity.properties.find((p) => p.key === key);
+      if (!property) {
+        property = { key, inListing: false, inDetail: true, readsValue: false, teaser: false, sortable: false, single: true, required: false, readOnly: false, labelRole: false };
+        if (alias(field) !== key) property.alias = alias(field);
+        entity.properties.push(property);
+      }
+      const label = input(child(field, "label"));
+      if (label && !property.labelKey) property.labelKey = label;
+      keys.push(key);
+    }
+    for (const extra of fields(element.selectionSet).filter((f) => f.name.value !== "mapFeatureMetadata")) this.note(`${where}: listing map element field ${extra.name.value} has no term; left out`);
+    if (keys.length) entity.mapFeatureFields = keys;
+  }
+
   /** The elements of a column or of a shared elements fragment. */
   private elementsOf(selectionSet: SelectionSetNode | undefined, where: string, entity: Entity, byAlias: Map<string, Property>): Element[] {
     const elements: Element[] = [];
@@ -877,6 +921,24 @@ export class Extractor {
       else if (element.name.value === "markdownViewerElement") {
         const content = child(element, "markdownContent");
         elements.push({ kind: "markdown", label: input(child(element, "label")), metadataKey: content ? str(content, "metadataKey") : undefined, collapsed: input(child(element, "isCollapsed")) === "true" });
+      } else if (element.name.value === "singleMediaFileElement")
+        elements.push({ kind: "singleMedia", label: input(child(element, "label")), collapsed: input(child(element, "isCollapsed")) === "true" });
+      else if (element.name.value === "mapElement") {
+        const wkt = fields(element.selectionSet).find((f) => f.name.value === "metaData");
+        const configField = child(element, "config");
+        for (const f of fields(element.selectionSet))
+          if (!["label", "isCollapsed", "type", "center", "metaData", "config"].includes(f.name.value)) this.note(`${where}: map element field ${alias(f)} has no term; left out`);
+        elements.push({
+          kind: "map",
+          label: input(child(element, "label")),
+          collapsed: input(child(element, "isCollapsed")) === "true",
+          mapType: this.instance("MapType", input(child(element, "type")), `${where} map element`),
+          center: input(child(element, "center")),
+          wktKey: wkt ? input(child(wkt, "key")) : undefined,
+          config: list(configField ? argument(configField, "input") : undefined)
+            .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
+            .map((entry) => ({ key: scalar(objectField(entry, "key")) ?? "", value: objectField(entry, "value") })),
+        });
       } else this.note(`${where}: detail element ${element.name.value} is not rendered by the generator; left out`);
     }
     return elements;
@@ -886,7 +948,7 @@ export class Extractor {
     const panels: Panel[] = [];
     for (const panel of fields(element.selectionSet)) {
       if (panel.name.value !== "panels") {
-        if (!["label", "expandButtonOptions", "editMetadataButton", "hideInHistory"].includes(panel.name.value)) this.note(`${where}: window element field ${panel.name.value} has no term; left out`);
+        if (!["label", "expandButtonOptions", "editMetadataButton", "hideInHistory", "windowElementStatus"].includes(panel.name.value)) this.note(`${where}: window element field ${panel.name.value} has no term; left out`);
         continue;
       }
       const header = child(panel, "panelHeaderContent");
@@ -906,8 +968,10 @@ export class Extractor {
       };
       for (const field of fields(panel.selectionSet)) {
         if (field.name.value === "entityListElement") {
-          // a list of related entities among the panel's fields
-          result.elements.push(this.list(field, where, entity));
+          // a list of related entities among the panel's fields, at its position among them
+          const element = this.list(field, where, entity) as Extract<Element, { kind: "list" }>;
+          element.order = result.fields.length + result.elements.length + 1;
+          result.elements.push(element);
           continue;
         }
         if (field.name.value !== "metaData") {
@@ -955,6 +1019,12 @@ export class Extractor {
       panels.push(result);
     }
     const shown = input(child(child(element, "expandButtonOptions"), "shown"));
+    const statusField = child(element, "windowElementStatus");
+    const statusInput = statusField ? argument(statusField, "windowElementStatusInput") : undefined;
+    const windowStatus: WindowStatus | undefined =
+      statusInput?.kind === Kind.OBJECT
+        ? { labelKey: scalar(objectField(statusInput, "label")), statusKey: scalar(objectField(statusInput, "statusMetadataKey")) ?? "", statusInputField: scalar(objectField(statusInput, "statusInputFieldType")) ?? "" }
+        : undefined;
     return {
       kind: "window",
       alias: element.alias?.value,
@@ -962,12 +1032,13 @@ export class Extractor {
       expandButton: child(element, "expandButtonOptions") ? shown !== "false" : undefined,
       editButton: child(element, "editMetadataButton") !== undefined,
       hideInHistory: input(child(element, "hideInHistory")) === "true",
+      windowStatus,
       panels,
     };
   }
 
   private list(element: FieldNode, where: string, entity: Entity): Element {
-    const known = ["label", "isCollapsed", "type", "entityTypes", "relationType", "searchInputType", "customQuery", "customQueryRelationType", "customQueryFilters", "customBulkOperations", "customQueryEntityPickerList", "customQueryEntityPickerListFilters", "viewMode", "can", "hideInHistory", "disableLibraryBar", "enableNavigation", "baseLibraryMode"];
+    const known = ["label", "isCollapsed", "type", "entityTypes", "relationType", "searchInputType", "customQuery", "customQueryRelationType", "customQueryFilters", "customBulkOperations", "customQueryEntityPickerList", "customQueryEntityPickerListFilters", "viewMode", "can", "hideInHistory", "disableLibraryBar", "enableNavigation", "baseLibraryMode", "addEntitiesToForms", "cropMediafileCoordinatesKey", "actionsOnResult"];
     for (const field of fields(element.selectionSet))
       if (!known.includes(alias(field)) && !known.includes(field.name.value)) this.note(`${where}: list element ${alias(element)} field ${alias(field)} has no term; left out`);
     const types = child(element, "entityTypes");
@@ -985,9 +1056,18 @@ export class Extractor {
     const scoped = fields(element.selectionSet).find((f) => alias(f) === "customQueryRelationType");
     // the list's own label: the unaliased label field (relationType: label(...) is the relation, not the label)
     const ownLabel = fields(element.selectionSet).find((f) => f.name.value === "label" && (!f.alias || f.alias.value === "label"));
+    const actions = child(element, "actionsOnResult");
+    const actionsOnResult = actions
+      ? { kind: this.instance("ResultKind", input(child(actions, "type")), `${where} list ${alias(element)} actions on result`), operations: this.operations(child(actions, "options"), where, entity) }
+      : undefined;
+    if (actionsOnResult) (entity.resultOperations ??= []).push(...actionsOnResult.operations);
+    const addEntities = input(child(element, "addEntitiesToForms"));
     return {
       kind: "list",
       alias: element.alias?.value,
+      addEntitiesToForms: addEntities === undefined ? undefined : addEntities === "true",
+      cropCoordinatesKey: input(child(element, "cropMediafileCoordinatesKey")),
+      actionsOnResult,
       label: ownLabel ? input(ownLabel) : undefined,
       mediaKind: this.instance("MediaElementKind", input(child(element, "type")), `${where} list ${alias(element)}`),
       customQueryRelationType: scoped ? input(scoped) : undefined,
@@ -1596,7 +1676,7 @@ export class Extractor {
   }
 
   /** The node of a list element (in a column or a panel), at the given indentation. */
-  private listElementNode(element: Extract<Element, { kind: "list" }>, order: number, pad: string): string {
+  private listElementNode(element: Extract<Element, { kind: "list" }>, order: number, pad: string, forms: Set<string>): string {
     // a list without a label (one inside a panel) carries none
     const l = [`${pad}[ a elody:ListElement ;`, ...(element.label !== undefined ? [`${pad}rdfs:label ${q(element.label)} ;`] : []), `${pad}sh:order ${order} ;`];
     if (element.alias) l.push(`${pad}elody:alias ${q(element.alias)} ;`);
@@ -1619,12 +1699,21 @@ export class Extractor {
     }
     if (element.customBulkOperations) l.push(`${pad}elody:customBulkOperations ui:${element.customBulkOperations} ;`);
     if (element.picker) l.push(`${pad}elody:picker ui:${element.picker} ;`);
+    if (element.cropCoordinatesKey) l.push(`${pad}elody:cropCoordinatesKey ${q(element.cropCoordinatesKey)} ;`);
+    if (element.addEntitiesToForms !== undefined) l.push(`${pad}elody:addEntitiesToForms ${element.addEntitiesToForms} ;`);
+    if (element.actionsOnResult) {
+      const ops = element.actionsOnResult.operations;
+      ops.forEach((op, i) => (op.order = i + 1));
+      l.push(`${pad}elody:actionsOnResult [ elody:resultKind ${element.actionsOnResult.kind ?? "elody:NoResult"} ;`);
+      if (ops.length) l.push(`${pad}  elody:operation`, ops.map((op) => this.writeOperation(op, this.stubs, forms).replace(/^/gm, `${pad}  `)).join(" ,\n") + " ] ;");
+      else l[l.length - 1] = l[l.length - 1].replace(/ ;$/, " ] ;");
+    }
     l[l.length - 1] = l[l.length - 1].replace(/ ;$/, " ]");
     return l.join("\n");
   }
 
   /** The node of one detail element (a window with its panels, a list, ...), numbered in its column or fragment. */
-  private elementNode(element: Element, e: number, name: string, panelNodes: string[], panelIds: Set<string>): string {
+  private elementNode(element: Element, e: number, name: string, panelNodes: string[], panelIds: Set<string>, forms: Set<string>): string {
           if (element.kind === "window") {
       const panels = element.panels.map((panel) => {
         let id = `ui:${name}Ui-${panel.alias}`;
@@ -1640,7 +1729,7 @@ export class Extractor {
         p.push(`  elody:panelKind ${panel.kind ?? "elody:MetadataPanel"} ;`);
         if (panel.fields.length) p.push(`  elody:field ${panel.fields.map((f) => `em:${f}`).join(" , ")} ;`);
         if (panel.elements.length)
-          p.push(`  elody:element`, panel.elements.map((element, i) => (element.kind === "list" ? this.listElementNode(element, i + 1, "    ") : "")).filter(Boolean).join(" ,\n") + " ;");
+          p.push(`  elody:element`, panel.elements.map((element, i) => (element.kind === "list" ? this.listElementNode(element, element.order ?? i + 1, "    ", forms) : "")).filter(Boolean).join(" ,\n") + " ;");
         p[p.length - 1] = p[p.length - 1].replace(/ ;$/, " .");
         panelNodes.push(p.join("\n"));
         return id;
@@ -1650,6 +1739,11 @@ export class Extractor {
       if (element.expandButton !== undefined) w.push(`      elody:expandButton ${element.expandButton} ;`);
       if (element.editButton) w.push(`      elody:editButton true ;`);
       if (element.hideInHistory) w.push(`      elody:hideInHistory true ;`);
+      if (element.windowStatus) {
+        const status = element.windowStatus;
+        const parts = [...(status.labelKey ? [`elody:labelKey ${q(status.labelKey)}`] : []), `elody:statusKey ${q(status.statusKey)}`, `elody:statusInputField ${q(status.statusInputField)}`];
+        w.push(`      elody:windowStatus [ ${parts.join(" ; ")} ] ;`);
+      }
       if (panels.length) w.push(`      elody:panel ${panels.join(" , ")} ;`);
       w[w.length - 1] = w[w.length - 1].replace(/ ;$/, " ]");
       return w.join("\n");
@@ -1666,7 +1760,18 @@ export class Extractor {
       s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
       return s.join("\n");
     }
-    return this.listElementNode(element, e + 1, "      ");
+    if (element.kind === "singleMedia")
+      return [`      [ a elody:SingleMediaFileElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ]`].join("\n");
+    if (element.kind === "map") {
+      const s = [`      [ a elody:MapElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ;`];
+      if (element.mapType) s.push(`      elody:mapType ${element.mapType} ;`);
+      if (element.center) s.push(`      elody:center ${q(element.center)} ;`);
+      if (element.wktKey) s.push(`      elody:wktKey ${q(element.wktKey)} ;`);
+      if (element.config.length) s.push(`      elody:config ${element.config.map((entry) => `[ elody:key ${q(entry.key)} ; elody:value ${this.configLiteral(entry.value)} ]`).join(" , ")} ;`);
+      s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
+      return s.join("\n");
+    }
+    return this.listElementNode(element, e + 1, "      ", forms);
   }
 
   /** The property shape of one form field. */
@@ -1701,6 +1806,7 @@ export class Extractor {
     if (entity.typePills) out.push(`  elody:typePills true ;`);
     if (entity.relationValues !== undefined) out.push(`  elody:relationValues ${entity.relationValues} ;`);
     if (entity.readsPermissions) out.push(`  elody:readsPermissions true ;`);
+    if (entity.mapFeatureFields?.length) out.push(`  elody:mapFeatureField ${entity.mapFeatureFields.map((f) => `em:${f}`).join(" , ")} ;`);
     if (entity.interface) out.push(`  elody:interface true ;`);
     if (entity.listingCore) out.push(`  elody:listingCore true ;`);
     if (entity.entityListQueries.length) out.push(`  elody:listQuery ${entity.entityListQueries.map((n) => `ui:${n}`).join(" , ")} ;`);
@@ -1747,7 +1853,7 @@ export class Extractor {
       out.push(`  elody:fieldsFragment`, `    [ elody:fragmentName ${q(fragment.name)} ;`, `    elody:shape`, ...(shapes.length ? [`      [ sh:property`, shapes.join(" ,\n").replace(/^/gm, "  ") + " ] ] ;"] : ["      [ ] ] ;"]));
     }
     for (const fragment of entity.elementsFragments) {
-      const nodes = fragment.elements.map((element, e) => this.elementNode(element, e, name, panelNodes, panelIds));
+      const nodes = fragment.elements.map((element, e) => this.elementNode(element, e, name, panelNodes, panelIds, formNodes));
       out.push(`  elody:elementsFragment`, `    [ elody:fragmentName ${q(fragment.name)} ;`, `    elody:element`, nodes.join(" ,\n") + " ] ;");
     }
     for (const fragment of entity.valuesFragments)
@@ -1758,7 +1864,7 @@ export class Extractor {
         if (column.alias) lines.push(`    elody:alias ${q(column.alias)} ;`);
         if (column.size) lines.push(`    elody:size ${column.size} ;`);
         for (const spread of column.elementSpreads) lines.push(`    elody:elementSpread ${q(spread)} ;`);
-        const elements = column.elements.map((element, e) => this.elementNode(element, e, name, panelNodes, panelIds));
+        const elements = column.elements.map((element, e) => this.elementNode(element, e, name, panelNodes, panelIds, formNodes));
         if (elements.length) lines.push(`    elody:element`, elements.join(" ,\n") + " ]");
         else lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " ]");
         return lines.join("\n");
