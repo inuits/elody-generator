@@ -92,7 +92,7 @@ export const pickerFiltersNameFor = (queryName: string): string =>
 /** Element classes the ontology defines but the generator cannot render yet. */
 const UNRENDERED_ELEMENTS = [
   "MediaFileElement", "GraphElement", "HierarchyListElement",
-  "ManifestViewerElement", "EntityViewerElement", "ActionElement", "WysiwygElement", "CommentsElement",
+  "ManifestViewerElement", "ActionElement", "WysiwygElement", "CommentsElement",
 ].map((name) => elody(name));
 
 const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
@@ -252,8 +252,13 @@ class Parse {
     // a card edited in place carries the property's widget too
     for (const { node, property } of parsed) if (property.cardEditable && !property.editInputType) property.editInputType = this.editWidget(node);
     for (const { node, property } of parsed)
-      if ((edited.has(property.key) && !property.readOnly && !property.panelElement) || (property.panelWidget && !property.editInputType)) property.editInputType = this.editWidget(node);
+      if (!property.panelElement && !property.editInputType && (edited.has(property.key) || property.panelWidget || this.overriddenWithWidget(elements).has(property.key))) property.editInputType = this.editWidget(node);
     return detail;
+  }
+
+  /** The keys an elody:panelField shows with a widget of its own (elody:panelWidget true) in some panel. */
+  private overriddenWithWidget(elements: M.UiElement[]): Set<string> {
+    return new Set(elements.flatMap((element) => element.panels.flatMap((panel) => (panel.fieldOverrides ?? []).filter((o) => o.widget === true).map((o) => o.key))));
   }
 
   /** The create form's widget for a property, to edit it on the detail page; none when Elody cannot write it. */
@@ -789,6 +794,7 @@ class Parse {
       filtersFragmentName: r.value(subject, elody("filtersFragmentName")) || undefined,
       readsPermissions: r.literal(subject, elody("readsPermissions")) === true,
       idField: r.literal(subject, elody("idField")) === true || undefined,
+      viewModesOnDetail: r.literal(subject, elody("viewModesOnDetail")) === true || undefined,
       idValue: r.literal(subject, elody("idValue")) === true || undefined,
       mapFeatureFields: r.nodes(subject, elody("mapFeatureField")).length
         ? r.nodes(subject, elody("mapFeatureField")).map((path) => {
@@ -883,6 +889,13 @@ class Parse {
       order: r.order(node),
       colSpan: typeof colSpan === "number" ? colSpan : undefined,
       unit: this.enumValue(node, elody("unit"), elody("Unit")),
+      technicalOrigin: r.value(node, elody("technicalOrigin")) || undefined,
+      readOnlyUnless: r.literals(node, elody("readOnlyUnless")).length ? r.literals(node, elody("readOnlyUnless")) : undefined,
+      showOnlyInEditMode: this.optionalFlag(node, elody("showOnlyInEditMode")),
+      listingValueLabelKey: r.has(node, elody("listingValueLabelKey")) ? String(r.value(node, elody("listingValueLabelKey")) ?? "") : undefined,
+      listingValueLabelRootKey: r.has(node, elody("listingValueLabelRootKey")) ? String(r.value(node, elody("listingValueLabelRootKey")) ?? "") : undefined,
+      detailFormatter: this.optionalFlag(node, elody("detailFormatter")),
+      detailContainsRelation: this.optionalFlag(node, elody("detailContainsRelation")),
       cardLineClamp: r.value(node, elody("cardLineClamp")) || undefined,
       panelLineClamp: r.value(node, elody("panelLineClamp")) || undefined,
       panelAlias: r.value(node, elody("panelAlias")) || undefined,
@@ -1456,7 +1469,9 @@ class Parse {
             ? "singleMedia"
             : types.includes(elody("MapElement"))
               ? "map"
-              : "window";
+              : types.includes(elody("EntityViewerElement"))
+                ? "entityViewer"
+                : "window";
 
     let customBulkOperations: string | undefined;
     const customTerm = r.term(element, elody("customBulkOperations"));
@@ -1519,6 +1534,8 @@ class Parse {
       collapsed: r.literal(element, elody("collapsed")) === true,
       expandButton: this.optionalFlag(element, elody("expandButton")),
       panels: r.byOrder(r.nodes(element, elody("panel"))).map((panel) => this.panel(panel, pathToKey)),
+      contextMenu: this.contextMenu(r.node(element, elody("contextMenu"))),
+      panelSpreads: r.literals(element, elody("panelSpread")).length ? r.literals(element, elody("panelSpread")) : undefined,
       windowStatus: statusNode
         ? {
             labelKey: r.value(statusNode, elody("labelKey")) || undefined,
@@ -1556,6 +1573,19 @@ class Parse {
     });
   }
 
+  /** elody:panelField nodes: how this panel shows a field otherwise than the property shape says. */
+  private fieldOverrides(panel: string, pathToKey: Map<string, string>): M.UiPanel["fieldOverrides"] {
+    const r = this.r;
+    const nodes = r.nodes(panel, elody("panelField"));
+    if (!nodes.length) return undefined;
+    return nodes.map((node) => {
+      const path = r.node(node, elody("field"));
+      const key = path ? pathToKey.get(path) : undefined;
+      if (!key) throw new Error(`panel "${r.value(panel, elody("alias"))}" has an elody:panelField whose elody:field no property shape declares as sh:path`);
+      return { key, labelKey: r.value(node, elody("labelKey")) || undefined, alias: r.value(node, elody("alias")) || undefined, widget: this.optionalFlag(node, elody("panelWidget")) };
+    });
+  }
+
   private panel(panel: string, pathToKey: Map<string, string>): M.UiPanel {
     const r = this.r;
     let editable: boolean;
@@ -1576,6 +1606,8 @@ class Parse {
         editableDefault: this.optionalFlag(panel, elody("editableDefault")),
         repetitionKey: r.value(panel, elody("repetitionKey")) || undefined,
         displayConditionKey: r.value(panel, elody("displayConditionKey")) || undefined,
+        bulkDataSource: r.value(panel, elody("bulkDataSource")) || undefined,
+        fieldOverrides: this.fieldOverrides(panel, pathToKey),
         multipleColumns: this.optionalFlag(panel, elody("multipleColumns")),
         can: r.value(panel, elody("can")) || undefined,
         spreads: r.literals(panel, elody("spread")),
@@ -1609,6 +1641,8 @@ class Parse {
       editableDefault: this.optionalFlag(panel, elody("editableDefault")),
       repetitionKey: r.value(panel, elody("repetitionKey")) || undefined,
       displayConditionKey: r.value(panel, elody("displayConditionKey")) || undefined,
+      bulkDataSource: r.value(panel, elody("bulkDataSource")) || undefined,
+      fieldOverrides: this.fieldOverrides(panel, pathToKey),
       multipleColumns: this.optionalFlag(panel, elody("multipleColumns")),
       can: r.value(panel, elody("can")) || undefined,
       spreads: r.literals(panel, elody("spread")),

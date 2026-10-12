@@ -74,6 +74,17 @@ export type UiProperty = {
   containsRelationPropertyValue?: string;
   /** elody:lineClamp, elody:valueTranslationKey: on the card and in the panel; elody:permitted, elody:linkText, elody:copyToClipboard,
    * elody:nonEditable, elody:tooltipKey, elody:panelShowsUnit, elody:panelWidget: in the panel; elody:cardAlias, elody:cardValidates: on the card */
+  /** elody:technicalOrigin: keyValue technicalOrigin: "download" */
+  technicalOrigin?: string;
+  /** elody:readOnlyUnless / elody:showOnlyInEditMode on the panel field */
+  readOnlyUnless?: string[];
+  showOnlyInEditMode?: boolean;
+  /** elody:listingValueLabelKey / elody:listingValueLabelRootKey: the listing labels the relation otherwise than the detail page */
+  listingValueLabelKey?: string;
+  listingValueLabelRootKey?: string;
+  /** elody:detailFormatter false: the raw value on the detail page; elody:detailContainsRelation false: no contains filter there */
+  detailFormatter?: boolean;
+  detailContainsRelation?: boolean;
   cardLineClamp?: string;
   panelLineClamp?: string;
   panelAlias?: string;
@@ -327,6 +338,10 @@ export type UiPanel = {
   /** elody:repetitionKey / elody:displayConditionKey */
   repetitionKey?: string;
   displayConditionKey?: string;
+  /** elody:bulkDataSource: bulkData(bulkDataSource: ...) */
+  bulkDataSource?: string;
+  /** elody:panelField: a field shown otherwise in this panel */
+  fieldOverrides?: { key: string; labelKey?: string; alias?: string; widget?: boolean }[];
   /** elody:multipleColumns: canBeMultipleColumns(input: true|false); undefined leaves it unsaid */
   multipleColumns?: boolean;
   /** elody:can: the permission editing the panel needs (can(input: "update:feedback")) */
@@ -338,7 +353,7 @@ export type UiPanel = {
   elements: UiElement[];
 };
 
-export type UiElementKind = "shaclShape" | "window" | "list" | "markdown" | "singleMedia" | "map";
+export type UiElementKind = "shaclShape" | "window" | "list" | "markdown" | "singleMedia" | "map" | "entityViewer";
 
 /** elody:windowStatus: the status edited in a window's header (windowElementStatus) */
 export type UiWindowStatus = { labelKey?: string; statusKey: string; statusInputField: string };
@@ -379,6 +394,9 @@ export type UiElement = {
   pickerList?: string;
   pickerFilters?: string;
   windowStatus?: UiWindowStatus;
+  /** elody:contextMenu on a window (contextMenuActions); elody:panelSpread: fragments spread among its panels */
+  contextMenu?: UiContextMenu;
+  panelSpreads?: string[];
   actionsOnResult?: UiActionsOnResult;
   /** elody:addEntitiesToForms on a list */
   addEntitiesToForms?: boolean;
@@ -442,6 +460,8 @@ export type UiEntity = {
   /** elody:idField: id at the top of the listing fragment; elody:idValue: id among the listing's initial values */
   idField?: boolean;
   idValue?: boolean;
+  /** elody:viewModesOnDetail: the allowed view modes read in the detail fragment too */
+  viewModesOnDetail?: boolean;
   /** elody:listingCore: the listing fragment is split into minimal<Type>Core (values, card) and minimal<Type> (spread + view modes) */
   listingCore?: boolean;
   /** elody:deleteOptions: the deleteQueryOptions block of the detail fragment */

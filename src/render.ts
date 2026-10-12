@@ -35,13 +35,16 @@ export function renderInitialValues(entity: M.UiEntity, indent: number, withForm
     .map((property) => {
       const alias = property.alias ?? property.key;
       const index = property.index !== undefined ? `, index: ${property.index}` : "";
-      const formatter = withFormatters && property.formatter && !(listing && property.listingFormatter === false) ? `, formatter: "${property.formatter}"` : "";
+      const formatter = withFormatters && property.formatter && !(listing && property.listingFormatter === false) && !(!listing && property.detailFormatter === false) ? `, formatter: "${property.formatter}"` : "";
       // elody:valueLabelKey "" reads the relation without a label key
-      const labelKey = property.valueLabelRootKey
-        ? `, rootKeyAsLabel: "${property.valueLabelRootKey}"`
-        : property.valueLabelKey === ""
+      // the listing may label the relation otherwise than the detail page
+      const rootLabelKey = listing && property.listingValueLabelRootKey !== undefined ? property.listingValueLabelRootKey : property.valueLabelRootKey;
+      const valueLabelKey = listing && property.listingValueLabelKey !== undefined ? property.listingValueLabelKey : property.valueLabelKey;
+      const labelKey = rootLabelKey
+        ? `, rootKeyAsLabel: "${rootLabelKey}"`
+        : valueLabelKey === "" || (listing && property.listingValueLabelRootKey === "" && property.listingValueLabelKey === undefined)
           ? ""
-          : `, metadataKeyAsLabel: "${property.valueLabelKey ?? DEFAULT_VALUE_LABEL_KEY}"`;
+          : `, metadataKeyAsLabel: "${valueLabelKey ?? DEFAULT_VALUE_LABEL_KEY}"`;
       // what the value is read with beyond its key: the key inside a repeatable group, the parent's relation, a relation property
       const extras = [
         property.repeatableMetadataKey !== undefined ? `, repeatableMetadataKey: "${property.repeatableMetadataKey}"` : "",
@@ -54,8 +57,9 @@ export function renderInitialValues(entity: M.UiEntity, indent: number, withForm
         property.readsHost ? ", uuid: $userUuid" : "",
         property.relationDirection ? `, relationDirection: ${property.relationDirection}` : "",
         property.relationKey ? `, relationKey: "${property.relationKey}"` : "",
-        property.containsRelationPropertyKey ? `, containsRelationPropertyKey: "${property.containsRelationPropertyKey}"` : "",
-        property.containsRelationPropertyValue !== undefined ? `, containsRelationPropertyValue: "${property.containsRelationPropertyValue}"` : "",
+        property.technicalOrigin ? `, technicalOrigin: "${property.technicalOrigin}"` : "",
+        property.containsRelationPropertyKey && !(!listing && property.detailContainsRelation === false) ? `, containsRelationPropertyKey: "${property.containsRelationPropertyKey}"` : "",
+        property.containsRelationPropertyValue !== undefined && !(!listing && property.detailContainsRelation === false) ? `, containsRelationPropertyValue: "${property.containsRelationPropertyValue}"` : "",
       ].join("");
       if (property.relationType)
         return `${pad(indent)}${alias}: keyValue(key: "${property.relationType}", source: relations${labelKey}${extras}${index}${formatter})`;
@@ -371,7 +375,11 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
 }
 
 export function renderContextMenu(entity: M.UiEntity, indent: number): string {
-  const menu = entity.contextMenu;
+  return renderContextMenuOf(entity.contextMenu, indent);
+}
+
+/** A context menu (the card's, or a window element's) at an indentation. */
+export function renderContextMenuOf(menu: M.UiContextMenu | undefined, indent: number): string {
   if (!menu) return "";
 
   const lines: string[] = [];
@@ -749,6 +757,7 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
       ...(panel.can ? [`${pad(depth + 2)}can(input: "${panel.can}")`] : []),
       ...(panel.repetitionKey ? [`${pad(depth + 2)}repetitionConfig(repetitionKey: "${panel.repetitionKey}") {`, `${pad(depth + 4)}repetitionKey`, `${pad(depth + 2)}}`] : []),
       ...(panel.displayConditionKey ? [`${pad(depth + 2)}displayCondition {`, `${pad(depth + 4)}key(input: "${panel.displayConditionKey}")`, `${pad(depth + 2)}}`] : []),
+      ...(panel.bulkDataSource ? [`${pad(depth + 2)}bulkData(bulkDataSource: "${panel.bulkDataSource}")`] : []),
     ];
     // the panel's items: its fields in order, each element at its sh:order position among them
     const items: (string | M.UiElement)[] = [...panel.fields];
@@ -764,10 +773,13 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
         lines.push(renderPanelElement(entity, property, depth + 2));
         continue;
       }
-      lines.push(`${pad(depth + 2)}${property.panelAlias ?? property.alias ?? key}: metaData {`);
-      lines.push(`${pad(depth + 4)}label(input: "${property.detailLabelKey ?? property.label ?? property.key}")`);
+      const over = panel.fieldOverrides?.find((o) => o.key === key);
+      lines.push(`${pad(depth + 2)}${over?.alias ?? property.panelAlias ?? property.alias ?? key}: metaData {`);
+      lines.push(`${pad(depth + 4)}label(input: "${over?.labelKey ?? property.detailLabelKey ?? property.label ?? property.key}")`);
       lines.push(`${pad(depth + 4)}key(input: "${key}")`);
       if (property.tooltipKey) lines.push(`${pad(depth + 4)}tooltip(input: "${property.tooltipKey}")`);
+      if (property.showOnlyInEditMode !== undefined) lines.push(`${pad(depth + 4)}showOnlyInEditMode(input: ${property.showOnlyInEditMode})`);
+      if (property.readOnlyUnless?.length) lines.push(`${pad(depth + 4)}readOnly(input: [${property.readOnlyUnless.map((p) => `"${p}"`).join(", ")}])`);
       if (property.panelLineClamp) lines.push(`${pad(depth + 4)}lineClamp(input: "${property.panelLineClamp}")`);
       if (property.valueTranslationKey) lines.push(`${pad(depth + 4)}valueTranslationKey(input: "${property.valueTranslationKey}")`);
       if (property.linkText) lines.push(`${pad(depth + 4)}linkText(input: "${property.linkText}")`);
@@ -776,8 +788,9 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
       if (property.unit && property.panelShowsUnit !== false) lines.push(`${pad(depth + 4)}unit(input: ${property.unit})`);
       if (property.multilingual) lines.push(`${pad(depth + 4)}isMultilingual(input: true)`);
       if (property.languageIn.length) lines.push(`${pad(depth + 4)}languageIn(input: ${stringList(property.languageIn)})`);
-      // an editable panel edits a field with the create form's widget; a nested value always shows its table
-      const inputType = property.inputType ?? (panel.editable || property.panelWidget ? property.editInputType : undefined);
+      // an editable panel edits a field with the create form's widget; a nested value always shows its table; a panel field may say otherwise
+      const withWidget = over?.widget !== undefined ? over.widget : property.panelWidget || (panel.editable && !property.readOnly);
+      const inputType = property.inputType ?? (withWidget ? property.editInputType : undefined);
       if (inputType) {
         lines.push(`${pad(depth + 4)}inputField(type: ${inputType}) {`);
         lines.push(`${pad(depth + 6)}...inputfield`);
@@ -830,6 +843,13 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
       lines.push(`${pad(depth)}}`);
       return lines.join("\n");
     }
+    if (element.kind === "entityViewer")
+      return [
+        `${pad(depth)}entityViewerElement {`,
+        `${pad(depth + 2)}label(input: "${element.label ?? ""}")`,
+        `${pad(depth + 2)}entityId(${element.relationType ? `relationType: "${element.relationType}"` : `metadataKey: "${element.metadataKey ?? ""}"`})`,
+        `${pad(depth)}}`,
+      ].join("\n");
     if (element.kind === "singleMedia")
       return [
         `${pad(depth)}singleMediaFileElement {`,
@@ -883,7 +903,10 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
       const parts = [...(status.labelKey ? [`label: "${status.labelKey}"`] : []), `statusMetadataKey: "${status.statusKey}"`, `statusInputFieldType: ${status.statusInputField}`];
       lines.push(`${pad(depth + 2)}windowElementStatus(windowElementStatusInput: { ${parts.join(", ")} }) {`, `${pad(depth + 4)}...windowElementStatus`, `${pad(depth + 2)}}`);
     }
+    const windowMenu = renderContextMenuOf(element.contextMenu, depth + 2);
+    if (windowMenu) lines.push(windowMenu);
     for (const panel of element.panels) lines.push(renderPanel(panel, depth + 2));
+    for (const spread of element.panelSpreads ?? []) lines.push(`${pad(depth + 2)}...${spread}`);
     lines.push(`${pad(depth)}}`);
     return lines.join("\n");
   };
@@ -1079,6 +1102,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
       full.push("    }");
     }
     if (entity.deleteOptions) full.push(renderDeleteOptions(entity.deleteOptions, 4));
+    if (entity.viewModesOnDetail) full.push(...modes);
     if (readsRelationValues(entity, "detail")) full.push("    relationValues");
     for (const field of entity.detail.fragmentFields) full.push(`    ${field}`);
     full.push(renderDetailView(entity, 4));

@@ -107,6 +107,13 @@ type Property = {
   labelRole: boolean;
   /** isMultilingual: one value per language, edited with the language-aware editor */
   multilingual?: boolean;
+  technicalOrigin?: string;
+  readOnlyUnless?: string[];
+  showOnlyInEditMode?: boolean;
+  listingValueLabelKey?: string;
+  listingValueLabelRootKey?: string;
+  detailFormatter?: boolean;
+  detailContainsRelation?: boolean;
   cardLineClamp?: string;
   panelLineClamp?: string;
   panelAlias?: string;
@@ -126,13 +133,15 @@ type Property = {
   sortPages?: { routeName: string; entityType?: string }[];
 };
 
-type Panel = { alias: string; label?: string; kind?: string; collapsed: boolean; editable: boolean; editableDefault?: boolean; repetitionKey?: string; displayConditionKey?: string; multipleColumns?: boolean; can?: string; fields: string[]; spreads: string[]; elements: Element[] };
+type PanelFieldOverride = { key: string; labelKey?: string; alias?: string; widget?: boolean };
+type Panel = { alias: string; label?: string; kind?: string; collapsed: boolean; editable: boolean; editableDefault?: boolean; repetitionKey?: string; displayConditionKey?: string; bulkDataSource?: string; overrides: PanelFieldOverride[]; multipleColumns?: boolean; can?: string; fields: string[]; spreads: string[]; elements: Element[] };
 type WindowStatus = { labelKey?: string; statusKey: string; statusInputField: string };
 type Element =
-  | { kind: "window"; alias?: string; label?: string; expandButton?: boolean; editButton?: boolean; hideInHistory?: boolean; windowStatus?: WindowStatus; panels: Panel[] }
+  | { kind: "window"; alias?: string; label?: string; expandButton?: boolean; editButton?: boolean; hideInHistory?: boolean; windowStatus?: WindowStatus; contextMenu?: Entity["contextMenu"]; panelSpreads: string[]; panels: Panel[] }
   | { kind: "shaclShape"; label?: string; fieldsKey?: string; collapsed: boolean }
   | { kind: "markdown"; label?: string; metadataKey?: string; collapsed: boolean }
   | { kind: "singleMedia"; label?: string; collapsed: boolean }
+  | { kind: "entityViewer"; label?: string; relationType?: string; metadataKey?: string }
   | { kind: "map"; label?: string; collapsed: boolean; mapType?: string; center?: string; wktKey?: string; config: { key: string; value: ValueNode | undefined }[] }
   | {
       kind: "list";
@@ -277,6 +286,8 @@ type Entity = {
   /** id at the top of the listing fragment / among the listing's initial values */
   idField?: boolean;
   idValue?: boolean;
+  /** allowedViewModes read in the detail fragment too */
+  viewModesOnDetail?: boolean;
   /** the properties (keys) shown in the map view's popup (mapElement { mapFeatureMetadata }) */
   mapFeatureFields?: string[];
   /** the operations the lists offer on their result: their forms are opened too */
@@ -521,6 +532,22 @@ export class Extractor {
       }
       const formatter = str(field, "formatter");
       if (formatter) property.formatter = formatter;
+      const origin = str(field, "technicalOrigin");
+      if (origin) property.technicalOrigin = origin;
+      if (listing && property.inDetail) {
+        // the listing reads the value the detail page created: what it reads otherwise is said per page
+        const listingLabelKey = source === "relations" && !str(field, "rootKeyAsLabel") ? (str(field, "metadataKeyAsLabel") ?? "") : undefined;
+        const listingRootKey = str(field, "rootKeyAsLabel");
+        if (source === "relations" && listingRootKey !== property.valueLabelRootKey) property.listingValueLabelRootKey = listingRootKey ?? "";
+        if (source === "relations" && listingLabelKey !== property.valueLabelKey && (listingLabelKey !== undefined || property.valueLabelKey !== undefined) && !(listingRootKey && property.valueLabelKey === undefined))
+          property.listingValueLabelKey = listingLabelKey ?? "";
+        const contains = str(field, "containsRelationPropertyKey");
+        if (contains && !property.containsRelationPropertyKey) {
+          property.containsRelationPropertyKey = contains;
+          property.containsRelationPropertyValue = str(field, "containsRelationPropertyValue");
+          property.detailContainsRelation = false;
+        }
+      }
       // what the value is read with beyond its key
       const repeatable = str(field, "repeatableMetadataKey");
       if (repeatable !== undefined) property.repeatableMetadataKey = repeatable;
@@ -563,7 +590,11 @@ export class Extractor {
         if (["canUpdate", "canDelete"].includes(field.name.value)) entity.readsPermissions = true;
         else this.note(`${where}: detail value ${alias(field)} is not a keyValue; left out`);
       }
-    for (const a of listingFormatted) if (byAlias.get(a)?.inDetail && !detailFormatted.has(a)) entity.detailFormatters = false;
+    // a formatter in the listing only: the detail page reads the raw value
+    for (const a of listingFormatted) {
+      const property = byAlias.get(a);
+      if (property?.inDetail && !detailFormatted.has(a)) property.detailFormatter = false;
+    }
     // the reverse: a formatter on the detail page only
     for (const a of detailFormatted) {
       const property = byAlias.get(a);
@@ -695,6 +726,10 @@ export class Extractor {
     if (full)
       for (const field of fields(full.selectionSet)) {
         if (["intialValues", "relationValues", "entityView"].includes(field.name.value)) continue;
+        if (field.name.value === "allowedViewModes") {
+          entity.viewModesOnDetail = true;
+          continue;
+        }
         if (field.name.value === "shapeFields") entity.shapeDriven = true;
         else if (field.name.value === "deleteQueryOptions") entity.deleteOptions = this.deleteOptions(field, where, entity);
         else entity.fragmentFields.push(alias(field));
@@ -949,6 +984,9 @@ export class Extractor {
     if (keys.length) entity.mapFeatureFields = keys;
   }
 
+  /** the properties some panel already showed: a later panel showing them otherwise says so for itself */
+  private panelSeen = new Set<Property>();
+
   /** The elements of a column or of a shared elements fragment. */
   private elementsOf(selectionSet: SelectionSetNode | undefined, where: string, entity: Entity, byAlias: Map<string, Property>): Element[] {
     const elements: Element[] = [];
@@ -962,6 +1000,10 @@ export class Extractor {
         elements.push({ kind: "markdown", label: input(child(element, "label")), metadataKey: content ? str(content, "metadataKey") : undefined, collapsed: input(child(element, "isCollapsed")) === "true" });
       } else if (element.name.value === "singleMediaFileElement")
         elements.push({ kind: "singleMedia", label: input(child(element, "label")), collapsed: input(child(element, "isCollapsed")) === "true" });
+      else if (element.name.value === "entityViewerElement") {
+        const id = child(element, "entityId");
+        elements.push({ kind: "entityViewer", label: input(child(element, "label")), relationType: id ? str(id, "relationType") : undefined, metadataKey: id ? str(id, "metadataKey") : undefined });
+      }
       else if (element.name.value === "mapElement") {
         const wkt = fields(element.selectionSet).find((f) => f.name.value === "metaData");
         const configField = child(element, "config");
@@ -987,7 +1029,7 @@ export class Extractor {
     const panels: Panel[] = [];
     for (const panel of fields(element.selectionSet)) {
       if (panel.name.value !== "panels") {
-        if (!["label", "expandButtonOptions", "editMetadataButton", "hideInHistory", "windowElementStatus"].includes(panel.name.value)) this.note(`${where}: window element field ${panel.name.value} has no term; left out`);
+        if (!["label", "expandButtonOptions", "editMetadataButton", "hideInHistory", "windowElementStatus", "contextMenuActions"].includes(panel.name.value)) this.note(`${where}: window element field ${panel.name.value} has no term; left out`);
         continue;
       }
       const header = child(panel, "panelHeaderContent");
@@ -1005,6 +1047,8 @@ export class Extractor {
         editableDefault: input(child(panel, "isEditable")) === undefined ? true : undefined,
         repetitionKey: repetition ? str(repetition, "repetitionKey") : undefined,
         displayConditionKey: condition ? input(child(condition, "key")) : undefined,
+        bulkDataSource: child(panel, "bulkData") ? str(child(panel, "bulkData")!, "bulkDataSource") : undefined,
+        overrides: [],
         multipleColumns: input(child(panel, "canBeMultipleColumns")) === undefined ? undefined : input(child(panel, "canBeMultipleColumns")) === "true",
         fields: [],
         spreads: spreads(panel.selectionSet),
@@ -1019,7 +1063,7 @@ export class Extractor {
           continue;
         }
         if (field.name.value !== "metaData") {
-          if (!["panelHeaderContent", "label", "panelType", "isCollapsed", "isEditable", "canBeMultipleColumns", "can", "repetitionConfig", "displayCondition"].includes(field.name.value))
+          if (!["panelHeaderContent", "label", "panelType", "isCollapsed", "isEditable", "canBeMultipleColumns", "can", "repetitionConfig", "displayCondition", "bulkData"].includes(field.name.value))
             this.note(`${where}: panel ${alias(panel)} field ${alias(field)} (${field.name.value}) has no term; left out`);
           continue;
         }
@@ -1039,7 +1083,16 @@ export class Extractor {
         if (!unit && property.unit && property.teaser) property.panelShowsUnit = false;
         const tooltip = input(child(field, "tooltip"));
         if (tooltip) property.tooltipKey = tooltip;
-        if (alias(field) !== key && alias(field) !== (property.alias ?? property.key)) property.panelAlias = alias(field);
+        // the first panel showing the key sets how panels show it; a later panel showing it otherwise says so for itself
+        const override = (): PanelFieldOverride => {
+          let o = result.overrides.find((x) => x.key === key);
+          if (!o) result.overrides.push((o = { key }));
+          return o;
+        };
+        const shownAs = property.panelAlias ?? property.alias ?? property.key;
+        if (this.panelSeen.has(property)) {
+          if (alias(field) !== shownAs) override().alias = alias(field);
+        } else if (alias(field) !== key && alias(field) !== (property.alias ?? property.key)) property.panelAlias = alias(field);
         const clamp = input(child(field, "lineClamp"));
         if (clamp) property.panelLineClamp = clamp;
         const translation = input(child(field, "valueTranslationKey"));
@@ -1050,12 +1103,21 @@ export class Extractor {
         if (child(field, "nonEditableField")) property.nonEditable = input(child(field, "nonEditableField")) === "true";
         const permitted = child(field, "permitted");
         if (permitted) property.permitted = list(argument(permitted, "input")).map((v) => scalar(v) ?? "");
+        const readOnly = child(field, "readOnly");
+        if (readOnly) property.readOnlyUnless = list(argument(readOnly, "input")).map((v) => scalar(v) ?? "");
+        if (child(field, "showOnlyInEditMode")) property.showOnlyInEditMode = input(child(field, "showOnlyInEditMode")) === "true";
         const label = input(child(field, "label"));
-        if (label && !property.labelKey) property.labelKey = label;
+        if (this.panelSeen.has(property)) {
+          if (label && label !== (property.detailLabelKey ?? property.labelKey)) override().labelKey = label;
+        } else if (label && !property.labelKey) property.labelKey = label;
         else if (label && property.labelKey && label !== property.labelKey) property.detailLabelKey = label;
         const widget = child(field, "inputField");
         if (widget) {
           if (!result.editable) property.panelWidget = true;
+          else if (property.readOnly) {
+            // another editable panel showed it without a widget: this one has it
+            override().widget = true;
+          }
           const type = str(widget, "type") ?? "baseTextField";
           const base = BASE_FIELDS[type];
           if (base) {
@@ -1075,7 +1137,12 @@ export class Extractor {
           const keyboardField = child(widget, "virtualKeyboardConfig");
           const keyboard = keyboardField ? argument(keyboardField, "input") : undefined;
           if (keyboard?.kind === Kind.OBJECT) property.virtualKeyboardLayouts = list(objectField(keyboard, "layouts")).map((v) => scalar(v) ?? "");
-        } else if (result.editable) property.readOnly = true;
+        } else if (result.editable) {
+          // shown without a widget in an editable panel: read-only, unless another panel edits it
+          if (property.editor || property.clientField) override().widget = false;
+          else property.readOnly = true;
+        }
+        this.panelSeen.add(property);
         // the panel references the property shape by its path, which is the key (an aliased value keeps its key)
         result.fields.push(property.key);
       }
@@ -1096,6 +1163,8 @@ export class Extractor {
       editButton: child(element, "editMetadataButton") !== undefined,
       hideInHistory: input(child(element, "hideInHistory")) === "true",
       windowStatus,
+      contextMenu: child(element, "contextMenuActions") ? this.contextMenu(child(element, "contextMenuActions")!, where) : undefined,
+      panelSpreads: spreads(element.selectionSet),
       panels,
     };
   }
@@ -1616,6 +1685,13 @@ export class Extractor {
     if (p.validationRelationType) lines.push(`    elody:validationRelationType ${q(p.validationRelationType)} ;`);
     if (p.validationAmount !== undefined) lines.push(`    elody:validationAmount ${p.validationAmount} ;`);
     if (p.validationExact !== undefined) lines.push(`    elody:validationExact ${p.validationExact} ;`);
+    if (p.technicalOrigin) lines.push(`    elody:technicalOrigin ${q(p.technicalOrigin)} ;`);
+    for (const unless of p.readOnlyUnless ?? []) lines.push(`    elody:readOnlyUnless ${q(unless)} ;`);
+    if (p.showOnlyInEditMode !== undefined) lines.push(`    elody:showOnlyInEditMode ${p.showOnlyInEditMode} ;`);
+    if (p.listingValueLabelKey !== undefined) lines.push(`    elody:listingValueLabelKey ${q(p.listingValueLabelKey)} ;`);
+    if (p.listingValueLabelRootKey !== undefined) lines.push(`    elody:listingValueLabelRootKey ${q(p.listingValueLabelRootKey)} ;`);
+    if (p.detailFormatter === false) lines.push(`    elody:detailFormatter false ;`);
+    if (p.detailContainsRelation === false) lines.push(`    elody:detailContainsRelation false ;`);
     if (p.cardLineClamp) lines.push(`    elody:cardLineClamp ${q(p.cardLineClamp)} ;`);
     if (p.panelLineClamp) lines.push(`    elody:panelLineClamp ${q(p.panelLineClamp)} ;`);
     if (p.panelAlias) lines.push(`    elody:panelAlias ${q(p.panelAlias)} ;`);
@@ -1770,6 +1846,38 @@ export class Extractor {
     return lines.join("\n");
   }
 
+  /** The lines of an elody:contextMenu node (the card's or a window's), the first one opening the bracket. */
+  private contextMenuNode(contextMenu: NonNullable<Entity["contextMenu"]>): string[] {
+    const menu: string[] = [];
+    if (contextMenu.forceShow) menu.push(`    elody:forceShow true ;`);
+    if (contextMenu.basic) menu.push(`    elody:includeBasicActions true ;`);
+    if (contextMenu.inButtons) menu.push(`    elody:menuInButtons true ;`);
+    const actions = contextMenu.actions.map((action, i) => {
+      const a = [`      [ sh:order ${i + 1} ;`, `      elody:alias ${q(action.alias)} ;`];
+      if (action.form) a.push(`      elody:actionForm ${q(action.form)} ;`);
+      if (action.label) a.push(`      rdfs:label ${q(action.label)} ;`);
+      if (action.kind) a.push(`      elody:actionKind ${action.kind} ;`);
+      if (action.icon) a.push(`      elody:icon ${q(action.icon)} ;`);
+      if (action.formFlow) a.push(`      elody:formFlow ${q(action.formFlow)} ;`);
+      if (action.formTitle) a.push(`      elody:formTitle ${q(action.formTitle)} ;`);
+      if (action.endpointUrl) a.push(`      elody:endpointUrl ${q(action.endpointUrl)} ;`);
+      if (action.endpointMethod) a.push(`      elody:endpointMethod ${q(action.endpointMethod)} ;`);
+      if (action.showAsButton !== undefined) a.push(`      elody:showAsButton ${action.showAsButton} ;`);
+      for (const can of action.can ?? []) a.push(`      elody:can ${q(can)} ;`);
+      if (action.formQuery && this.formSourceNames.has(action.formQuery)) a.push(`      elody:formSourceRef ui:${action.formQuery} ;`);
+      else if (action.formQuery) {
+        a.push(`      elody:form ui:${action.formQuery} ;`);
+        this.stubs.add(action.formQuery);
+      }
+      a[a.length - 1] = a[a.length - 1].replace(/ ;$/, " ]");
+      return a.join("\n");
+    });
+    if (actions.length) menu.push(`    elody:action`, actions.join(" ,\n") + " ;");
+    if (!menu.length) return [];
+    menu[menu.length - 1] = menu[menu.length - 1].replace(/ ;$/, " ] ;");
+    return [`    [ ${menu[0].trim()}`, ...menu.slice(1)];
+  }
+
   /** The node of a list element (in a column or a panel), at the given indentation. */
   private listElementNode(element: Extract<Element, { kind: "list" }>, order: number, pad: string, forms: Set<string>): string {
     // a list without a label (one inside a panel) carries none
@@ -1823,6 +1931,11 @@ export class Extractor {
         if (panel.can) p.push(`  elody:can ${q(panel.can)} ;`);
         if (panel.repetitionKey) p.push(`  elody:repetitionKey ${q(panel.repetitionKey)} ;`);
         if (panel.displayConditionKey) p.push(`  elody:displayConditionKey ${q(panel.displayConditionKey)} ;`);
+        if (panel.bulkDataSource) p.push(`  elody:bulkDataSource ${q(panel.bulkDataSource)} ;`);
+        for (const o of panel.overrides) {
+          const parts = [`elody:field em:${o.key}`, ...(o.labelKey ? [`elody:labelKey ${q(o.labelKey)}`] : []), ...(o.alias ? [`elody:alias ${q(o.alias)}`] : []), ...(o.widget !== undefined ? [`elody:panelWidget ${o.widget}`] : [])];
+          p.push(`  elody:panelField [ ${parts.join(" ; ")} ] ;`);
+        }
         for (const s of panel.spreads) p.push(`  elody:spread ${q(s)} ;`);
         if (panel.kind) p.push(`  elody:panelKind ${panel.kind} ;`);
         if (panel.fields.length) p.push(`  elody:field ${panel.fields.map((f) => `em:${f}`).join(" , ")} ;`);
@@ -1842,6 +1955,11 @@ export class Extractor {
         const parts = [...(status.labelKey ? [`elody:labelKey ${q(status.labelKey)}`] : []), `elody:statusKey ${q(status.statusKey)}`, `elody:statusInputField ${q(status.statusInputField)}`];
         w.push(`      elody:windowStatus [ ${parts.join(" ; ")} ] ;`);
       }
+      for (const spread of element.panelSpreads) w.push(`      elody:panelSpread ${q(spread)} ;`);
+      if (element.contextMenu) {
+        const menu = this.contextMenuNode(element.contextMenu);
+        if (menu.length) w.push(`      elody:contextMenu`, ...menu.map((line) => `    ${line}`));
+      }
       if (panels.length) w.push(`      elody:panel ${panels.join(" , ")} ;`);
       w[w.length - 1] = w[w.length - 1].replace(/ ;$/, " ]");
       return w.join("\n");
@@ -1858,6 +1976,8 @@ export class Extractor {
       s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
       return s.join("\n");
     }
+    if (element.kind === "entityViewer")
+      return [`      [ a elody:EntityViewerElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, element.relationType ? `      elody:relationType ${q(element.relationType)} ]` : `      elody:metadataKey ${q(element.metadataKey ?? "")} ]`].join("\n");
     if (element.kind === "singleMedia")
       return [`      [ a elody:SingleMediaFileElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ]`].join("\n");
     if (element.kind === "map") {
@@ -1916,6 +2036,7 @@ export class Extractor {
     if (entity.readsPermissions) out.push(`  elody:readsPermissions true ;`);
     if (entity.mapFeatureFields?.length) out.push(`  elody:mapFeatureField ${entity.mapFeatureFields.map((f) => `em:${f}`).join(" , ")} ;`);
     if (entity.idField) out.push(`  elody:idField true ;`);
+    if (entity.viewModesOnDetail) out.push(`  elody:viewModesOnDetail true ;`);
     if (entity.idValue) out.push(`  elody:idValue true ;`);
     if (entity.interface) out.push(`  elody:interface true ;`);
     if (entity.listingCore) out.push(`  elody:listingCore true ;`);
@@ -1999,36 +2120,10 @@ export class Extractor {
 
     // context menu
     if (entity.contextMenu) {
-      const menu: string[] = [];
-      if (entity.contextMenu.forceShow) menu.push(`    elody:forceShow true ;`);
-      if (entity.contextMenu.basic) menu.push(`    elody:includeBasicActions true ;`);
-      if (entity.contextMenu.inButtons) menu.push(`    elody:menuInButtons true ;`);
-      const actions = entity.contextMenu.actions.map((action, i) => {
-        const a = [`      [ sh:order ${i + 1} ;`, `      elody:alias ${q(action.alias)} ;`];
-        if (action.form) a.push(`      elody:actionForm ${q(action.form)} ;`);
-        if (action.label) a.push(`      rdfs:label ${q(action.label)} ;`);
-        if (action.kind) a.push(`      elody:actionKind ${action.kind} ;`);
-        if (action.icon) a.push(`      elody:icon ${q(action.icon)} ;`);
-        if (action.formFlow) a.push(`      elody:formFlow ${q(action.formFlow)} ;`);
-        if (action.formTitle) a.push(`      elody:formTitle ${q(action.formTitle)} ;`);
-        if (action.endpointUrl) a.push(`      elody:endpointUrl ${q(action.endpointUrl)} ;`);
-        if (action.endpointMethod) a.push(`      elody:endpointMethod ${q(action.endpointMethod)} ;`);
-        if (action.showAsButton !== undefined) a.push(`      elody:showAsButton ${action.showAsButton} ;`);
-        for (const can of action.can ?? []) a.push(`      elody:can ${q(can)} ;`);
-        if (action.formQuery && this.formSourceNames.has(action.formQuery)) a.push(`      elody:formSourceRef ui:${action.formQuery} ;`);
-        else if (action.formQuery) {
-          a.push(`      elody:form ui:${action.formQuery} ;`);
-          this.stubs.add(action.formQuery);
-        }
-        a[a.length - 1] = a[a.length - 1].replace(/ ;$/, " ]");
-        return a.join("\n");
-      });
-      if (actions.length) menu.push(`    elody:action`, actions.join(" ,\n") + " ;");
-      if (menu.length) {
-        menu[menu.length - 1] = menu[menu.length - 1].replace(/ ;$/, " ] ;");
-        out.push(`  elody:contextMenu`, `    [ ${menu[0].trim()}`, ...menu.slice(1));
-      }
+      const menu = this.contextMenuNode(entity.contextMenu);
+      if (menu.length) out.push(`  elody:contextMenu`, ...menu);
     }
+
 
     // form, bulk operations, custom bulk operations
     const extra: string[] = [];
