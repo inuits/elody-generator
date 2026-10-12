@@ -322,6 +322,18 @@ export type UiRepetitiveStep = {
   acceptedTypes: string[];
   maxSelection?: number;
   overviewFields: { key: string; label?: string; order: number }[];
+  /** elody:showBackButton, elody:skipSearchIfPriorIsNew, elody:pickerFiltersCollapsed, elody:terminalActionLabel */
+  showBackButton?: boolean;
+  skipSearchIfPriorIsNew?: boolean;
+  pickerFiltersCollapsed?: boolean;
+  metadataOnly?: boolean;
+  terminalActionLabel?: string;
+  /** elody:scopeToRelationOf: the search scoped to a prior step's relation */
+  scope?: { step: string; relationType: string; filterKey?: string };
+  /** elody:stepRelation: the relations the flow creates from this step */
+  relations?: { to: string; relationType: string; createWhen?: string; order: number; metadataFields?: { formMetadataKey: string; relationMetadataKey: string; asArray?: boolean; order: number }[] }[];
+  /** elody:creatableType: the types the step may create, with their forms */
+  creatableTypes?: { label?: string; entityType: string; createForm: string; order: number }[];
 };
 
 export type UiRepetitiveForm = {
@@ -330,6 +342,12 @@ export type UiRepetitiveForm = {
   /** repeatable / refetchOnFinish; unsaid leaves the field out */
   repeatable?: boolean;
   refetchOnFinish?: boolean;
+  /** elody:linear, elody:startOnFirstStep, elody:returnsSelection, elody:routeToStep, elody:routeToRoute */
+  linear?: boolean;
+  startOnFirstStep?: boolean;
+  returnsSelection?: boolean;
+  routeToStep?: string;
+  routeToRoute?: string;
   steps: UiRepetitiveStep[];
   finalize?: { fromStep: string; relationType: string };
 };

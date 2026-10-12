@@ -195,7 +195,7 @@ export function readDefinitions(files: QueryFile[]): ReadResult {
  * (the initial values, the settings of an element, a panel or a filter, the fields asked
  * back for a bulk option), so the order is the writer's and does not count.
  */
-const ORDERED_PARENTS = new Set(["teaserMetadata", "elements", "formFields", "advancedFilters", "contextMenuActions", "entityView", "steps"]);
+const ORDERED_PARENTS = new Set(["teaserMetadata", "elements", "formFields", "advancedFilters", "contextMenuActions", "entityView"]);
 /** Parents whose children are settings (free) except these content children (ordered, kept in place after the settings). */
 const CONTENT_CHILDREN: Record<string, (name: string) => boolean> = {
   panels: (name) => !["panelHeaderContent", "label", "panelType", "isCollapsed", "isEditable", "canBeMultipleColumns", "bulkData", "can", "info", "displayCondition", "repetitionConfig"].includes(name),
@@ -204,6 +204,8 @@ const CONTENT_CHILDREN: Record<string, (name: string) => boolean> = {
   GetDynamicForm: (name) => name === "formTab",
   formTab: (name) => name === "formFields",
   GetRepetitiveForm: (name) => name === "steps",
+  // a step's settings are a map; only its repeated relations are an ordered list
+  steps: (name) => name === "relations",
   PreviewElement: (name) => name === "column",
 };
 const selectionName = (selection: SelectionNode): string =>

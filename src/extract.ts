@@ -275,8 +275,16 @@ type FlowStep = {
   acceptedTypes: string[];
   maxSelection?: number;
   overviewFields: { key: string; label?: string }[];
+  showBackButton?: boolean;
+  skipSearchIfPriorIsNew?: boolean;
+  pickerFiltersCollapsed?: boolean;
+  metadataOnly?: boolean;
+  terminalActionLabel?: string;
+  scope?: { step: string; relationType: string; filterKey?: string };
+  relations?: { to: string; relationType: string; createWhen?: string; metadataFields?: { formMetadataKey: string; relationMetadataKey: string; asArray?: boolean }[] }[];
+  creatableTypes?: { label?: string; entityType: string; createForm: string }[];
 };
-type Flow = { queryName: string; label?: string; repeatable?: boolean; refetchOnFinish?: boolean; steps: FlowStep[]; finalize?: { fromStep: string; relationType: string } };
+type Flow = { queryName: string; label?: string; repeatable?: boolean; refetchOnFinish?: boolean; linear?: boolean; startOnFirstStep?: boolean; returnsSelection?: boolean; routeToStep?: string; routeToRoute?: string; steps: FlowStep[]; finalize?: { fromStep: string; relationType: string } };
 /** an id-addressed document a modal loads by name (ProcessorConfigForm(id: $id)) */
 type FormSource = { queryName: string; field: string; withParent: boolean };
 
@@ -1389,16 +1397,46 @@ export class Extractor {
   private flow(query: OperationDefinitionNode, queryName: string, where: string, entity: Entity): Flow {
     const root = fields(query.selectionSet).find((f) => f.name.value === "GetRepetitiveForm")!;
     for (const field of fields(root.selectionSet))
-      if (!["label", "repeatable", "refetchOnFinish", "steps", "finalizeOnHost"].includes(field.name.value)) this.note(`${where}: guided flow ${queryName} field ${field.name.value} has no term; left out`);
+      if (!["label", "repeatable", "refetchOnFinish", "linear", "startOnFirstStep", "returnsSelection", "routeToStep", "routeToRoute", "steps", "finalizeOnHost"].includes(field.name.value)) this.note(`${where}: guided flow ${queryName} field ${field.name.value} has no term; left out`);
     const steps = fields(root.selectionSet)
       .filter((f) => f.name.value === "steps")
       .map((step): FlowStep => {
-        const known = ["key", "label", "entityType", "createForm", "pickerQuery", "pickerFiltersQuery", "acceptedTypes", "maxSelection", "overviewFields"];
+        const known = ["key", "label", "entityType", "createForm", "pickerQuery", "pickerFiltersQuery", "acceptedTypes", "maxSelection", "overviewFields", "showBackButton", "skipSearchIfPriorIsNew", "pickerFiltersCollapsed", "terminalActionLabel", "scopeToRelationOf", "relations", "creatableTypes", "metadataOnly"];
         for (const field of fields(step.selectionSet)) if (!known.includes(field.name.value)) this.note(`${where}: guided flow ${queryName} step ${alias(step)} field ${field.name.value} has no term; left out`);
         const pickerQuery = input(child(step, "pickerQuery"));
         const overview = child(step, "overviewFields");
         const max = input(child(step, "maxSelection"));
+        const flag = (name: string) => (child(step, name) ? input(child(step, name)) === "true" : undefined);
+        const scope = child(step, "scopeToRelationOf");
+        const relations = fields(step.selectionSet).filter((f) => f.name.value === "relations");
+        const creatable = child(step, "creatableTypes");
         return {
+          showBackButton: flag("showBackButton"),
+          skipSearchIfPriorIsNew: flag("skipSearchIfPriorIsNew"),
+          pickerFiltersCollapsed: flag("pickerFiltersCollapsed"),
+          metadataOnly: flag("metadataOnly"),
+          terminalActionLabel: input(child(step, "terminalActionLabel")),
+          scope: scope ? { step: input(child(scope, "step")) ?? "", relationType: input(child(scope, "relationType")) ?? "", filterKey: input(child(scope, "filterKey")) } : undefined,
+          relations: relations.length
+            ? relations.map((relation) => {
+                const metadata = child(relation, "metadataFields");
+                return {
+                  to: input(child(relation, "to")) ?? "",
+                  relationType: input(child(relation, "relationType")) ?? "",
+                  createWhen: input(child(relation, "createWhen")),
+                  metadataFields: metadata
+                    ? list(argument(metadata, "input"))
+                        .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
+                        .map((field) => ({ formMetadataKey: scalar(objectField(field, "formMetadataKey")) ?? "", relationMetadataKey: scalar(objectField(field, "relationMetadataKey")) ?? "", asArray: objectField(field, "asArray") ? scalar(objectField(field, "asArray")) === "true" : undefined }))
+                    : undefined,
+                };
+              })
+            : undefined,
+          creatableTypes: creatable
+            ? list(argument(creatable, "input"))
+                .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
+                .map((type) => ({ label: scalar(objectField(type, "label")), entityType: scalar(objectField(type, "entityType")) ?? "", createForm: scalar(objectField(type, "createForm")) ?? "" }))
+            : undefined,
           key: input(child(step, "key")) ?? alias(step),
           label: input(child(step, "label")),
           entityType: input(child(step, "entityType")),
@@ -1417,6 +1455,11 @@ export class Extractor {
       label: input(child(root, "label")),
       repeatable: child(root, "repeatable") ? input(child(root, "repeatable")) === "true" : undefined,
       refetchOnFinish: child(root, "refetchOnFinish") ? input(child(root, "refetchOnFinish")) === "true" : undefined,
+      linear: child(root, "linear") ? input(child(root, "linear")) === "true" : undefined,
+      startOnFirstStep: child(root, "startOnFirstStep") ? input(child(root, "startOnFirstStep")) === "true" : undefined,
+      returnsSelection: child(root, "returnsSelection") ? input(child(root, "returnsSelection")) === "true" : undefined,
+      routeToStep: input(child(root, "routeToStep")),
+      routeToRoute: input(child(root, "routeToRoute")),
       steps,
       finalize: finalize ? { fromStep: input(child(finalize, "fromStep")) ?? "", relationType: input(child(finalize, "relationType")) ?? "" } : undefined,
     };
@@ -2420,6 +2463,11 @@ export class Extractor {
       const lines = [`ui:${flow.queryName}`, `  a elody:GuidedFlow ;`, ...(flow.label !== undefined ? [`  rdfs:label ${q(flow.label)} ;`] : []), `  elody:queryName ${q(flow.queryName)} ;`];
       if (flow.repeatable !== undefined) lines.push(`  elody:repeatable ${flow.repeatable} ;`);
       if (flow.refetchOnFinish !== undefined) lines.push(`  elody:refetchOnFinish ${flow.refetchOnFinish} ;`);
+      if (flow.linear !== undefined) lines.push(`  elody:linear ${flow.linear} ;`);
+      if (flow.startOnFirstStep !== undefined) lines.push(`  elody:startOnFirstStep ${flow.startOnFirstStep} ;`);
+      if (flow.returnsSelection !== undefined) lines.push(`  elody:returnsSelection ${flow.returnsSelection} ;`);
+      if (flow.routeToStep) lines.push(`  elody:routeToStep ${q(flow.routeToStep)} ;`);
+      if (flow.routeToRoute) lines.push(`  elody:routeToRoute ${q(flow.routeToRoute)} ;`);
       if (flow.finalize) lines.push(`  elody:finalize [ elody:fromStep ${q(flow.finalize.fromStep)} ; elody:relationType ${q(flow.finalize.relationType)} ] ;`);
       const steps = flow.steps.map((step, i) => {
         const st = [`    [ sh:order ${i + 1} ;`, `    elody:key ${q(step.key)} ;`];
@@ -2434,6 +2482,20 @@ export class Extractor {
         if (step.maxSelection !== undefined) st.push(`    elody:maxSelection ${step.maxSelection} ;`);
         if (step.overviewFields.length)
           st.push(`    elody:overviewField ${step.overviewFields.map((f, j) => `[ sh:order ${j + 1} ; elody:key ${q(f.key)}${f.label !== undefined ? ` ; rdfs:label ${q(f.label)}` : ""} ]`).join(" , ")} ;`);
+        if (step.showBackButton !== undefined) st.push(`    elody:showBackButton ${step.showBackButton} ;`);
+        if (step.skipSearchIfPriorIsNew !== undefined) st.push(`    elody:skipSearchIfPriorIsNew ${step.skipSearchIfPriorIsNew} ;`);
+        if (step.pickerFiltersCollapsed !== undefined) st.push(`    elody:pickerFiltersCollapsed ${step.pickerFiltersCollapsed} ;`);
+        if (step.metadataOnly !== undefined) st.push(`    elody:metadataOnly ${step.metadataOnly} ;`);
+        if (step.terminalActionLabel) st.push(`    elody:terminalActionLabel ${q(step.terminalActionLabel)} ;`);
+        if (step.scope) st.push(`    elody:scopeToRelationOf [ elody:fromStep ${q(step.scope.step)} ; elody:relationType ${q(step.scope.relationType)}${step.scope.filterKey ? ` ; elody:filterKey ${q(step.scope.filterKey)}` : ""} ] ;`);
+        for (const [j, relation] of (step.relations ?? []).entries()) {
+          const metadata = (relation.metadataFields ?? []).map((field, k) => `[ sh:order ${k + 1} ; elody:formMetadataKey ${q(field.formMetadataKey)} ; elody:relationMetadataKey ${q(field.relationMetadataKey)}${field.asArray !== undefined ? ` ; elody:asArray ${field.asArray}` : ""} ]`);
+          st.push(`    elody:stepRelation [ sh:order ${j + 1} ; elody:to ${q(relation.to)} ; elody:relationType ${q(relation.relationType)}${relation.createWhen ? ` ; elody:createWhen ${q(relation.createWhen)}` : ""}${metadata.length ? ` ;\n      elody:metadataField ${metadata.join(" , ")}` : ""} ] ;`);
+        }
+        for (const [j, type] of (step.creatableTypes ?? []).entries()) {
+          st.push(`    elody:creatableType [ sh:order ${j + 1}${type.label !== undefined ? ` ; elody:labelKey ${q(type.label)}` : ""} ; elody:entityType ${q(type.entityType)} ; elody:form ui:${type.createForm} ] ;`);
+          if (!formNodes.has(type.createForm)) this.stubs.add(type.createForm);
+        }
         st[st.length - 1] = st[st.length - 1].replace(/ ;$/, " ]");
         return st.join("\n");
       });

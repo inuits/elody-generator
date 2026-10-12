@@ -1420,6 +1420,11 @@ class Parse {
         label: r.value(node, rdfs("label")),
         repeatable: this.optionalFlag(node, elody("repeatable")),
         refetchOnFinish: this.optionalFlag(node, elody("refetchOnFinish")),
+        linear: this.optionalFlag(node, elody("linear")),
+        startOnFirstStep: this.optionalFlag(node, elody("startOnFirstStep")),
+        returnsSelection: this.optionalFlag(node, elody("returnsSelection")),
+        routeToStep: r.value(node, elody("routeToStep")) || undefined,
+        routeToRoute: r.value(node, elody("routeToRoute")) || undefined,
         steps: r.byOrder(r.nodes(node, elody("step"))).map((step) => this.step(step)),
         finalize: finalizeNode
           ? {
@@ -1444,6 +1449,7 @@ class Parse {
       pickerFiltersQuery = r.value(step, elody("pickerFiltersQuery"));
     }
     const maxSelection = r.literal(step, elody("maxSelection"));
+    const scopeNode = r.node(step, elody("scopeToRelationOf"));
     return {
       key: String(r.value(step, elody("key")) ?? ""),
       order: r.order(step),
@@ -1459,6 +1465,23 @@ class Parse {
         label: r.value(field, rdfs("label")),
         order: r.order(field),
       })),
+      showBackButton: this.optionalFlag(step, elody("showBackButton")),
+      skipSearchIfPriorIsNew: this.optionalFlag(step, elody("skipSearchIfPriorIsNew")),
+      pickerFiltersCollapsed: this.optionalFlag(step, elody("pickerFiltersCollapsed")),
+      metadataOnly: this.optionalFlag(step, elody("metadataOnly")),
+      terminalActionLabel: r.value(step, elody("terminalActionLabel")) || undefined,
+      scope: scopeNode
+        ? { step: String(r.value(scopeNode, elody("fromStep")) ?? ""), relationType: String(r.value(scopeNode, elody("relationType")) ?? ""), filterKey: r.value(scopeNode, elody("filterKey")) || undefined }
+        : undefined,
+      relations: r.nodes(step, elody("stepRelation")).length
+        ? r.byOrder(r.nodes(step, elody("stepRelation"))).map((relation) => ({ to: String(r.value(relation, elody("to")) ?? ""), relationType: String(r.value(relation, elody("relationType")) ?? ""), createWhen: r.value(relation, elody("createWhen")) || undefined, order: r.order(relation),
+            metadataFields: r.nodes(relation, elody("metadataField")).length
+              ? r.byOrder(r.nodes(relation, elody("metadataField"))).map((field) => ({ formMetadataKey: String(r.value(field, elody("formMetadataKey")) ?? ""), relationMetadataKey: String(r.value(field, elody("relationMetadataKey")) ?? ""), asArray: this.optionalFlag(field, elody("asArray")), order: r.order(field) }))
+              : undefined }))
+        : undefined,
+      creatableTypes: r.nodes(step, elody("creatableType")).length
+        ? r.byOrder(r.nodes(step, elody("creatableType"))).map((type) => ({ label: r.value(type, elody("labelKey")) || undefined, entityType: String(r.value(type, elody("entityType")) ?? ""), createForm: this.formRef(type, elody("form")) ?? "", order: r.order(type) }))
+        : undefined,
     };
   }
 

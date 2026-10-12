@@ -683,14 +683,42 @@ export function renderCreateForm(form: M.UiCreateForm): string {
 
 export function renderRepetitiveForm(form: M.UiRepetitiveForm): string {
   const steps = form.steps.map((step) => {
-    const lines = [`      ${step.key}: steps {`, `        key(input: "${step.key}")`, `        label(input: "${step.label ?? ""}")`];
+    const lines = [`      ${step.key}: steps {`, `        key(input: "${step.key}")`];
+    if (step.showBackButton !== undefined) lines.push(`        showBackButton(input: ${step.showBackButton})`);
+    lines.push(`        label(input: "${step.label ?? ""}")`);
     if (step.entityType) lines.push(`        entityType(input: "${step.entityType}")`);
     if (step.createForm) lines.push(`        createForm(input: "${step.createForm}")`);
+    if (step.metadataOnly !== undefined) lines.push(`        metadataOnly(input: ${step.metadataOnly})`);
     if (step.pickerQuery) lines.push(`        pickerQuery(input: "${step.pickerQuery}")`);
     if (step.pickerFiltersQuery) lines.push(`        pickerFiltersQuery(input: "${step.pickerFiltersQuery}")`);
+    if (step.pickerFiltersCollapsed !== undefined) lines.push(`        pickerFiltersCollapsed(input: ${step.pickerFiltersCollapsed})`);
     if (step.acceptedTypes.length > 0)
       lines.push(`        acceptedTypes(input: [${step.acceptedTypes.map((entry) => `"${entry}"`).join(", ")}])`);
+    if (step.skipSearchIfPriorIsNew !== undefined) lines.push(`        skipSearchIfPriorIsNew(input: ${step.skipSearchIfPriorIsNew})`);
     if (step.maxSelection !== undefined) lines.push(`        maxSelection(input: ${step.maxSelection})`);
+    if (step.terminalActionLabel) lines.push(`        terminalActionLabel(input: "${step.terminalActionLabel}")`);
+    if (step.scope) {
+      lines.push("        scopeToRelationOf {", `          step(input: "${step.scope.step}")`, `          relationType(input: "${step.scope.relationType}")`);
+      if (step.scope.filterKey) lines.push(`          filterKey(input: "${step.scope.filterKey}")`);
+      lines.push("        }");
+    }
+    for (const relation of step.relations ?? []) {
+      lines.push("        relations {", `          to(input: "${relation.to}")`, `          relationType(input: "${relation.relationType}")`);
+      if (relation.createWhen) lines.push(`          createWhen(input: ${relation.createWhen})`);
+      if (relation.metadataFields?.length) {
+        const asArray = relation.metadataFields.some((field) => field.asArray !== undefined);
+        lines.push("          metadataFields(", "            input: [");
+        for (const field of relation.metadataFields)
+          lines.push(`              { formMetadataKey: "${field.formMetadataKey}", relationMetadataKey: "${field.relationMetadataKey}"${field.asArray !== undefined ? `, asArray: ${field.asArray}` : ""} }`);
+        lines.push("            ]", "          ) {", "            formMetadataKey", "            relationMetadataKey", ...(asArray ? ["            asArray"] : []), "          }");
+      }
+      lines.push("        }");
+    }
+    if (step.creatableTypes?.length) {
+      lines.push("        creatableTypes(", "          input: [");
+      for (const type of step.creatableTypes) lines.push(`            { label: "${type.label ?? ""}", entityType: "${type.entityType}", createForm: "${type.createForm}" }`);
+      lines.push("          ]", "        ) {", "          label", "          entityType", "          createForm", "        }");
+    }
     if (step.overviewFields.length > 0) {
       lines.push("        overviewFields(");
       lines.push("          input: [");
@@ -721,6 +749,11 @@ export function renderRepetitiveForm(form: M.UiRepetitiveForm): string {
     `      label(input: "${form.label ?? ""}")`,
     ...(form.repeatable !== undefined ? [`      repeatable(input: ${form.repeatable})`] : []),
     ...(form.refetchOnFinish !== undefined ? [`      refetchOnFinish(input: ${form.refetchOnFinish})`] : []),
+    ...(form.linear !== undefined ? [`      linear(input: ${form.linear})`] : []),
+    ...(form.startOnFirstStep !== undefined ? [`      startOnFirstStep(input: ${form.startOnFirstStep})`] : []),
+    ...(form.returnsSelection !== undefined ? [`      returnsSelection(input: ${form.returnsSelection})`] : []),
+    ...(form.routeToStep ? [`      routeToStep(input: "${form.routeToStep}")`] : []),
+    ...(form.routeToRoute ? [`      routeToRoute(input: "${form.routeToRoute}")`] : []),
     steps.join("\n"),
     ...(finalize ? [finalize] : []),
     "    }",
