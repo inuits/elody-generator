@@ -66,6 +66,8 @@ export type UiProperty = {
   /** elody:parentEntityType / elody:parentKey: the parent entity found by a key (parentRelations: [{ entityType, key }]) */
   parentEntityType?: string;
   parentKey?: string;
+  /** elody:parentRelation nodes: several steps to the parent (parentRelations with more than one entry); wins over the flat terms */
+  parentRelations?: { relationType?: string; entityType?: string; key?: string }[];
   /** elody:repeatableMetadataKey (source repeatableMetadata), elody:parentRelationType (source parentRoot) */
   repeatableMetadataKey?: string;
   parentRelationType?: string;
@@ -318,8 +320,9 @@ export type UiPicker = {
   filtersType?: string;
   /** elody:relationValues on the list query: relationValues read on every result */
   relationValues?: boolean;
-  /** elody:readsHost on the list query: the document declares $userUuid */
+  /** elody:readsHost on the list query: the document declares $userUuid; elody:hostOptional: as a nullable String */
   readsHost?: boolean;
+  hostOptional?: boolean;
   /** false when an earlier type already emitted the document of that name */
   emitList?: boolean;
   emitFilters?: boolean;

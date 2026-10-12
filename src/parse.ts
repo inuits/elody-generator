@@ -944,8 +944,15 @@ class Parse {
       cardEditable: r.literal(node, elody("cardEditable")) === true,
       relationKey: r.value(node, elody("relationKey")) || undefined,
       readsHost: r.literal(node, elody("readsHost")) === true,
-      relationDirection: r.value(node, elody("relationDirection")) || undefined,
+            relationDirection: r.value(node, elody("relationDirection")) || undefined,
       parentEntityType: r.value(node, elody("parentEntityType")) || undefined,
+      parentRelations: r.nodes(node, elody("parentRelation")).length
+        ? r.byOrder(r.nodes(node, elody("parentRelation"))).map((step) => ({
+            relationType: r.value(step, elody("parentRelationType")) || undefined,
+            entityType: r.value(step, elody("parentEntityType")) || undefined,
+            key: r.value(step, elody("parentKey")) || undefined,
+          }))
+        : undefined,
       parentKey: r.value(node, elody("parentKey")) || undefined,
       detailLabelKey: r.value(node, elody("detailLabelKey")) || undefined,
       sortPrimary: r.literal(node, elody("sortPrimary")) === true,
@@ -1401,6 +1408,7 @@ class Parse {
       filtersQueryName: names.filters,
       relationValues: r.literal(node, elody("relationValues")) === true,
       readsHost: r.literal(node, elody("readsHost")) === true,
+      hostOptional: r.literal(node, elody("hostOptional")) === true || undefined,
       // the document of a name goes with the first node that renders it: one with results, one with filters
       emitList: r.nodes(node, elody("result")).length ? this.emitsOnce(`document:${names.list}`) : false,
       emitFilters: r.nodes(node, elody("filter")).length ? this.emitsOnce(`document:${names.filters}`) : false,

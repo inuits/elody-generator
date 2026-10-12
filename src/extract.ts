@@ -95,6 +95,7 @@ type Property = {
   relationDirection?: string;
   parentEntityType?: string;
   parentKey?: string;
+  parentRelations?: { relationType?: string; entityType?: string; key?: string }[];
   detailLabelKey?: string;
   sortPrimary?: boolean;
   listingFormatter?: boolean;
@@ -270,7 +271,7 @@ type FieldsFragment = { name: string; fields: FormField[] };
 type ElementsFragment = { name: string; elements: Element[] };
 type ValuesFragment = { name: string; cardName?: string; fields: string[] };
 
-type ListQuery = { node?: string; name: string; filtersName?: string; filtersType?: string; relationValues?: boolean; readsHost?: boolean; results: { type: string; fragments: string[]; listingNode?: string }[]; filters: Filter[] };
+type ListQuery = { node?: string; name: string; filtersName?: string; filtersType?: string; relationValues?: boolean; readsHost?: boolean; hostOptional?: boolean; results: { type: string; fragments: string[]; listingNode?: string }[]; filters: Filter[] };
 type Picker = ListQuery;
 
 type Entity = {
@@ -359,6 +360,12 @@ export class Extractor {
   /** Whether a list document declares the host's uuid ($userUuid). */
   private queryReadsHost(query: OperationDefinitionNode | undefined): boolean {
     return (query?.variableDefinitions ?? []).some((v) => v.variable.name.value === "userUuid");
+  }
+
+  /** Whether the list document declares the host's uuid as a nullable variable ($userUuid: String). */
+  private queryHostOptional(query: OperationDefinitionNode | undefined): boolean {
+    const variable = (query?.variableDefinitions ?? []).find((v) => v.variable.name.value === "userUuid");
+    return variable !== undefined && variable.type.kind !== Kind.NON_NULL_TYPE;
   }
 
   /** Whether a list document reads relationValues on every result (outside the per-type selections). */
@@ -551,12 +558,16 @@ export class Extractor {
       // what the value is read with beyond its key
       const repeatable = str(field, "repeatableMetadataKey");
       if (repeatable !== undefined) property.repeatableMetadataKey = repeatable;
-      const parent = list(argument(field, "parentRelations"))[0];
-      if (parent?.kind === Kind.OBJECT) {
+      const parents = list(argument(field, "parentRelations")).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT);
+      const parent = parents[0];
+      if (parent) {
         property.parentRelationType = scalar(objectField(parent, "relationType"));
         property.parentEntityType = scalar(objectField(parent, "entityType"));
         property.parentKey = scalar(list(objectField(parent, "key"))[0]);
       }
+      // several steps to the parent: one node per step
+      if (parents.length > 1)
+        property.parentRelations = parents.map((step) => ({ relationType: scalar(objectField(step, "relationType")), entityType: scalar(objectField(step, "entityType")), key: scalar(list(objectField(step, "key"))[0]) }));
       // a value on a relation of the host entity: relationKey, uuid: $userUuid, relationDirection
       const relationKey = str(field, "relationKey");
       if (relationKey !== undefined) property.relationKey = relationKey;
@@ -1236,7 +1247,7 @@ export class Extractor {
     const { block, filtersType } = this.advancedFiltersOf(filters);
     const node = this.mint(name, `${name}Picker`);
     this.pickerNodes.set(`${name}|${filtersName ?? ""}`, node);
-    entity.pickers.push({ node, name, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, readsHost: results.length ? this.queryReadsHost(query) || undefined : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
+    entity.pickers.push({ node, name, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, readsHost: results.length ? this.queryReadsHost(query) || undefined : undefined, hostOptional: results.length && this.queryHostOptional(query) ? true : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
     return node;
   }
 
@@ -1265,7 +1276,7 @@ export class Extractor {
     }
     const filters = filtersName ? this.operation(filtersName) : undefined;
     const { block, filtersType } = this.advancedFiltersOf(filters);
-    entity.listQueries.push({ node, name, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, readsHost: results.length ? this.queryReadsHost(query) || undefined : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
+    entity.listQueries.push({ node, name, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, readsHost: results.length ? this.queryReadsHost(query) || undefined : undefined, hostOptional: results.length && this.queryHostOptional(query) ? true : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
     if (filtersName && !filters) this.note(`${where}: filters document ${filtersName} is not in these files; the list query declares no filters and the name stays`);
     return node;
   }
@@ -1673,6 +1684,8 @@ export class Extractor {
     if (p.relationDirection) lines.push(`    elody:relationDirection ${q(p.relationDirection)} ;`);
     if (p.parentEntityType) lines.push(`    elody:parentEntityType ${q(p.parentEntityType)} ;`);
     if (p.parentKey) lines.push(`    elody:parentKey ${q(p.parentKey)} ;`);
+    for (const [i, step] of (p.parentRelations ?? []).entries())
+      lines.push(`    elody:parentRelation [ sh:order ${i + 1}${step.relationType ? ` ; elody:parentRelationType ${q(step.relationType)}` : ""}${step.entityType ? ` ; elody:parentEntityType ${q(step.entityType)}` : ""}${step.key ? ` ; elody:parentKey ${q(step.key)}` : ""} ] ;`);
     if (p.detailLabelKey) lines.push(`    elody:detailLabelKey ${q(p.detailLabelKey)} ;`);
     if (p.sortPrimary) lines.push(`    elody:sortPrimary true ;`);
     if (p.listingFormatter === false) lines.push(`    elody:listingFormatter false ;`);
@@ -2210,6 +2223,7 @@ export class Extractor {
       if (lq.filtersType) lines.push(`  elody:filtersType ${q(lq.filtersType)} ;`);
       if (lq.relationValues) lines.push(`  elody:relationValues true ;`);
       if (lq.readsHost) lines.push(`  elody:readsHost true ;`);
+      if (lq.hostOptional) lines.push(`  elody:hostOptional true ;`);
       if (lq.results.length)
         lines.push(
           `  elody:result`,

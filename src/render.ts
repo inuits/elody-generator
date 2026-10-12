@@ -48,11 +48,13 @@ export function renderInitialValues(entity: M.UiEntity, indent: number, withForm
       // what the value is read with beyond its key: the key inside a repeatable group, the parent's relation, a relation property
       const extras = [
         property.repeatableMetadataKey !== undefined ? `, repeatableMetadataKey: "${property.repeatableMetadataKey}"` : "",
-        property.parentEntityType
-          ? `, parentRelations: [{ entityType: ${property.parentEntityType}${property.parentKey ? `, key: ["${property.parentKey}"]` : ""} }]`
-          : property.parentRelationType
-            ? `, parentRelations: [{ relationType: "${property.parentRelationType}" }]`
-            : "",
+        property.parentRelations?.length
+          ? `, parentRelations: [${property.parentRelations.map((step) => `{ ${[...(step.relationType ? [`relationType: "${step.relationType}"`] : []), ...(step.entityType ? [`entityType: ${step.entityType}`] : []), ...(step.key ? [`key: ["${step.key}"]`] : [])].join(", ")} }`).join(", ")}]`
+          : property.parentEntityType
+            ? `, parentRelations: [{ entityType: ${property.parentEntityType}${property.parentKey ? `, key: ["${property.parentKey}"]` : ""} }]`
+            : property.parentRelationType
+              ? `, parentRelations: [{ relationType: "${property.parentRelationType}" }]`
+              : "",
         // a value on a relation of the host entity: the relation, the host's uuid (a query variable), the direction
         property.readsHost ? ", uuid: $userUuid" : "",
         property.relationDirection ? `, relationDirection: ${property.relationDirection}` : "",
@@ -701,7 +703,7 @@ export function renderListQuery(picker: M.UiPicker): string {
     "    $advancedSearchValue: [FilterInput]",
     "    $advancedFilterInputs: [AdvancedFilterInput!]!",
     "    $searchInputType: SearchInputType",
-    ...(readsHost(picker) ? ["    $userUuid: String!"] : []),
+    ...(readsHost(picker) ? [`    $userUuid: String${picker.hostOptional ? "" : "!"}`] : []),
     "  ) {",
     "    Entities(",
     "      type: $type",
