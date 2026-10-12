@@ -207,8 +207,9 @@ type Filter = {
     distinctBy?: string;
     operator?: string;
     typeOperator?: string;
+    typeBare?: boolean;
     /** the inputs beyond the search and the type, in order */
-    inputs?: { kind?: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; operator?: string }[];
+    inputs?: { kind?: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; operator?: string; bareValues?: boolean }[];
   };
   staticOptions?: { label: string; value: string }[];
   selectionSpread?: string;
@@ -269,9 +270,9 @@ type FormSource = { queryName: string; field: string; withParent: boolean };
 
 type FieldsFragment = { name: string; fields: FormField[] };
 type ElementsFragment = { name: string; elements: Element[] };
-type ValuesFragment = { name: string; cardName?: string; fields: string[] };
+type ValuesFragment = { name: string; cardName?: string; fields: string[]; aliases: string[]; valuesFields: string[]; cardShows?: string[]; contextMenu?: Entity["contextMenu"] };
 
-type ListQuery = { node?: string; name: string; filtersName?: string; filtersType?: string; relationValues?: boolean; readsHost?: boolean; hostOptional?: boolean; results: { type: string; fragments: string[]; listingNode?: string }[]; filters: Filter[] };
+type ListQuery = { node?: string; name: string; filtersName?: string; filtersType?: string; relationValues?: boolean; readsHost?: boolean; hostOptional?: boolean; results: { type: string; fragments: string[]; listingNode?: string; cardMenuSpread?: string }[]; filters: Filter[] };
 type Picker = ListQuery;
 
 type Entity = {
@@ -323,10 +324,15 @@ type Entity = {
   fieldsFragments: FieldsFragment[];
   elementsFragments: ElementsFragment[];
   valuesFragments: ValuesFragment[];
+  panelFragments: { name: string; fields: string[] }[];
+  filtersFragments: { name: string; filters: Filter[] }[];
+  /** a file of shared fragments alone, and where it is written */
+  fragmentsOnly?: boolean;
+  filePath?: string;
   operations?: Operation[];
   customOperations: { name: string; operations: Operation[] }[];
   listQueries: ListQuery[];
-  contextMenu?: { forceShow: boolean; basic: boolean; inButtons?: boolean; actions: { alias: string; form?: string; kind?: string; label?: string; icon?: string; formQuery?: string; formFlow?: string; formTitle?: string; can?: string[]; showAsButton?: boolean; endpointUrl?: string; endpointMethod?: string }[] };
+  contextMenu?: { forceShow: boolean; basic: boolean; inButtons?: boolean; spreads?: string[]; actions: { alias: string; form?: string; kind?: string; label?: string; icon?: string; formQuery?: string; formFlow?: string; formTitle?: string; can?: string[]; showAsButton?: boolean; endpointUrl?: string; endpointMethod?: string }[] };
 };
 
 // -- the input field types a client uses --------------------------------------
@@ -380,8 +386,15 @@ export class Extractor {
     const inline = (child(entities, "results")?.selectionSet?.selections ?? []).filter((s): s is InlineFragmentNode => s.kind === Kind.INLINE_FRAGMENT);
     return inline.map((on) => {
       const type = on.typeCondition?.name.value ?? "";
-      const own = on.selectionSet.selections.filter((x) => x.kind !== Kind.FRAGMENT_SPREAD && !(x.kind === Kind.FIELD && x.name.value === "__typename"));
+      let own = on.selectionSet.selections.filter((x) => x.kind !== Kind.FRAGMENT_SPREAD && !(x.kind === Kind.FIELD && x.name.value === "__typename"));
       const result: ListQuery["results"][number] = { type, fragments: spreads(on.selectionSet) };
+      // a menu fragment on the card next to the listing fragment: teaserMetadata { buttons { contextMenu { ...X } } }
+      const teaser = own.length === 1 && own[0].kind === Kind.FIELD && own[0].name.value === "teaserMetadata" ? own[0] : undefined;
+      const menu = teaser ? child(child(teaser, "buttons"), "contextMenu") : undefined;
+      if (teaser && menu && fields(teaser.selectionSet).length === 1 && fields(child(teaser, "buttons")?.selectionSet).length === 1 && spreads(menu.selectionSet).length === 1 && fields(menu.selectionSet).length === 0) {
+        result.cardMenuSpread = spreads(menu.selectionSet)[0];
+        own = [];
+      }
       if (own.length) {
         let name = `${type}In${queryName}`;
         for (let n = 2; this.definitions.has(`minimal${name}`); n++) name = `${type}In${queryName}${n}`;
@@ -496,6 +509,8 @@ export class Extractor {
       fieldsFragments: [],
       elementsFragments: [],
       valuesFragments: [],
+      panelFragments: [],
+      filtersFragments: [],
     };
     const where = name;
     if (!minimal) entity.interface = true;
@@ -651,30 +666,7 @@ export class Extractor {
         const translation = input(child(field, "valueTranslationKey"));
         if (translation) property.valueTranslationKey = translation;
         if (child(field, "highlightIfPrimaryThumbnail")) property.highlightIfPrimaryThumbnail = input(child(field, "highlightIfPrimaryThumbnail")) === "true";
-        if (input(child(field, "isMultilingual")) === "true") property.multilingual = true;
-        const unit = input(child(field, "unit"));
-        if (unit) property.unit = this.instance("Unit", unit, `${where} ${key}`);
-        const colSpan = input(child(field, "colSpan"));
-        if (colSpan) property.colSpan = Number(colSpan);
-        if (field.name.value !== "metaData") property.cardField = field.name.value;
-        // a card edited in place: the input field sits on the card field
-        const widget = child(field, "inputField");
-        if (widget) {
-          property.cardEditable = true;
-          const type = str(widget, "type") ?? "baseTextField";
-          const base = BASE_FIELDS[type];
-          if (base) {
-            property.editor = property.editor ?? base.editor;
-            property.datatype = property.datatype ?? base.datatype;
-          } else property.clientField = property.clientField ?? type;
-          const validation = this.validation(child(widget, "validation"), `${where} card field ${key}`);
-          if (validation.required) property.required = true;
-          if (validation.rule) {
-            property.validationRule = validation.rule;
-            property.validationValue = validation.value;
-          }
-          if (!child(widget, "validation")) property.cardValidates = false;
-        }
+        this.applyCardField(property, field, key, where);
       } else if (field.name.value === "thumbnail") {
         const filename = child(field, "filename");
         const before = fields(teaser?.selectionSet).slice(0, fields(teaser?.selectionSet).indexOf(field)).filter((f) => f.name.value === "metaData").length;
@@ -845,59 +837,7 @@ export class Extractor {
         this.formSourceNames.add(definition.name);
       }
     }
-    // the fragments the file holds for other types to spread: on FormFields, on EntityViewElements, on IntialValues (+ teaserMetadata)
-    const cardTwins = new Map<string, FragmentDefinitionNode>();
-    for (const definition of this.definitions.values()) {
-      if (definition.kind !== "fragment" || definition.file !== file) continue;
-      const fragment = definition.node as FragmentDefinitionNode;
-      if (fragment.typeCondition.name.value === "teaserMetadata") cardTwins.set(definition.name, fragment);
-    }
-    for (const definition of this.definitions.values()) {
-      if (definition.kind !== "fragment" || definition.file !== file) continue;
-      const fragment = definition.node as FragmentDefinitionNode;
-      const on = fragment.typeCondition.name.value;
-      if (on === "FormFields") {
-        const sharedFields = fields(fragment.selectionSet).filter((f) => f.name.value === "metaData").map((f) => this.formField(f, `${where} fragment ${definition.name}`));
-        for (const f of fields(fragment.selectionSet)) if (f.name.value !== "metaData") this.note(`${where}: fragment ${definition.name} field ${f.name.value} has no term; left out`);
-        entity.fieldsFragments.push({ name: definition.name, fields: sharedFields });
-      } else if (on === "EntityViewElements") {
-        const elements = this.elementsOf(fragment.selectionSet, `${where} ${definition.name}`, entity, byAlias);
-        if (elements.length) entity.elementsFragments.push({ name: definition.name, elements });
-        else this.note(`${where}: fragment ${definition.name} holds nothing the generator renders; it stays hand-written`);
-      } else if (on === "IntialValues") {
-        const keys: string[] = [];
-        for (const field of fields(fragment.selectionSet)) {
-          if (field.name.value !== "keyValue") {
-            this.note(`${where}: fragment ${definition.name} field ${alias(field)} is not a keyValue; left out`);
-            continue;
-          }
-          const before = new Set(entity.properties);
-          add(field, false);
-          const property = entity.properties.find((p) => (p.alias ?? p.key) === alias(field) && !before.has(p)) ?? byAlias.get(alias(field));
-          if (property) {
-            // read by the fragment only: neither the listing nor the detail page of this type
-            if (!before.has(property)) property.inDetail = false;
-            keys.push(property.key);
-          }
-        }
-        // the twin on teaserMetadata (relatedWorksIntialValues / relatedWorksTeaserMetadata) labels the same fields on a card
-        const twinName = definition.name.replace(/IntialValues$/, "TeaserMetadata");
-        const twin = twinName !== definition.name ? cardTwins.get(twinName) : undefined;
-        if (twin) {
-          cardTwins.delete(twinName);
-          for (const field of fields(twin.selectionSet)) {
-            if (field.name.value !== "metaData") continue;
-            const key = input(child(field, "key")) ?? alias(field);
-            const property = entity.properties.find((p) => keys.includes(p.key) && ((p.alias ?? p.key) === alias(field) || p.key === key));
-            if (!property) continue;
-            property.labelKey = input(child(field, "label")) ?? property.labelKey;
-            if (key !== (property.alias ?? property.key)) property.cardKey = key;
-          }
-        }
-        entity.valuesFragments.push({ name: definition.name, cardName: twin ? twinName : undefined, fields: keys });
-      }
-    }
-    for (const name of cardTwins.keys()) this.note(`${where}: fragment ${name} on teaserMetadata has no IntialValues twin; left out`);
+    this.sharedFragmentsOf(file, where, entity, byAlias, add);
     for (const [suffix, document] of [["Entities", "entities"], ["Filters", "filters"], ["SortOptions", "sortOptions"], ["BulkOperations", "bulkOperations"]] as const)
       if (this.operation(`Get${name}${suffix}`)) entity.documents.push(document);
     return entity;
@@ -948,6 +888,8 @@ export class Extractor {
 
   private contextMenu(field: FieldNode, where: string): Entity["contextMenu"] {
     const menu: NonNullable<Entity["contextMenu"]> = { forceShow: false, basic: spreads(field.selectionSet).includes("basicContextMenuActions"), actions: [] };
+    const others = spreads(field.selectionSet).filter((s) => s !== "basicContextMenuActions");
+    if (others.length) menu.spreads = others;
     for (const action of fields(field.selectionSet)) {
       // a link action follows the entity's link: label and icon only; a general or custom action names its form
       if (!["doElodyAction", "doLinkAction", "doGeneralAction", "doCustomAction"].includes(action.name.value)) {
@@ -1363,6 +1305,7 @@ export class Extractor {
             distinctBy: text ? scalar(objectField(text, "distinct_by")) : undefined,
             operator: text ? scalar(objectField(text, "operator")) : undefined,
             typeOperator: type ? scalar(objectField(type, "operator")) : undefined,
+            typeBare: type && objectField(type, "value")?.kind === Kind.ENUM ? true : undefined,
             inputs: others.length
               ? others.map((o) => {
                   const value = objectField(o, "value");
@@ -1370,6 +1313,7 @@ export class Extractor {
                     kind: this.instance("FilterKind", scalar(objectField(o, "type")), `${where} filter ${alias(field)} option input`),
                     key: scalar(list(objectField(o, "key"))[0]) ?? "",
                     value: value?.kind === Kind.LIST ? list(value).map((v) => scalar(v) ?? "") : (scalar(value) ?? ""),
+                    bareValues: (value?.kind === Kind.LIST ? list(value) : value ? [value] : []).some((v) => v.kind === Kind.ENUM) ? true : undefined,
                     matchExact: flag(o, "match_exact"),
                     distinctBy: scalar(objectField(o, "distinct_by")),
                     operator: scalar(objectField(o, "operator")),
@@ -1785,11 +1729,13 @@ export class Extractor {
       if (f.options.distinctBy) lines.push(`    elody:optionsDistinctBy ${q(f.options.distinctBy)} ;`);
       if (f.options.operator) lines.push(`    elody:optionsOperator ${q(f.options.operator)} ;`);
       if (f.options.typeOperator) lines.push(`    elody:optionsTypeOperator ${q(f.options.typeOperator)} ;`);
+      if (f.options.typeBare) lines.push(`    elody:optionsTypeBare true ;`);
       for (const [i, input] of (f.options.inputs ?? []).entries()) {
         const parts = [`sh:order ${i + 1}`, `elody:inputKind ${input.kind ?? "elody:TextFilter"}`, `elody:key ${q(input.key)}`, `elody:value ${Array.isArray(input.value) ? `( ${input.value.map(q).join(" ")} )` : q(input.value)}`];
         if (input.distinctBy) parts.push(`elody:inputDistinctBy ${q(input.distinctBy)}`);
         if (input.matchExact !== undefined) parts.push(`elody:inputMatchExact ${input.matchExact}`);
         if (input.operator) parts.push(`elody:inputOperator ${q(input.operator)}`);
+        if (input.bareValues) parts.push(`elody:bareValues true`);
         lines.push(`    elody:optionsInput [ ${parts.join(" ; ")} ] ;`);
       }
     }
@@ -1859,12 +1805,258 @@ export class Extractor {
     return lines.join("\n");
   }
 
+  /** The fragments a file holds for other types to spread: on FormFields, on EntityViewElements, on IntialValues (+ teaserMetadata), on WindowElementPanel, on AdvancedFilters. */
+  private sharedFragmentsOf(file: string | undefined, where: string, entity: Entity, byAlias: Map<string, Property>, add: (field: FieldNode, listing: boolean) => void): void {
+    // the fragments the file holds for other types to spread: on FormFields, on EntityViewElements, on IntialValues (+ teaserMetadata)
+    const cardTwins = new Map<string, FragmentDefinitionNode>();
+    for (const definition of this.definitions.values()) {
+      if (definition.kind !== "fragment" || definition.file !== file) continue;
+      const fragment = definition.node as FragmentDefinitionNode;
+      if (fragment.typeCondition.name.value === "teaserMetadata") cardTwins.set(definition.name, fragment);
+    }
+    for (const definition of this.definitions.values()) {
+      if (definition.kind !== "fragment" || definition.file !== file) continue;
+      const fragment = definition.node as FragmentDefinitionNode;
+      const on = fragment.typeCondition.name.value;
+      if (on === "FormFields") {
+        const sharedFields = fields(fragment.selectionSet).filter((f) => f.name.value === "metaData").map((f) => this.formField(f, `${where} fragment ${definition.name}`));
+        for (const f of fields(fragment.selectionSet)) if (f.name.value !== "metaData") this.note(`${where}: fragment ${definition.name} field ${f.name.value} has no term; left out`);
+        entity.fieldsFragments.push({ name: definition.name, fields: sharedFields });
+      } else if (on === "EntityViewElements") {
+        const elements = this.elementsOf(fragment.selectionSet, `${where} ${definition.name}`, entity, byAlias);
+        if (elements.length) entity.elementsFragments.push({ name: definition.name, elements });
+        else this.note(`${where}: fragment ${definition.name} holds nothing the generator renders; it stays hand-written`);
+      } else if (on === "WindowElementPanel") {
+        // panel fields other types spread into a panel
+        const keys: string[] = [];
+        for (const field of fields(fragment.selectionSet)) {
+          if (field.name.value !== "metaData") {
+            this.note(`${where}: fragment ${definition.name} field ${alias(field)} (${field.name.value}) has no term; left out`);
+            continue;
+          }
+          const key = input(child(field, "key")) ?? alias(field);
+          let property = entity.properties.find((p) => p.key === key && !p.alias) ?? entity.properties.find((p) => p.key === key);
+          if (!property) {
+            property = { key, inListing: false, inDetail: true, readsValue: false, teaser: false, sortable: false, single: true, required: false, readOnly: false, labelRole: false };
+            if (alias(field) !== key) property.alias = alias(field);
+            entity.properties.push(property);
+            if (!byAlias.has(alias(field))) byAlias.set(alias(field), property);
+          }
+          const label = input(child(field, "label"));
+          if (label && !property.labelKey) property.labelKey = label;
+          else if (label && property.labelKey && label !== property.labelKey) property.detailLabelKey = label;
+          const unit = input(child(field, "unit"));
+          if (unit && !property.unit) property.unit = this.instance("Unit", unit, `${where} ${key}`);
+          const widget = child(field, "inputField");
+          if (widget) {
+            property.panelWidget = true;
+            const type = str(widget, "type") ?? "baseTextField";
+            const base = BASE_FIELDS[type];
+            if (base) {
+              property.editor = property.editor ?? base.editor;
+              property.datatype = property.datatype ?? base.datatype;
+            } else property.clientField = property.clientField ?? type;
+            const validation = this.validation(child(widget, "validation"), `${where} ${definition.name} field ${key}`);
+            if (validation.required) property.required = true;
+            if (validation.rule) {
+              property.validationRule = validation.rule;
+              property.validationValue = validation.value;
+              property.validationRelationType = validation.relationType;
+              property.validationAmount = validation.amount;
+              property.validationExact = validation.exact;
+            }
+          }
+          keys.push(property.key);
+        }
+        if (keys.length) entity.panelFragments.push({ name: definition.name, fields: keys });
+      } else if (on === "AdvancedFilters") {
+        // filters other types spread into theirs
+        const block: FieldNode = { kind: Kind.FIELD, name: { kind: Kind.NAME, value: "advancedFilters" }, selectionSet: fragment.selectionSet };
+        const filters = this.filters(block, `${where} ${definition.name}`);
+        if (filters.length) entity.filtersFragments.push({ name: definition.name, filters });
+      } else if (on === "IntialValues") {
+        const keys: string[] = [];
+        const aliases: string[] = [];
+        const valuesFields: string[] = [];
+        for (const field of fields(fragment.selectionSet)) {
+          if (field.name.value !== "keyValue") {
+            // a plain field of IntialValues (lockedProperties)
+            if (!field.arguments?.length && !field.selectionSet && !field.alias) valuesFields.push(field.name.value);
+            else this.note(`${where}: fragment ${definition.name} field ${alias(field)} is not a keyValue; left out`);
+            continue;
+          }
+          const before = new Set(entity.properties);
+          add(field, false);
+          const property = entity.properties.find((p) => (p.alias ?? p.key) === alias(field) && !before.has(p)) ?? byAlias.get(alias(field));
+          if (property) {
+            // read by the fragment only: neither the listing nor the detail page of this type
+            if (!before.has(property)) property.inDetail = false;
+            if (property.alias) aliases.push(property.alias);
+            else keys.push(property.key);
+          }
+        }
+        const read = (p: Property) => keys.includes(p.key) || (p.alias !== undefined && aliases.includes(p.alias));
+        // the twin on teaserMetadata (relatedWorksIntialValues / relatedWorksTeaserMetadata) labels the same fields on a card
+        const twinName = definition.name.replace(/TeaserIntialValues$/, "IntialValues").replace(/IntialValues$/, "TeaserMetadata");
+        // vocabIntialValues and vocabTeaserIntialValues both name vocabTeaserMetadata: the latter owns the twin
+        const owner = /TeaserIntialValues$/.test(definition.name) ? definition.name : definition.name.replace(/IntialValues$/, "TeaserIntialValues");
+        const twin = twinName !== definition.name && (owner === definition.name || !this.definitions.has(owner)) ? cardTwins.get(twinName) : undefined;
+        let menu: Entity["contextMenu"];
+        let cardShows: string[] | undefined;
+        if (twin) {
+          const shown = new Set<string>();
+          cardTwins.delete(twinName);
+          for (const field of fields(twin.selectionSet)) {
+            if (field.name.value === "buttons" && child(field, "contextMenu")) {
+              menu = { ...this.contextMenu(child(field, "contextMenu")!, `${where} ${twinName}`)!, inButtons: true, forceShow: false };
+              continue;
+            }
+            if (!["metaData", "relationRootData", "relationMetaData"].includes(field.name.value)) {
+              this.note(`${where}: fragment ${twinName} field ${alias(field)} (${field.name.value}) has no term; left out`);
+              continue;
+            }
+            const key = input(child(field, "key")) ?? alias(field);
+            // the card field's key(input:) names the value alias; else its own alias; else the key
+            let property =
+              entity.properties.find((p) => read(p) && (p.alias ?? p.key) === key) ??
+              entity.properties.find((p) => read(p) && (p.alias ?? p.key) === alias(field)) ??
+              entity.properties.find((p) => read(p) && p.key === key);
+            if (!property) {
+              // shown on the card alone: no value of its own
+              property = { key, inListing: false, inDetail: false, readsValue: false, teaser: false, sortable: false, single: true, required: false, readOnly: false, labelRole: false };
+              if (alias(field) !== key) property.alias = alias(field);
+              entity.properties.push(property);
+              if (!byAlias.has(alias(field))) byAlias.set(alias(field), property);
+              if (property.alias) aliases.push(property.alias);
+              else keys.push(property.key);
+            }
+            property.labelKey = input(child(field, "label")) ?? property.labelKey;
+            if (key !== (property.alias ?? property.key)) property.cardKey = key;
+            this.applyCardField(property, field, key, where);
+            shown.add(property.alias ?? property.key);
+          }
+          // the card shows some of the values only
+          const all = entity.properties.filter((p) => read(p)).map((p) => p.alias ?? p.key);
+          if (all.some((v) => !shown.has(v))) cardShows = all.filter((v) => shown.has(v));
+        }
+        entity.valuesFragments.push({ name: definition.name, cardName: twin ? twinName : undefined, fields: keys, aliases, valuesFields, cardShows, contextMenu: menu });
+      }
+    }
+    for (const name of cardTwins.keys()) this.note(`${where}: fragment ${name} on teaserMetadata has no IntialValues twin; left out`);
+  }
+
+  /** A file holding shared fragments alone (no type of its own): declared as a fragments-only entity named after the file. */
+  sharedFile(file: string): Entity {
+    const name = file.replace(/^.*\//, "").replace(/\.queries\.ts$/, "");
+    const entity: Entity = {
+      documentName: name,
+      graphqlType: "Entity",
+      properties: [],
+      viewModes: [],
+      typePills: false,
+      spreads: { listingValues: [], detailValues: [], card: [], filters: [] },
+      documents: [],
+      columns: [],
+      shapeDriven: false,
+      fragmentFields: [],
+      pickers: [],
+      filters: [],
+      customOperations: [],
+      listQueries: [],
+      forms: [],
+      flows: [],
+      formSources: [],
+      entityListQueries: [],
+      fieldsFragments: [],
+      elementsFragments: [],
+      valuesFragments: [],
+      panelFragments: [],
+      filtersFragments: [],
+      fragmentsOnly: true,
+      filePath: file,
+    };
+    const byAlias = new Map<string, Property>();
+    // a value read by a shared fragment: its key, source and labels, nothing of a page
+    const add = (field: FieldNode, _listing: boolean) => {
+      const a = alias(field);
+      const key = str(field, "key") ?? a;
+      const source = str(field, "source");
+      if (byAlias.has(a)) return;
+      const property: Property = {
+        key: source === "relations" ? a : key,
+        source: source && source !== "metadata" && source !== "relations" ? source : undefined,
+        relationType: source === "relations" ? key : undefined,
+        valueLabelKey: source === "relations" && !str(field, "rootKeyAsLabel") ? (str(field, "metadataKeyAsLabel") ?? "") : undefined,
+        valueLabelRootKey: str(field, "rootKeyAsLabel"),
+        index: str(field, "index") !== undefined ? Number(str(field, "index")) : undefined,
+        formatter: str(field, "formatter"),
+        relationKey: str(field, "relationKey"),
+        readsHost: argument(field, "uuid")?.kind === Kind.VARIABLE ? true : undefined,
+        inListing: false,
+        inDetail: false,
+        readsValue: true,
+        teaser: false,
+        sortable: false,
+        single: true,
+        required: false,
+        readOnly: false,
+        labelRole: false,
+      };
+      if (source !== "relations" && key !== a) property.alias = a;
+      byAlias.set(a, property);
+      entity.properties.push(property);
+    };
+    this.sharedFragmentsOf(file, name, entity, byAlias, add);
+    return entity;
+  }
+
+  /** The files holding shared fragments and no type of their own. */
+  sharedFiles(): string[] {
+    const anchored = new Set([...this.definitions.values()].filter((d) => d.kind === "fragment" && d.name.startsWith("minimal")).map((d) => d.file));
+    const shared = new Set<string>();
+    for (const d of this.definitions.values()) {
+      if (d.kind !== "fragment" || anchored.has(d.file)) continue;
+      const on = (d.node as FragmentDefinitionNode).typeCondition.name.value;
+      if (["IntialValues", "teaserMetadata", "WindowElementPanel", "AdvancedFilters", "FormFields", "EntityViewElements"].includes(on)) shared.add(d.file);
+    }
+    return [...shared].sort();
+  }
+
+  /** What a card field says beyond its label: the unit, the column span, the field it is shown as, its widget. */
+  private applyCardField(property: Property, field: FieldNode, key: string, where: string): void {
+    if (input(child(field, "isMultilingual")) === "true") property.multilingual = true;
+    const unit = input(child(field, "unit"));
+    if (unit) property.unit = this.instance("Unit", unit, `${where} ${key}`);
+    const colSpan = input(child(field, "colSpan"));
+    if (colSpan) property.colSpan = Number(colSpan);
+    if (field.name.value !== "metaData") property.cardField = field.name.value;
+    // a card edited in place: the input field sits on the card field
+    const widget = child(field, "inputField");
+    if (widget) {
+      property.cardEditable = true;
+      const type = str(widget, "type") ?? "baseTextField";
+      const base = BASE_FIELDS[type];
+      if (base) {
+        property.editor = property.editor ?? base.editor;
+        property.datatype = property.datatype ?? base.datatype;
+      } else property.clientField = property.clientField ?? type;
+      const validation = this.validation(child(widget, "validation"), `${where} card field ${key}`);
+      if (validation.required) property.required = true;
+      if (validation.rule) {
+        property.validationRule = validation.rule;
+        property.validationValue = validation.value;
+      }
+      if (!child(widget, "validation")) property.cardValidates = false;
+    }
+  }
+
   /** The lines of an elody:contextMenu node (the card's or a window's), the first one opening the bracket. */
   private contextMenuNode(contextMenu: NonNullable<Entity["contextMenu"]>): string[] {
     const menu: string[] = [];
     if (contextMenu.forceShow) menu.push(`    elody:forceShow true ;`);
     if (contextMenu.basic) menu.push(`    elody:includeBasicActions true ;`);
     if (contextMenu.inButtons) menu.push(`    elody:menuInButtons true ;`);
+    for (const spread of contextMenu.spreads ?? []) menu.push(`    elody:menuSpread ${q(spread)} ;`);
     const actions = contextMenu.actions.map((action, i) => {
       const a = [`      [ sh:order ${i + 1} ;`, `      elody:alias ${q(action.alias)} ;`];
       if (action.form) a.push(`      elody:actionForm ${q(action.form)} ;`);
@@ -2043,6 +2235,8 @@ export class Extractor {
     const out: string[] = [`${node}`, `  a elody:EntityUi ;`, `  elody:graphqlType ${q(entity.graphqlType)} ;`];
     if (entity.documentName !== entity.graphqlType) out.push(`  elody:documentName ${q(entity.documentName)} ;`);
     out.push(`  elody:emit ${entity.inline ? '"inline"' : '"file"'} ;`);
+    if (entity.fragmentsOnly) out.push(`  elody:fragmentsOnly true ;`);
+    if (entity.filePath) out.push(`  elody:filePath ${q(entity.filePath)} ;`);
     if (entity.documents.length) out.push(`  elody:documents ${entity.documents.map(q).join(" , ")} ;`);
     if (entity.typePills) out.push(`  elody:typePills true ;`);
     if (entity.relationValues !== undefined) out.push(`  elody:relationValues ${entity.relationValues} ;`);
@@ -2100,8 +2294,23 @@ export class Extractor {
       const nodes = fragment.elements.map((element, e) => this.elementNode(element, e, name, panelNodes, panelIds, formNodes));
       out.push(`  elody:elementsFragment`, `    [ elody:fragmentName ${q(fragment.name)} ;`, `    elody:element`, nodes.join(" ,\n") + " ] ;");
     }
-    for (const fragment of entity.valuesFragments)
-      out.push(`  elody:valuesFragment`, `    [ elody:fragmentName ${q(fragment.name)} ;${fragment.cardName ? ` elody:cardFragmentName ${q(fragment.cardName)} ;` : ""} elody:field ${fragment.fields.map((f) => `em:${f}`).join(" , ")} ] ;`);
+    for (const fragment of entity.valuesFragments) {
+      const refs = [
+        ...(fragment.fields.length ? [`elody:field ${fragment.fields.map((f) => `em:${f}`).join(" , ")}`] : []),
+        ...(fragment.aliases.length ? [`elody:fieldAlias ${fragment.aliases.map(q).join(" , ")}`] : []),
+        ...(fragment.valuesFields.length ? [`elody:valuesField ${fragment.valuesFields.map(q).join(" , ")}`] : []),
+        ...(fragment.cardShows?.length ? [`elody:cardShows ${fragment.cardShows.map(q).join(" , ")}`] : []),
+      ];
+      const head = `    [ elody:fragmentName ${q(fragment.name)} ;${fragment.cardName ? ` elody:cardFragmentName ${q(fragment.cardName)} ;` : ""} ${refs.join(" ; ")}`;
+      const menu = fragment.contextMenu ? this.contextMenuNode(fragment.contextMenu) : [];
+      if (menu.length) out.push(`  elody:valuesFragment`, `${head} ;`, `    elody:contextMenu`, ...menu.map((line) => `  ${line}`).slice(0, -1), `  ${menu[menu.length - 1].replace(/ \] ;$/, " ] ] ;")}`);
+      else out.push(`  elody:valuesFragment`, `${head} ] ;`);
+    }
+    for (const fragment of entity.panelFragments) out.push(`  elody:panelFragment`, `    [ elody:fragmentName ${q(fragment.name)} ; elody:field ${fragment.fields.map((f) => `em:${f}`).join(" , ")} ] ;`);
+    for (const fragment of entity.filtersFragments) {
+      fragment.filters.forEach((f, index) => (f.order = index + 1));
+      out.push(`  elody:filtersFragment`, `    [ elody:fragmentName ${q(fragment.name)} ;`, `    elody:filter`, fragment.filters.map((f) => this.filter(f).replace(/^/gm, "  ")).join(" ,\n") + " ] ;");
+    }
     if (entity.columns.length) {
       const columns = entity.columns.map((column, c) => {
         const lines = [`    [ sh:order ${c + 1} ;`];
@@ -2228,7 +2437,7 @@ export class Extractor {
         lines.push(
           `  elody:result`,
           lq.results
-            .map((r, i) => `    [ elody:graphqlType ${q(r.type)} ; sh:order ${i + 1}${r.fragments.map((f) => ` ; elody:fragment ${q(f)}`).join("")}${r.listingNode ? ` ; elody:listing ui:${r.listingNode}` : ""} ]`)
+            .map((r, i) => `    [ elody:graphqlType ${q(r.type)} ; sh:order ${i + 1}${r.fragments.map((f) => ` ; elody:fragment ${q(f)}`).join("")}${r.cardMenuSpread ? ` ; elody:cardMenuSpread ${q(r.cardMenuSpread)}` : ""}${r.listingNode ? ` ; elody:listing ui:${r.listingNode}` : ""} ]`)
             .join(" ,\n") + " ;",
         );
       const filters = lq.filters;
@@ -2251,6 +2460,8 @@ export function extractDeclaration(files: QueryFile[], options: ExtractOptions =
   for (const error of errors) extractor.notes.push(`${error.file} does not parse: ${error.message}`);
   const types = extractor.types();
   const entities = types.map((name) => extractor.entity(name));
+  // the files holding shared fragments alone, declared as fragments-only entities
+  for (const file of extractor.sharedFiles()) entities.push(extractor.sharedFile(file));
   // the listings synthesised for results selected inline, declared after the types that led to them
   for (let name = extractor.inlineNames.shift(); name !== undefined; name = extractor.inlineNames.shift()) entities.push(extractor.entity(name));
   const ttl = extractor.write(entities, options);

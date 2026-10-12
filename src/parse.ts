@@ -812,6 +812,25 @@ class Parse {
         .filter(({ name }) => this.emitsOnce(`fragment:${name}`))
         .map(({ node, name }) => ({ name, fields: this.formFields(r.nodes(r.node(node, elody("shape")) ?? "", sh("property"))) })),
       elementsFragments,
+      fragmentsOnly: r.literal(subject, elody("fragmentsOnly")) === true || undefined,
+      filePath: r.value(subject, elody("filePath")) || undefined,
+      panelFragments: r
+        .nodes(subject, elody("panelFragment"))
+        .map((node) => ({ node, name: String(r.value(node, elody("fragmentName")) ?? "") }))
+        .filter(({ name }) => this.emitsOnce(`fragment:${name}`))
+        .map(({ node, name }) => ({
+          name,
+          fields: r.nodes(node, elody("field")).map((path) => {
+            const key = pathToKey.get(path);
+            if (!key) throw new Error(`panel fragment "${name}" references ${compact(path)}, which no property shape declares as sh:path`);
+            return key;
+          }),
+        })),
+      filtersFragments: r
+        .nodes(subject, elody("filtersFragment"))
+        .map((node) => ({ node, name: String(r.value(node, elody("fragmentName")) ?? "") }))
+        .filter(({ name }) => this.emitsOnce(`fragment:${name}`))
+        .map(({ node, name }) => ({ name, filters: r.byOrder(r.nodes(node, elody("filter"))).map((filter) => this.filter(filter)) })),
       valuesFragments: r
         .nodes(subject, elody("valuesFragment"))
         .map((node) => ({ node, name: String(r.value(node, elody("fragmentName")) ?? "") }))
@@ -819,6 +838,10 @@ class Parse {
         .map(({ node, name }) => ({
           name,
           cardName: r.value(node, elody("cardFragmentName")) || undefined,
+          contextMenu: this.contextMenu(r.node(node, elody("contextMenu"))),
+          aliases: r.literals(node, elody("fieldAlias")).length ? r.literals(node, elody("fieldAlias")) : undefined,
+          valuesFields: r.literals(node, elody("valuesField")).length ? r.literals(node, elody("valuesField")) : undefined,
+          cardShows: r.literals(node, elody("cardShows")).length ? r.literals(node, elody("cardShows")) : undefined,
           fields: r.nodes(node, elody("field")).map((path) => {
             const key = pathToKey.get(path);
             if (!key) throw new Error(`values fragment "${name}" references ${compact(path)}, which no property shape declares as sh:path`);
@@ -1039,6 +1062,7 @@ class Parse {
             distinctBy: r.value(node, elody("optionsDistinctBy")) || undefined,
             operator: r.value(node, elody("optionsOperator")) || undefined,
             typeOperator: r.value(node, elody("optionsTypeOperator")) || undefined,
+            typeBare: this.optionalFlag(node, elody("optionsTypeBare")),
             inputs: r.nodes(node, elody("optionsInput")).length ? r.byOrder(r.nodes(node, elody("optionsInput"))).map((input) => this.optionsInput(input)) : undefined,
           }
         : undefined,
@@ -1063,6 +1087,7 @@ class Parse {
       forceShow: r.literal(node, elody("forceShow")) === true,
       includeBasicActions: r.literal(node, elody("includeBasicActions")) === true,
       inButtons: r.literal(node, elody("menuInButtons")) === true,
+      spreads: r.literals(node, elody("menuSpread")).length ? r.literals(node, elody("menuSpread")) : undefined,
       actions: r.byOrder(r.nodes(node, elody("action"))).map((action): M.UiAction => {
         const source = r.node(action, elody("formSourceRef"));
         return {
@@ -1147,6 +1172,7 @@ class Parse {
       matchExact: this.optionalFlag(node, elody("inputMatchExact")),
       distinctBy: r.value(node, elody("inputDistinctBy")) || undefined,
       operator: r.value(node, elody("inputOperator")) || undefined,
+      bareValues: this.optionalFlag(node, elody("bareValues")),
       order: r.order(node),
     };
   }
@@ -1423,6 +1449,7 @@ class Parse {
           type: type ?? "",
           fragments: r.literals(result, elody("fragment")),
           listingIri: r.node(result, elody("listing")),
+          cardMenuSpread: r.value(result, elody("cardMenuSpread")) || undefined,
           order: r.order(result),
         };
       }),

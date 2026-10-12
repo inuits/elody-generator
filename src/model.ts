@@ -139,7 +139,7 @@ export type UiFilter = {
   aggregation?: string;
   /** elody:optionsType & co: a selection filter fetches its options from the entities of a type */
   /** type left out: the search is scoped by its inputs alone */
-  options?: { type?: string; key?: string; matchExact?: boolean; distinctBy?: string; operator?: string; typeOperator?: string; inputs?: UiOptionsInput[] };
+  options?: { type?: string; key?: string; matchExact?: boolean; distinctBy?: string; operator?: string; typeOperator?: string; /** elody:optionsTypeBare: the type written as an enum value */ typeBare?: boolean; inputs?: UiOptionsInput[] };
   /** elody:keys: several keys, in order (key: ["a", "b"]) */
   keys?: string[];
   /** elody:selectionSpread: a shared fragment as the filter's selection set (...advancedFilter) */
@@ -188,10 +188,10 @@ export type UiAction = {
 };
 
 /** elody:menuInButtons renders the menu as buttons { contextMenu { ... } } (the newer form) */
-export type UiContextMenu = { forceShow: boolean; includeBasicActions: boolean; inButtons?: boolean; actions: UiAction[] };
+export type UiContextMenu = { forceShow: boolean; includeBasicActions: boolean; inButtons?: boolean; actions: UiAction[]; /** elody:menuSpread: hand-written action fragments spread in the menu */ spreads?: string[] };
 
 /** elody:optionsInput: a further input of a selection filter's option search; value a string or a list */
-export type UiOptionsInput = { kind: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; operator?: string; order: number };
+export type UiOptionsInput = { kind: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; operator?: string; order: number; /** elody:bareValues: the values are enum values, written unquoted */ bareValues?: boolean };
 
 /** elody:matchMetadataValue: a metadata key and the value it must hold (matchMetadataValue) */
 export type UiMetadataMatch = { key: string; value: string };
@@ -308,7 +308,7 @@ export type UiRepetitiveForm = {
 };
 
 /** A result type of a list query or picker: fragments spread on it and/or a listing rendered inline (an EntityUi with elody:emit "inline") */
-export type UiPickerResult = { type: string; fragments: string[]; listingIri?: string; listing?: UiEntity; order: number };
+export type UiPickerResult = { type: string; fragments: string[]; listingIri?: string; listing?: UiEntity; order: number; /** elody:cardMenuSpread: a menu fragment on the result's card */ cardMenuSpread?: string };
 
 export type UiPicker = {
   queryName: string;
@@ -433,7 +433,23 @@ export type UiFieldsFragment = { name: string; fields: UiCreateFormField[] };
 /** elody:ElementsFragment: a named fragment on EntityViewElements */
 export type UiElementsFragment = { name: string; elements: UiElement[] };
 /** elody:ValuesFragment: a named fragment on IntialValues over some of the type's properties, with an optional card twin */
-export type UiValuesFragment = { name: string; cardName?: string; fields: string[] };
+export type UiValuesFragment = {
+  name: string;
+  cardName?: string;
+  /** elody:field: property shapes by key; elody:fieldAlias: by alias (several shapes over one key); read in that order */
+  fields: string[];
+  aliases?: string[];
+  /** elody:valuesField: plain fields of IntialValues read next to the keyValues */
+  valuesFields?: string[];
+  /** elody:cardShows: the values (alias, else key) the card twin shows; absent = all */
+  cardShows?: string[];
+  /** elody:contextMenu: the menu on the card twin */
+  contextMenu?: UiContextMenu;
+};
+/** elody:panelFragment: panel fields other types spread (on WindowElementPanel) */
+export type UiPanelFragment = { name: string; fields: string[] };
+/** elody:filtersFragment: filters other types spread (on AdvancedFilters) */
+export type UiFiltersFragment = { name: string; filters: UiFilter[] };
 
 export type UiFormSource = { queryName: string; field: string; withParent: boolean };
 
@@ -475,6 +491,11 @@ export type UiEntity = {
   fieldsFragments: UiFieldsFragment[];
   elementsFragments: UiElementsFragment[];
   valuesFragments: UiValuesFragment[];
+  panelFragments: UiPanelFragment[];
+  filtersFragments: UiFiltersFragment[];
+  /** elody:fragmentsOnly: a file of shared fragments alone; elody:filePath: where it is written, relative to src/ */
+  fragmentsOnly?: boolean;
+  filePath?: string;
   /** elody:thumbnail: the card's picture, from an initial value or the primary media file; sh:order places it among the card's fields */
   thumbnail?: { key?: string; fromMediafile?: boolean; order?: number };
   /** hand-written shared fragments spread into a block (elody:listingValuesSpread & co) */

@@ -102,7 +102,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
   for (const entity of entities) {
     // an inline listing is rendered inside a list query's results, not as a file
     if (entity.emit === "inline") continue;
-    const file = fileTargetFor(entity.documentName ?? entity.graphqlType);
+    const file = entity.filePath ? `src/${entity.filePath}` : fileTargetFor(entity.documentName ?? entity.graphqlType);
     if (entity.emit === "file") {
       apply(file, renderEntityFile(entity, declaration));
       continue;

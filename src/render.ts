@@ -249,13 +249,13 @@ function renderFilterOptions(options: NonNullable<M.UiFilter["options"]>, indent
       `${pad(indent + 2)}{`,
       `${pad(indent + 4)}type: ${input.kind}`,
       `${pad(indent + 4)}key: ["${input.key}"]`,
-      `${pad(indent + 4)}value: ${Array.isArray(input.value) ? `[${input.value.map((v) => `"${v}"`).join(", ")}]` : `"${input.value}"`}`,
+      `${pad(indent + 4)}value: ${Array.isArray(input.value) ? `[${input.value.map((v) => (input.bareValues ? v : `"${v}"`)).join(", ")}]` : input.bareValues ? input.value : `"${input.value}"`}`,
       ...(input.distinctBy ? [`${pad(indent + 4)}distinct_by: "${input.distinctBy}"`] : []),
       ...(input.matchExact !== undefined ? [`${pad(indent + 4)}match_exact: ${input.matchExact}`] : []),
       ...(input.operator ? [`${pad(indent + 4)}operator: ${input.operator}`] : []),
       `${pad(indent + 2)}}`,
     ]),
-    ...(options.type ? [`${pad(indent + 2)}{ type: type, value: "${options.type}"${options.typeOperator ? `, operator: ${options.typeOperator}` : ""} }`] : []),
+    ...(options.type ? [`${pad(indent + 2)}{ type: type, value: ${options.typeBare ? options.type : `"${options.type}"`}${options.typeOperator ? `, operator: ${options.typeOperator}` : ""} }`] : []),
     `${pad(indent)}]`,
   ];
   // the inputs asked back, every one of them (what is asked back beyond the client's does not count):
@@ -270,7 +270,7 @@ function renderFilterOptions(options: NonNullable<M.UiFilter["options"]>, indent
   return { args, fields };
 }
 
-export function renderFilterList(filters: M.UiFilter[], indent: number, spreads: string[] = []): string {
+export function renderFilterList(filters: M.UiFilter[], indent: number, spreads: string[] = [], wrap = true): string {
   const entries = filters.map((filter) => {
     const aliased = filter.alias ? `${filter.alias}: ` : "";
     if (filter.kind === "type")
@@ -373,6 +373,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
   });
 
   const spread = spreads.map((name) => `${pad(indent + 2)}...${name}`);
+  if (!wrap) return [...spread, ...entries].join("\n");
   return [`${pad(indent)}advancedFilters {`, ...spread, ...entries, `${pad(indent)}}`].join("\n");
 }
 
@@ -388,10 +389,11 @@ export function renderContextMenuOf(menu: M.UiContextMenu | undefined, indent: n
   if (menu.forceShow) lines.push(`${pad(indent)}forceShowContextMenuActions(input: true)`);
   // the newer form nests the menu under buttons; an empty menu is no block at all
   const inner = menu.inButtons ? indent + 4 : indent + 2;
-  if (menu.includeBasicActions || menu.actions.length) {
+  if (menu.includeBasicActions || menu.actions.length || menu.spreads?.length) {
     if (menu.inButtons) lines.push(`${pad(indent)}buttons {`, `${pad(indent + 2)}contextMenu {`);
     else lines.push(`${pad(indent)}contextMenuActions {`);
     if (menu.includeBasicActions) lines.push(`${pad(inner)}...basicContextMenuActions`);
+    for (const spread of menu.spreads ?? []) lines.push(`${pad(inner)}...${spread}`);
     for (const action of menu.actions) {
       const form = action.form ?? "doElodyAction";
       lines.push(`${pad(inner)}${action.alias === form ? form : `${action.alias}: ${form}`} {`);
@@ -551,14 +553,31 @@ export function renderSharedFragments(entity: M.UiEntity): string[] {
   for (const fragment of entity.elementsFragments)
     fragments.push([`  fragment ${fragment.name} on EntityViewElements {`, ...fragment.elements.map((element) => renderElement(element, 4)), "  }"].join("\n"));
   for (const fragment of entity.valuesFragments) {
-    const subset = fragment.fields.map((key) => entity.properties.find((property) => property.key === key)).filter((p): p is M.UiProperty => p !== undefined);
+    const subset = [
+      ...fragment.fields.map((key) => entity.properties.find((property) => property.key === key && !property.alias) ?? entity.properties.find((property) => property.key === key)),
+      ...(fragment.aliases ?? []).map((alias) => entity.properties.find((property) => (property.alias ?? property.key) === alias)),
+    ].filter((p): p is M.UiProperty => p !== undefined);
     const values = renderInitialValues({ ...entity, properties: subset.map((p) => ({ ...p, listingOnly: false, detailOnly: false })), readsPermissions: false }, 4, true, false);
-    fragments.push([`  fragment ${fragment.name} on IntialValues {`, values, "  }"].join("\n"));
+    fragments.push([`  fragment ${fragment.name} on IntialValues {`, ...(values ? [values] : []), ...(fragment.valuesFields ?? []).map((f) => `    ${f}`), "  }"].join("\n"));
     if (fragment.cardName) {
-      const card = renderTeaserFields({ ...entity, properties: subset.map((p) => ({ ...p, teaser: true })), thumbnail: undefined }, 4);
-      fragments.push([`  fragment ${fragment.cardName} on teaserMetadata {`, card, "  }"].join("\n"));
+      const shown = fragment.cardShows ? subset.filter((p) => fragment.cardShows!.includes(p.alias ?? p.key)) : subset;
+      const card = renderTeaserFields({ ...entity, properties: shown.map((p) => ({ ...p, teaser: true })), thumbnail: undefined }, 4);
+      const menu = renderContextMenuOf(fragment.contextMenu, 4);
+      fragments.push([`  fragment ${fragment.cardName} on teaserMetadata {`, card, ...(menu ? [menu] : []), "  }"].join("\n"));
     }
   }
+  // panel fields and filters other types spread
+  const propertyByKey = new Map(entity.properties.filter((p) => !p.alias).map((p) => [p.key, p]));
+  for (const p of entity.properties) if (!propertyByKey.has(p.key)) propertyByKey.set(p.key, p);
+  for (const fragment of entity.panelFragments) {
+    const lines = fragment.fields.flatMap((key) => {
+      const property = propertyByKey.get(key);
+      if (!property) throw new Error(`panel fragment "${fragment.name}" references undeclared property "${key}"`);
+      return panelFieldLines(property, { editable: true }, key, 4);
+    });
+    fragments.push([`  fragment ${fragment.name} on WindowElementPanel {`, ...lines, "  }"].join("\n"));
+  }
+  for (const fragment of entity.filtersFragments) fragments.push([`  fragment ${fragment.name} on AdvancedFilters {`, renderFilterList(fragment.filters, 2, [], false), "  }"].join("\n"));
   return fragments;
 }
 
@@ -690,7 +709,13 @@ export function renderListQuery(picker: M.UiPicker): string {
   const results = picker.results
     .filter((result) => result.fragments.length || result.listing)
     .map((result) =>
-      [`        ... on ${result.type} {`, ...result.fragments.map((fragment) => `          ...${fragment}`), ...(result.listing ? renderListingBody(result.listing, 10) : []), "        }"].join("\n"),
+      [
+        `        ... on ${result.type} {`,
+        ...result.fragments.map((fragment) => `          ...${fragment}`),
+        ...(result.cardMenuSpread ? ["          teaserMetadata {", "            buttons {", "              contextMenu {", `                ...${result.cardMenuSpread}`, "              }", "            }", "          }"] : []),
+        ...(result.listing ? renderListingBody(result.listing, 10) : []),
+        "        }",
+      ].join("\n"),
     )
     .join("\n");
 
@@ -739,6 +764,40 @@ export function renderListFilters(picker: M.UiPicker): string {
   return [`  query ${picker.filtersQueryName}($entityType: String!) {`, "    EntityTypeFilters(type: $entityType) {", ...filters, "    }", "  }"].join("\n");
 }
 
+/** The lines of one panel field (a metaData block) at a depth: in a panel of the detail page, or in a shared panel fragment. */
+function panelFieldLines(property: M.UiProperty, panel: Pick<M.UiPanel, "editable" | "fieldOverrides">, key: string, depth: number): string[] {
+  const lines: string[] = [];
+    const over = panel.fieldOverrides?.find((o) => o.key === key);
+    lines.push(`${pad(depth)}${over?.alias ?? property.panelAlias ?? property.alias ?? key}: metaData {`);
+    lines.push(`${pad(depth + 2)}label(input: "${over?.labelKey ?? property.detailLabelKey ?? property.label ?? property.key}")`);
+    lines.push(`${pad(depth + 2)}key(input: "${key}")`);
+    if (property.tooltipKey) lines.push(`${pad(depth + 2)}tooltip(input: "${property.tooltipKey}")`);
+    if (property.showOnlyInEditMode !== undefined) lines.push(`${pad(depth + 2)}showOnlyInEditMode(input: ${property.showOnlyInEditMode})`);
+    if (property.readOnlyUnless?.length) lines.push(`${pad(depth + 2)}readOnly(input: [${property.readOnlyUnless.map((p) => `"${p}"`).join(", ")}])`);
+    if (property.panelLineClamp) lines.push(`${pad(depth + 2)}lineClamp(input: "${property.panelLineClamp}")`);
+    if (property.valueTranslationKey) lines.push(`${pad(depth + 2)}valueTranslationKey(input: "${property.valueTranslationKey}")`);
+    if (property.linkText) lines.push(`${pad(depth + 2)}linkText(input: "${property.linkText}")`);
+    if (property.copyToClipboard !== undefined) lines.push(`${pad(depth + 2)}copyToClipboard(input: ${property.copyToClipboard})`);
+    if (property.nonEditable !== undefined) lines.push(`${pad(depth + 2)}nonEditableField(input: ${property.nonEditable})`);
+    if (property.unit && property.panelShowsUnit !== false) lines.push(`${pad(depth + 2)}unit(input: ${property.unit})`);
+    if (property.multilingual) lines.push(`${pad(depth + 2)}isMultilingual(input: true)`);
+    if (property.languageIn.length) lines.push(`${pad(depth + 2)}languageIn(input: ${stringList(property.languageIn)})`);
+    // an editable panel edits a field with the create form's widget; a nested value always shows its table; a panel field may say otherwise
+    const withWidget = over?.widget !== undefined ? over.widget : property.panelWidget || (panel.editable && !property.readOnly);
+    const inputType = property.inputType ?? (withWidget ? property.editInputType : undefined);
+    if (inputType) {
+      lines.push(`${pad(depth + 2)}inputField(type: ${inputType}) {`);
+      lines.push(`${pad(depth + 4)}...inputfield`);
+      if (panel.editable) lines.push(...renderValidation(property, depth + 4));
+      if (property.virtualKeyboardLayouts?.length)
+        lines.push(`${pad(depth + 4)}virtualKeyboardConfig(input: { layouts: [${property.virtualKeyboardLayouts.map((l) => `"${l}"`).join(", ")}] }) {`, `${pad(depth + 6)}layouts`, `${pad(depth + 4)}}`);
+      lines.push(`${pad(depth + 2)}}`);
+    }
+    if (property.permitted?.length) lines.push(`${pad(depth + 2)}permitted(input: [${property.permitted.map((p) => `"${p}"`).join(", ")}])`);
+    lines.push(`${pad(depth)}}`);
+  return lines;
+}
+
 /** The renderer of one detail element of the type (a window with its panels, a list, ...), at a depth. */
 export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, depth: number) => string {
   // a panel shows a field once, under its key: the shape without an alias describes it, an aliased twin only reads it
@@ -775,34 +834,7 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
         lines.push(renderPanelElement(entity, property, depth + 2));
         continue;
       }
-      const over = panel.fieldOverrides?.find((o) => o.key === key);
-      lines.push(`${pad(depth + 2)}${over?.alias ?? property.panelAlias ?? property.alias ?? key}: metaData {`);
-      lines.push(`${pad(depth + 4)}label(input: "${over?.labelKey ?? property.detailLabelKey ?? property.label ?? property.key}")`);
-      lines.push(`${pad(depth + 4)}key(input: "${key}")`);
-      if (property.tooltipKey) lines.push(`${pad(depth + 4)}tooltip(input: "${property.tooltipKey}")`);
-      if (property.showOnlyInEditMode !== undefined) lines.push(`${pad(depth + 4)}showOnlyInEditMode(input: ${property.showOnlyInEditMode})`);
-      if (property.readOnlyUnless?.length) lines.push(`${pad(depth + 4)}readOnly(input: [${property.readOnlyUnless.map((p) => `"${p}"`).join(", ")}])`);
-      if (property.panelLineClamp) lines.push(`${pad(depth + 4)}lineClamp(input: "${property.panelLineClamp}")`);
-      if (property.valueTranslationKey) lines.push(`${pad(depth + 4)}valueTranslationKey(input: "${property.valueTranslationKey}")`);
-      if (property.linkText) lines.push(`${pad(depth + 4)}linkText(input: "${property.linkText}")`);
-      if (property.copyToClipboard !== undefined) lines.push(`${pad(depth + 4)}copyToClipboard(input: ${property.copyToClipboard})`);
-      if (property.nonEditable !== undefined) lines.push(`${pad(depth + 4)}nonEditableField(input: ${property.nonEditable})`);
-      if (property.unit && property.panelShowsUnit !== false) lines.push(`${pad(depth + 4)}unit(input: ${property.unit})`);
-      if (property.multilingual) lines.push(`${pad(depth + 4)}isMultilingual(input: true)`);
-      if (property.languageIn.length) lines.push(`${pad(depth + 4)}languageIn(input: ${stringList(property.languageIn)})`);
-      // an editable panel edits a field with the create form's widget; a nested value always shows its table; a panel field may say otherwise
-      const withWidget = over?.widget !== undefined ? over.widget : property.panelWidget || (panel.editable && !property.readOnly);
-      const inputType = property.inputType ?? (withWidget ? property.editInputType : undefined);
-      if (inputType) {
-        lines.push(`${pad(depth + 4)}inputField(type: ${inputType}) {`);
-        lines.push(`${pad(depth + 6)}...inputfield`);
-        if (panel.editable) lines.push(...renderValidation(property, depth + 6));
-        if (property.virtualKeyboardLayouts?.length)
-          lines.push(`${pad(depth + 6)}virtualKeyboardConfig(input: { layouts: [${property.virtualKeyboardLayouts.map((l) => `"${l}"`).join(", ")}] }) {`, `${pad(depth + 8)}layouts`, `${pad(depth + 6)}}`);
-        lines.push(`${pad(depth + 4)}}`);
-      }
-      if (property.permitted?.length) lines.push(`${pad(depth + 4)}permitted(input: [${property.permitted.map((p) => `"${p}"`).join(", ")}])`);
-      lines.push(`${pad(depth + 2)}}`);
+      lines.push(...panelFieldLines(property, panel, key, depth + 2));
     }
     for (const spread of panel.spreads) lines.push(`${pad(depth + 2)}...${spread}`);
     lines.push(`${pad(depth)}}`);
@@ -1124,6 +1156,8 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
       [`  fragment ${low}BulkOperations on ${onType} {`, renderBulkOperationOptions(entity.bulkOperations, 4), "  }"].join("\n"),
     );
   fragments.push(...renderSharedFragments(entity));
+  // a file of shared fragments alone
+  if (entity.fragmentsOnly) fragments.splice(0, fragments.length, ...renderSharedFragments(entity));
 
   const documents: string[] = [];
   if (entity.documents.includes("entities"))
