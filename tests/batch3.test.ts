@@ -268,7 +268,7 @@ describe("digipolis: option mappings, selection options, operators, sort options
     const file = await render(
       entity(`sh:property ${label} ; elody:filter [ sh:order 1 ; elody:alias "relation" ; elody:key "dams:1|relations.isAssetFor.key" ; elody:filterOperator "or" ; dash:hidden true ; sh:defaultValue "$entity.id" ; elody:filterKind elody:SelectionFilter ]`),
     );
-    expect(fragment(file, "filtersForKeyword")).toContain('relation: advancedFilter(type: selection, key: ["dams:1|relations.isAssetFor.key"], operator: or) {\n        type\n        key\n        operator\n');
+    expect(fragment(file, "filtersForKeyword")).toContain('relation: advancedFilter(type: selection, key: ["dams:1|relations.isAssetFor.key"], operator: or) {\n        type\n        key\n        matchExact\n        operator\n');
   });
 
   it("renders a form without a label and with the plain formTab field", async () => {

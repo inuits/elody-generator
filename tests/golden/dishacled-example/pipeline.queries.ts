@@ -448,6 +448,7 @@ export const pipelineQueries = gql`
         type: advancedFilter(type: selection, key: "type") {
           type
           key
+          matchExact
           defaultValue(value: ["jsRunner", "pyRunner", "jvmRunner"])
           hidden(value: true)
         }
@@ -498,12 +499,14 @@ export const pipelineQueries = gql`
         suggestion: advancedFilter(type: selection, key: ["suggest_for_pipeline"]) {
           type
           key
+          matchExact
           defaultValue(value: "$parentIds")
           hidden(value: true)
         }
         shapeScope: advancedFilter(type: selection, key: ["suggest_for_shape"]) {
           type
           key
+          matchExact
           defaultValue(value: "$portShapeIris")
           hidden(value: true)
         }

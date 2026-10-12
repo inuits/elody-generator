@@ -1046,15 +1046,14 @@ class Parse {
       operator: r.value(node, elody("filterOperator")) || undefined,
       showTime: this.optionalFlag(node, elody("showTime")),
       matchersType: r.value(node, elody("matchersType")) || undefined,
-      lookup: r.node(node, elody("lookup"))
-        ? {
-            from: String(r.value(r.node(node, elody("lookup"))!, elody("lookupFrom")) ?? ""),
-            localField: String(r.value(r.node(node, elody("lookup"))!, elody("lookupLocalField")) ?? ""),
-            foreignField: String(r.value(r.node(node, elody("lookup"))!, elody("lookupForeignField")) ?? ""),
-            as: String(r.value(r.node(node, elody("lookup"))!, elody("lookupAs")) ?? ""),
-          }
-        : undefined,
-      options: r.has(node, elody("optionsType")) || r.has(node, elody("optionsKey")) || r.has(node, elody("optionsInput"))
+      lookup: r.node(node, elody("lookup")) ? this.lookup(r.node(node, elody("lookup"))!) : undefined,
+      itemTypes: r.literals(node, elody("itemTypes")).length ? r.literals(node, elody("itemTypes")) : undefined,
+      defaultMatcher: r.value(node, elody("defaultMatcher")) || undefined,
+      allowedMatchers: r.node(node, elody("allowedMatchers")) ? r.list(r.node(node, elody("allowedMatchers"))) : undefined,
+      valueMappings: this.valueMappings(node),
+      facets: r.nodes(node, elody("facet")).length ? r.byOrder(r.nodes(node, elody("facet"))).map((facet) => this.facet(facet)) : undefined,
+      defaultValueBare: typeof r.literal(node, sh("defaultValue")) === "boolean" ? true : undefined,
+      options: r.has(node, elody("optionsType")) || r.has(node, elody("optionsKey")) || r.has(node, elody("optionsKeys")) || r.has(node, elody("optionsInput"))
         ? {
             type: r.value(node, elody("optionsType")) || undefined,
             key: r.value(node, elody("optionsKey")) || undefined,
@@ -1063,6 +1062,9 @@ class Parse {
             operator: r.value(node, elody("optionsOperator")) || undefined,
             typeOperator: r.value(node, elody("optionsTypeOperator")) || undefined,
             typeBare: this.optionalFlag(node, elody("optionsTypeBare")),
+            keys: r.node(node, elody("optionsKeys")) ? r.list(r.node(node, elody("optionsKeys"))) : undefined,
+            itemTypes: r.literals(node, elody("optionsItemTypes")).length ? r.literals(node, elody("optionsItemTypes")) : undefined,
+            labelKey: r.value(node, elody("optionsLabelKey")) || undefined,
             inputs: r.nodes(node, elody("optionsInput")).length ? r.byOrder(r.nodes(node, elody("optionsInput"))).map((input) => this.optionsInput(input)) : undefined,
           }
         : undefined,
@@ -1173,6 +1175,40 @@ class Parse {
       distinctBy: r.value(node, elody("inputDistinctBy")) || undefined,
       operator: r.value(node, elody("inputOperator")) || undefined,
       bareValues: this.optionalFlag(node, elody("bareValues")),
+      valueMappings: this.valueMappings(node),
+      order: r.order(node),
+    };
+  }
+
+  /** elody:lookup node: the join a filter or a facet needs. */
+  private lookup(node: string): M.UiLookup {
+    const r = this.r;
+    return {
+      from: String(r.value(node, elody("lookupFrom")) ?? ""),
+      localField: String(r.value(node, elody("lookupLocalField")) ?? ""),
+      foreignField: String(r.value(node, elody("lookupForeignField")) ?? ""),
+      as: String(r.value(node, elody("lookupAs")) ?? ""),
+      resolveToSourceIds: this.optionalFlag(node, elody("lookupResolveToSourceIds")),
+    };
+  }
+
+  /** elody:valueMapping nodes: the values a default is mapped from. */
+  private valueMappings(node: string): M.UiValueMapping[] | undefined {
+    const r = this.r;
+    const nodes = r.nodes(node, elody("valueMapping"));
+    if (!nodes.length) return undefined;
+    return r.byOrder(nodes).map((mapping) => ({ values: r.node(mapping, elody("value")) ? r.list(r.node(mapping, elody("value"))) : [], mapping: String(r.value(mapping, elody("mapping")) ?? ""), order: r.order(mapping) }));
+  }
+
+  /** elody:facet node, with its lookups and facets. */
+  private facet(node: string): M.UiFacet {
+    const r = this.r;
+    return {
+      kind: this.enumValue(node, elody("inputKind"), elody("FilterKind")),
+      value: r.value(node, elody("value")) || undefined,
+      key: r.value(node, elody("key")) || undefined,
+      lookups: r.nodes(node, elody("lookup")).map((lookup) => this.lookup(lookup)),
+      facets: r.byOrder(r.nodes(node, elody("facet"))).map((facet) => this.facet(facet)),
       order: r.order(node),
     };
   }

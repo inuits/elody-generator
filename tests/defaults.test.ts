@@ -166,6 +166,7 @@ describe("selection filters", () => {
         "        type",
         "        parentKey",
         "        key",
+        "        matchExact",
         "        tooltip(value: true)",
         "        defaultValue(value: [])",
         "        hidden(value: true)",

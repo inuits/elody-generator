@@ -220,7 +220,25 @@ export function renderSortOptions(entity: M.UiEntity, indent: number): string {
 
 const filterDefaultLiteral = (filter: M.UiFilter): string => {
   if (filter.defaultValueAsList) return `[${filter.defaultValues.map((value) => `"${value}"`).join(", ")}]`;
+  if (filter.defaultValueBare) return filter.defaultValues[0] ?? "";
   return `"${filter.defaultValues[0] ?? ""}"`;
+};
+
+const valueMappingLiteral = (mappings: M.UiValueMapping[]): string => `[${mappings.map((m) => `{ value: [${m.values.map((v) => `"${v}"`).join(", ")}], mapping: "${m.mapping}" }`).join(", ")}]`;
+
+const lookupLiteral = (lookup: M.UiLookup): string =>
+  `{ from: "${lookup.from}", local_field: "${lookup.localField}", foreign_field: "${lookup.foreignField}", as: "${lookup.as}"${lookup.resolveToSourceIds ? ", resolve_to_source_ids: true" : ""} }`;
+
+/** A facet of a filter: its kind and value, or its key over lookups, with its own facets. */
+const facetLiteral = (facet: M.UiFacet): string => {
+  const parts = [
+    ...(facet.kind ? [`type: ${facet.kind}`] : []),
+    ...(facet.value !== undefined ? [`value: "${facet.value}"`] : []),
+    ...(facet.lookups.length ? [`lookups: [${facet.lookups.map(lookupLiteral).join(", ")}]`] : []),
+    ...(facet.key !== undefined ? [`key: "${facet.key}"`] : []),
+    ...(facet.facets.length ? [`facets: [${facet.facets.map(facetLiteral).join(", ")}]`] : []),
+  ];
+  return `{ ${parts.join(", ")} }`;
 };
 
 export function renderFilters(entity: M.UiEntity, indent: number): string {
@@ -232,26 +250,33 @@ function renderFilterOptions(options: NonNullable<M.UiFilter["options"]>, indent
   // a text search over a key, when one is declared; else the options are every entity of the type
   const args = [
     `${pad(indent)}advancedFilterInputForRetrievingOptions: [`,
-    ...(options.key
+    ...(options.key || options.keys?.length
       ? [
           `${pad(indent + 2)}{`,
           `${pad(indent + 4)}type: text`,
-          `${pad(indent + 4)}key: ["${options.key}"]`,
+          `${pad(indent + 4)}key: [${(options.keys ?? [options.key]).map((k) => `"${k}"`).join(", ")}]`,
           `${pad(indent + 4)}value: "*"`,
           ...(options.distinctBy ? [`${pad(indent + 4)}distinct_by: "${options.distinctBy}"`] : []),
           ...(options.matchExact !== undefined ? [`${pad(indent + 4)}match_exact: ${options.matchExact}`] : []),
+          ...(options.labelKey ? [`${pad(indent + 4)}metadata_key_as_label: "${options.labelKey}"`] : []),
+          ...(options.itemTypes?.length ? [`${pad(indent + 4)}item_types: [${options.itemTypes.map((t) => `"${t}"`).join(", ")}]`] : []),
           ...(options.operator ? [`${pad(indent + 4)}operator: ${options.operator}`] : []),
           `${pad(indent + 2)}}`,
         ]
       : []),
     // the further inputs, between the search and the type
-    ...(options.inputs ?? []).flatMap((input) => [
+    ...(options.inputs ?? []).flatMap((input) =>
+      input.kind === "type"
+        ? [`${pad(indent + 2)}{ type: type, value: ${input.bareValues ? input.value : `"${input.value}"`}${input.operator ? `, operator: ${input.operator}` : ""} }`]
+        : [
       `${pad(indent + 2)}{`,
       `${pad(indent + 4)}type: ${input.kind}`,
-      `${pad(indent + 4)}key: ["${input.key}"]`,
+      ...(input.key ? [`${pad(indent + 4)}key: ["${input.key}"]`] : []),
       `${pad(indent + 4)}value: ${Array.isArray(input.value) ? `[${input.value.map((v) => (input.bareValues ? v : `"${v}"`)).join(", ")}]` : input.bareValues ? input.value : `"${input.value}"`}`,
       ...(input.distinctBy ? [`${pad(indent + 4)}distinct_by: "${input.distinctBy}"`] : []),
       ...(input.matchExact !== undefined ? [`${pad(indent + 4)}match_exact: ${input.matchExact}`] : []),
+      ...(input.valueMappings?.length ? [`${pad(indent + 4)}defaultValueMapping: ${valueMappingLiteral(input.valueMappings)}`] : []),
+      ...(input.valueMappings?.length ? [`${pad(indent + 4)}defaultValueMapping: ${valueMappingLiteral(input.valueMappings)}`] : []),
       ...(input.operator ? [`${pad(indent + 4)}operator: ${input.operator}`] : []),
       `${pad(indent + 2)}}`,
     ]),
@@ -265,6 +290,8 @@ function renderFilterOptions(options: NonNullable<M.UiFilter["options"]>, indent
     `${pad(indent + 2)}type`,
     ...(options.distinctBy ? [`${pad(indent + 2)}key`, `${pad(indent + 2)}value`, `${pad(indent + 2)}distinct_by`] : [`${pad(indent + 2)}value`, `${pad(indent + 2)}key`]),
     `${pad(indent + 2)}match_exact`,
+    ...(options.labelKey ? [`${pad(indent + 2)}metadata_key_as_label`] : []),
+    ...(options.itemTypes?.length ? [`${pad(indent + 2)}item_types`] : []),
     `${pad(indent)}}`,
   ];
   return { args, fields };
@@ -287,17 +314,21 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       const key = filter.keys ? `[${filter.keys.map((k) => `"${k}"`).join(", ")}]` : filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`;
       const parent = filter.parentKey ? `, parentKey: "${filter.parentKey}"` : "";
       const operator = filter.operator ? `, operator: ${filter.operator}` : "";
+      const itemTypes = filter.itemTypes?.length ? `, itemTypes: [${filter.itemTypes.map((t) => `"${t}"`).join(", ")}]` : "";
       const selection = [
         "type",
         ...(filter.parentKey ? ["parentKey"] : []),
         "key",
+        ...(filter.itemTypes?.length ? ["itemTypes"] : []),
+        // asked back regardless (what is asked back beyond the client's does not count)
+        "matchExact",
         ...(filter.operator ? ["operator"] : []),
         ...(filter.tooltip ? ["tooltip(value: true)"] : []),
         ...(filter.defaultValues.length > 0 || filter.defaultValueAsList ? [`defaultValue(value: ${filterDefaultLiteral(filter)})`] : []),
         ...(filter.hidden ? ["hidden(value: true)"] : []),
       ];
       return [
-        `${pad(indent + 2)}${aliased}advancedFilter(type: selection${parent}, key: ${key}${operator}) {`,
+        `${pad(indent + 2)}${aliased}advancedFilter(type: selection${parent}, key: ${key}${itemTypes}${operator}) {`,
         ...selection.map((field) => `${pad(indent + 4)}${field}`),
         `${pad(indent + 2)}}`,
       ].join("\n");
@@ -311,11 +342,12 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
           `${pad(indent + 6)}local_field: "${filter.lookup.localField}"`,
           `${pad(indent + 6)}foreign_field: "${filter.lookup.foreignField}"`,
           `${pad(indent + 6)}as: "${filter.lookup.as}"`,
+          ...(filter.lookup.resolveToSourceIds ? [`${pad(indent + 6)}resolve_to_source_ids: true`] : []),
           `${pad(indent + 4)}}`,
         ]
       : [];
     const lookupFields = filter.lookup
-      ? [`${pad(indent + 4)}lookup {`, `${pad(indent + 6)}from`, `${pad(indent + 6)}local_field`, `${pad(indent + 6)}foreign_field`, `${pad(indent + 6)}as`, `${pad(indent + 4)}}`]
+      ? [`${pad(indent + 4)}lookup {`, `${pad(indent + 6)}from`, `${pad(indent + 6)}local_field`, `${pad(indent + 6)}foreign_field`, `${pad(indent + 6)}as`, ...(filter.lookup.resolveToSourceIds ? [`${pad(indent + 6)}resolve_to_source_ids`] : []), `${pad(indent + 4)}}`]
       : [];
     const mapping =
       filter.optionsLabel || filter.optionsValue
@@ -333,7 +365,10 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(filter.parentKey ? [`${pad(indent + 4)}parentKey: "${filter.parentKey}"`] : []),
       ...(filter.keys ? [`${pad(indent + 4)}key: [${filter.keys.map((k) => `"${k}"`).join(", ")}]`] : filter.key ? [`${pad(indent + 4)}key: ${filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`}`] : []),
       ...(filter.aggregation ? [`${pad(indent + 4)}aggregation: "${filter.aggregation}"`] : []),
+      ...(filter.itemTypes?.length ? [`${pad(indent + 4)}itemTypes: [${filter.itemTypes.map((t) => `"${t}"`).join(", ")}]`] : []),
       ...(filter.operator ? [`${pad(indent + 4)}operator: ${filter.operator}`] : []),
+      ...(filter.defaultMatcher ? [`${pad(indent + 4)}defaultMatcher: ${filter.defaultMatcher}`] : []),
+      ...(filter.allowedMatchers?.length ? [`${pad(indent + 4)}allowedMatchers: [${filter.allowedMatchers.join(", ")}]`] : []),
       ...(filter.label ? [`${pad(indent + 4)}label: "${filter.label}"`] : []),
       ...(filter.selectionOption ? [`${pad(indent + 4)}selectionOption: ${filter.selectionOption}`] : []),
       ...(filter.showTime !== undefined ? [`${pad(indent + 4)}showTimeForDateFilter: ${filter.showTime}`] : []),
@@ -343,6 +378,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
         ? [`${pad(indent + 4)}options: [`, ...filter.staticOptions.map((option) => `${pad(indent + 6)}{ label: "${option.label}", value: "${option.value}" }`), `${pad(indent + 4)}]`]
         : []),
       ...(options ? options.args : []),
+      ...(filter.facets?.length ? [`${pad(indent + 4)}facets: [${filter.facets.map(facetLiteral).join(", ")}]`] : []),
     ];
     const fetchesOptions = filter.kind === "selection" && Boolean(options);
     // the fields asked back, or the shared fragment that asks them; the fields with arguments follow either way
@@ -353,7 +389,10 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(filter.parentKey ? [`${pad(indent + 4)}parentKey`] : []),
       ...(filter.key || filter.keys ? [`${pad(indent + 4)}key`] : []),
       ...(filter.aggregation ? [`${pad(indent + 4)}aggregation`] : []),
+      ...(filter.itemTypes?.length ? [`${pad(indent + 4)}itemTypes`] : []),
       ...(filter.operator ? [`${pad(indent + 4)}operator`] : []),
+      ...(filter.defaultMatcher ? [`${pad(indent + 4)}defaultMatcher`] : []),
+      ...(filter.allowedMatchers?.length ? [`${pad(indent + 4)}allowedMatchers`] : []),
       ...(filter.label ? [`${pad(indent + 4)}label`] : []),
       // a filter that fetches its options asks the option settings back whether declared or not: what is asked back more is harmless
       ...(filter.selectionOption || fetchesOptions ? [`${pad(indent + 4)}selectionOption`] : []),
@@ -362,12 +401,14 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(mapping.length || fetchesOptions ? [`${pad(indent + 4)}filterOptionsMapping {`, `${pad(indent + 6)}label`, `${pad(indent + 6)}value`, `${pad(indent + 4)}}`] : []),
       ...(filter.staticOptions?.length ? [`${pad(indent + 4)}options {`, `${pad(indent + 6)}label`, `${pad(indent + 6)}value`, `${pad(indent + 4)}}`] : []),
       ...(options ? options.fields : []),
+      ...(filter.facets?.length ? [`${pad(indent + 4)}facets {`, `${pad(indent + 6)}...facetFields`, `${pad(indent + 4)}}`] : []),
     ];
     const selection = [
       ...(filter.selectionSpread ? [`${pad(indent + 4)}...${filter.selectionSpread}`] : askedBack),
       ...(filter.tooltip ? [`${pad(indent + 4)}tooltip(value: true)`] : []),
       ...(filter.defaultValues.length > 0 || filter.defaultValueAsList ? [`${pad(indent + 4)}defaultValue(value: ${filterDefaultLiteral(filter)})`] : []),
       ...(filter.hidden ? [`${pad(indent + 4)}hidden(value: true)`] : []),
+      ...(filter.valueMappings?.length ? [`${pad(indent + 4)}defaultValueMapping(value: ${valueMappingLiteral(filter.valueMappings)}) {`, `${pad(indent + 6)}value`, `${pad(indent + 6)}mapping`, `${pad(indent + 4)}}`] : []),
     ];
     return [`${pad(indent + 2)}${aliased}advancedFilter(`, ...args, `${pad(indent + 2)}) {`, ...selection, `${pad(indent + 2)}}`].join("\n");
   });

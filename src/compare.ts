@@ -220,7 +220,15 @@ export function normalizeNode<T extends ASTNode>(node: T): T {
       leave: (field) => (field.arguments && field.arguments.length > 1 ? { ...field, arguments: [...field.arguments].sort(byName) } : undefined),
     },
     // an input object is a map: its field order does not count (the values of a list keep theirs)
-    ObjectValue: { leave: (object) => (object.fields.length > 1 ? { ...object, fields: [...object.fields].sort(byName) } : undefined) },
+    // a field given twice with the same value (a client's slip) counts once
+    ObjectValue: {
+      leave: (object) => {
+        if (object.fields.length <= 1) return undefined;
+        const sorted = [...object.fields].sort(byName);
+        const fields = sorted.filter((field, i) => i === 0 || field.name.value !== sorted[i - 1].name.value || print(field.value) !== print(sorted[i - 1].value));
+        return { ...object, fields };
+      },
+    },
     SelectionSet: {
       leave(set, _key, parent) {
         const parentNode = parent && !Array.isArray(parent) ? (parent as ASTNode) : undefined;

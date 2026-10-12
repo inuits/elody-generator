@@ -185,6 +185,9 @@ type DeleteOptions = {
   blockingRelationsLabel?: string;
 };
 
+type Lookup = { from: string; localField: string; foreignField: string; as: string; resolveToSourceIds?: boolean };
+type ValueMapping = { values: string[]; mapping: string };
+type Facet = { kind?: string; value?: string; key?: string; lookups: Lookup[]; facets: Facet[] };
 type Filter = {
   order?: number;
   alias?: string;
@@ -203,14 +206,23 @@ type Filter = {
   options?: {
     type?: string;
     key?: string;
+    keys?: string[];
+    itemTypes?: string[];
+    labelKey?: string;
     matchExact?: boolean;
     distinctBy?: string;
     operator?: string;
     typeOperator?: string;
     typeBare?: boolean;
     /** the inputs beyond the search and the type, in order */
-    inputs?: { kind?: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; operator?: string; bareValues?: boolean }[];
+    inputs?: { kind?: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; operator?: string; bareValues?: boolean; valueMappings?: ValueMapping[] }[];
   };
+  itemTypes?: string[];
+  defaultMatcher?: string;
+  allowedMatchers?: string[];
+  valueMappings?: ValueMapping[];
+  facets?: Facet[];
+  defaultBare?: boolean;
   staticOptions?: { label: string; value: string }[];
   selectionSpread?: string;
   optionsLabel?: string;
@@ -219,7 +231,7 @@ type Filter = {
   operator?: string;
   showTime?: boolean;
   matchersType?: string;
-  lookup?: { from: string; localField: string; foreignField: string; as: string };
+  lookup?: Lookup;
 };
 
 type FormField = { key: string; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; hidden?: boolean; clientField?: string; validationMessage?: string; tooltipKey?: string; defaultValue?: string; noWidget?: boolean; virtualKeyboardLayouts?: string[]; pickerSearch?: { mode: string; keys: string[]; acceptedTypes: string[] } };
@@ -863,6 +875,32 @@ export class Extractor {
    * validation(input: { value: required }) is sh:minCount 1; another rule (url, customValue with its
    * customValue, ...) is elody:validationRule / elody:validationValue. The value may be a list.
    */
+  /** A lookup input object (a filter's join, a facet's). */
+  private lookupOf(lookup: ObjectValueNode): Lookup {
+    const resolve = scalar(objectField(lookup, "resolve_to_source_ids"));
+    return { from: scalar(objectField(lookup, "from")) ?? "", localField: scalar(objectField(lookup, "local_field")) ?? "", foreignField: scalar(objectField(lookup, "foreign_field")) ?? "", as: scalar(objectField(lookup, "as")) ?? "", resolveToSourceIds: resolve === "true" ? true : undefined };
+  }
+
+  /** defaultValueMapping: [{ value: [...], mapping: "..." }] */
+  private valueMappings(value: ValueNode | undefined): ValueMapping[] | undefined {
+    const entries = list(value).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT);
+    if (!entries.length) return undefined;
+    return entries.map((m) => ({ values: list(objectField(m, "value")).map((v) => scalar(v) ?? ""), mapping: scalar(objectField(m, "mapping")) ?? "" }));
+  }
+
+  /** facets: [{ type, value, key, lookups: [...], facets: [...] }], recursive */
+  private facets(value: ValueNode | undefined): Facet[] | undefined {
+    const entries = list(value).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT);
+    if (!entries.length) return undefined;
+    return entries.map((f) => ({
+      kind: this.instance("FilterKind", scalar(objectField(f, "type")), "facet"),
+      value: scalar(objectField(f, "value")),
+      key: scalar(objectField(f, "key")),
+      lookups: list(objectField(f, "lookups")).filter((l): l is ObjectValueNode => l.kind === Kind.OBJECT).map((l) => this.lookupOf(l)),
+      facets: this.facets(objectField(f, "facets")) ?? [],
+    }));
+  }
+
   private validation(validation: FieldNode | undefined, where: string): { required: boolean; rule?: string; value?: string; relationType?: string; amount?: number; exact?: boolean; message?: string } {
     if (!validation) return { required: false };
     const input = argument(validation, "input");
@@ -1269,6 +1307,12 @@ export class Extractor {
         tooltip: child(field, "tooltip") !== undefined,
         defaults: list(defaultValue).map((v) => scalar(v) ?? ""),
         defaultAsList: defaultValue?.kind === Kind.LIST,
+        defaultBare: defaultValue?.kind === Kind.BOOLEAN ? true : undefined,
+        itemTypes: argument(field, "itemTypes") ? list(argument(field, "itemTypes")).map((v) => scalar(v) ?? "") : undefined,
+        defaultMatcher: str(field, "defaultMatcher"),
+        allowedMatchers: argument(field, "allowedMatchers") ? list(argument(field, "allowedMatchers")).map((v) => scalar(v) ?? "") : undefined,
+        valueMappings: child(field, "defaultValueMapping") ? this.valueMappings(argument(child(field, "defaultValueMapping")!, "value")) : undefined,
+        facets: argument(field, "facets") ? this.facets(argument(field, "facets")) : undefined,
         hidden: child(field, "hidden") !== undefined && input(child(field, "hidden")) !== "false",
       };
       const mapping = argument(field, "filterOptionsMapping");
@@ -1282,18 +1326,15 @@ export class Extractor {
       filter.matchersType = str(field, "matchersType");
       const lookup = argument(field, "lookup");
       if (lookup?.kind === Kind.OBJECT)
-        filter.lookup = {
-          from: scalar(objectField(lookup, "from")) ?? "",
-          localField: scalar(objectField(lookup, "local_field")) ?? "",
-          foreignField: scalar(objectField(lookup, "foreign_field")) ?? "",
-          as: scalar(objectField(lookup, "as")) ?? "",
-        };
+        filter.lookup = this.lookupOf(lookup);
       const retrieving = argument(field, "advancedFilterInputForRetrievingOptions");
       if (retrieving) {
         const inputs = list(retrieving).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT);
         // the search: the first text input over "*"; the type input; every other input is a further one
         const text = inputs.find((o) => scalar(objectField(o, "type")) === "text" && scalar(objectField(o, "value")) === "*");
-        const type = inputs.find((o) => scalar(objectField(o, "type")) === "type");
+        let type = inputs.find((o) => scalar(objectField(o, "type")) === "type");
+        // a type input followed by further inputs keeps its place among them
+        if (type && inputs.indexOf(type) < inputs.length - 1) type = undefined;
         const typeValue = type ? scalar(objectField(type, "value")) : undefined;
         const flag = (o: ObjectValueNode, name: string) => ((v) => (v === undefined ? undefined : v === "true"))(scalar(objectField(o, name)));
         const others = inputs.filter((o) => o !== text && o !== type);
@@ -1301,6 +1342,9 @@ export class Extractor {
           filter.options = {
             type: typeValue,
             key: text ? scalar(list(objectField(text, "key"))[0]) : undefined,
+            keys: text && list(objectField(text, "key")).length > 1 ? list(objectField(text, "key")).map((v) => scalar(v) ?? "") : undefined,
+            itemTypes: text && objectField(text, "item_types") ? list(objectField(text, "item_types")).map((v) => scalar(v) ?? "") : undefined,
+            labelKey: text ? scalar(objectField(text, "metadata_key_as_label")) : undefined,
             matchExact: text ? flag(text, "match_exact") : undefined,
             distinctBy: text ? scalar(objectField(text, "distinct_by")) : undefined,
             operator: text ? scalar(objectField(text, "operator")) : undefined,
@@ -1314,6 +1358,7 @@ export class Extractor {
                     key: scalar(list(objectField(o, "key"))[0]) ?? "",
                     value: value?.kind === Kind.LIST ? list(value).map((v) => scalar(v) ?? "") : (scalar(value) ?? ""),
                     bareValues: (value?.kind === Kind.LIST ? list(value) : value ? [value] : []).some((v) => v.kind === Kind.ENUM) ? true : undefined,
+                    valueMappings: objectField(o, "defaultValueMapping") ? this.valueMappings(objectField(o, "defaultValueMapping")) : undefined,
                     matchExact: flag(o, "match_exact"),
                     distinctBy: scalar(objectField(o, "distinct_by")),
                     operator: scalar(objectField(o, "operator")),
@@ -1333,7 +1378,7 @@ export class Extractor {
           .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
           .map((option) => ({ label: scalar(objectField(option, "label")) ?? "", value: scalar(objectField(option, "value")) ?? "" }));
       for (const a of field.arguments ?? [])
-        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "aggregation", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator", "showTimeForDateFilter", "matchersType", "lookup", "options"].includes(a.name.value))
+        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "aggregation", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator", "showTimeForDateFilter", "matchersType", "lookup", "options", "itemTypes", "defaultMatcher", "allowedMatchers", "facets"].includes(a.name.value))
           this.note(`${where}: filter ${alias(field)} argument ${a.name.value} has no term; left out`);
       result.push(filter);
     }
@@ -1698,6 +1743,15 @@ export class Extractor {
     return lines.join("\n");
   }
 
+  private lookupNode(lookup: Lookup): string {
+    return `[ elody:lookupFrom ${q(lookup.from)} ; elody:lookupLocalField ${q(lookup.localField)} ; elody:lookupForeignField ${q(lookup.foreignField)} ; elody:lookupAs ${q(lookup.as)}${lookup.resolveToSourceIds ? " ; elody:lookupResolveToSourceIds true" : ""} ]`;
+  }
+
+  private facetNode(facet: Facet, order: number): string {
+    const parts = [`sh:order ${order}`, ...(facet.kind ? [`elody:inputKind ${facet.kind}`] : []), ...(facet.value !== undefined ? [`elody:value ${q(facet.value)}`] : []), ...(facet.key !== undefined ? [`elody:key ${q(facet.key)}`] : []), ...facet.lookups.map((l) => `elody:lookup ${this.lookupNode(l)}`), ...facet.facets.map((f, i) => `elody:facet ${this.facetNode(f, i + 1)}`)];
+    return `[ ${parts.join(" ; ")} ]`;
+  }
+
   private filter(f: Filter): string {
     const lines: string[] = ["    ["];
     if (f.label) lines.push(`    rdfs:label ${q(f.label)} ;`);
@@ -1708,7 +1762,12 @@ export class Extractor {
     if (f.parentKey) lines.push(`    elody:parentFilterKey ${q(f.parentKey)} ;`);
     if (f.aggregation) lines.push(`    elody:filterAggregation ${q(f.aggregation)} ;`);
     if (f.hidden) lines.push(`    dash:hidden true ;`);
-    for (const value of f.defaults) lines.push(`    sh:defaultValue ${q(value)} ;`);
+    for (const value of f.defaults) lines.push(`    sh:defaultValue ${f.defaultBare ? value : q(value)} ;`);
+    for (const t of f.itemTypes ?? []) lines.push(`    elody:itemTypes ${q(t)} ;`);
+    if (f.defaultMatcher) lines.push(`    elody:defaultMatcher ${q(f.defaultMatcher)} ;`);
+    if (f.allowedMatchers?.length) lines.push(`    elody:allowedMatchers ( ${f.allowedMatchers.map(q).join(" ")} ) ;`);
+    for (const [i, m] of (f.valueMappings ?? []).entries()) lines.push(`    elody:valueMapping [ sh:order ${i + 1} ; elody:value ( ${m.values.map(q).join(" ")} ) ; elody:mapping ${q(m.mapping)} ] ;`);
+    for (const [i, facet] of (f.facets ?? []).entries()) lines.push(`    elody:facet ${this.facetNode(facet, i + 1)} ;`);
     if (f.defaultAsList) lines.push(`    elody:defaultValueAsList true ;`);
     if (f.displayed) lines.push(`    elody:displayedByDefault true ;`);
     if (f.optionsLabel) lines.push(`    elody:optionsLabel ${q(f.optionsLabel)} ;`);
@@ -1718,24 +1777,28 @@ export class Extractor {
     if (f.showTime !== undefined) lines.push(`    elody:showTime ${f.showTime} ;`);
     if (f.matchersType) lines.push(`    elody:matchersType ${q(f.matchersType)} ;`);
     if (f.lookup)
-      lines.push(`    elody:lookup [ elody:lookupFrom ${q(f.lookup.from)} ; elody:lookupLocalField ${q(f.lookup.localField)} ; elody:lookupForeignField ${q(f.lookup.foreignField)} ; elody:lookupAs ${q(f.lookup.as)} ] ;`);
+      lines.push(`    elody:lookup ${this.lookupNode(f.lookup)} ;`);
     if (f.selectionSpread) lines.push(`    elody:selectionSpread ${q(f.selectionSpread)} ;`);
     for (const [i, option] of (f.staticOptions ?? []).entries())
       lines.push(`    elody:option [ sh:order ${i + 1} ; elody:labelKey ${q(option.label)} ; elody:value ${q(option.value)} ] ;`);
     if (f.options) {
       if (f.options.type !== undefined) lines.push(`    elody:optionsType ${q(f.options.type)} ;`);
-      if (f.options.key !== undefined) lines.push(`    elody:optionsKey ${q(f.options.key)} ;`);
+      if (f.options.keys) lines.push(`    elody:optionsKeys ( ${f.options.keys.map(q).join(" ")} ) ;`);
+      else if (f.options.key !== undefined) lines.push(`    elody:optionsKey ${q(f.options.key)} ;`);
+      for (const t of f.options.itemTypes ?? []) lines.push(`    elody:optionsItemTypes ${q(t)} ;`);
+      if (f.options.labelKey) lines.push(`    elody:optionsLabelKey ${q(f.options.labelKey)} ;`);
       if (f.options.matchExact !== undefined) lines.push(`    elody:optionsMatchExact ${f.options.matchExact} ;`);
       if (f.options.distinctBy) lines.push(`    elody:optionsDistinctBy ${q(f.options.distinctBy)} ;`);
       if (f.options.operator) lines.push(`    elody:optionsOperator ${q(f.options.operator)} ;`);
       if (f.options.typeOperator) lines.push(`    elody:optionsTypeOperator ${q(f.options.typeOperator)} ;`);
       if (f.options.typeBare) lines.push(`    elody:optionsTypeBare true ;`);
       for (const [i, input] of (f.options.inputs ?? []).entries()) {
-        const parts = [`sh:order ${i + 1}`, `elody:inputKind ${input.kind ?? "elody:TextFilter"}`, `elody:key ${q(input.key)}`, `elody:value ${Array.isArray(input.value) ? `( ${input.value.map(q).join(" ")} )` : q(input.value)}`];
+        const parts = [`sh:order ${i + 1}`, `elody:inputKind ${input.kind ?? "elody:TextFilter"}`, ...(input.key ? [`elody:key ${q(input.key)}`] : []), `elody:value ${Array.isArray(input.value) ? `( ${input.value.map(q).join(" ")} )` : q(input.value)}`];
         if (input.distinctBy) parts.push(`elody:inputDistinctBy ${q(input.distinctBy)}`);
         if (input.matchExact !== undefined) parts.push(`elody:inputMatchExact ${input.matchExact}`);
         if (input.operator) parts.push(`elody:inputOperator ${q(input.operator)}`);
         if (input.bareValues) parts.push(`elody:bareValues true`);
+        for (const [j, m] of (input.valueMappings ?? []).entries()) parts.push(`elody:valueMapping [ sh:order ${j + 1} ; elody:value ( ${m.values.map(q).join(" ")} ) ; elody:mapping ${q(m.mapping)} ]`);
         lines.push(`    elody:optionsInput [ ${parts.join(" ; ")} ] ;`);
       }
     }

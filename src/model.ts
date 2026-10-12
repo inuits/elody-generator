@@ -139,7 +139,29 @@ export type UiFilter = {
   aggregation?: string;
   /** elody:optionsType & co: a selection filter fetches its options from the entities of a type */
   /** type left out: the search is scoped by its inputs alone */
-  options?: { type?: string; key?: string; matchExact?: boolean; distinctBy?: string; operator?: string; typeOperator?: string; /** elody:optionsTypeBare: the type written as an enum value */ typeBare?: boolean; inputs?: UiOptionsInput[] };
+  options?: {
+    type?: string;
+    key?: string;
+    /** elody:optionsKeys: several keys on the search; elody:optionsItemTypes, elody:optionsLabelKey on the search too */
+    keys?: string[];
+    itemTypes?: string[];
+    labelKey?: string;
+    matchExact?: boolean;
+    distinctBy?: string;
+    operator?: string;
+    typeOperator?: string;
+    /** elody:optionsTypeBare: the type written as an enum value */
+    typeBare?: boolean;
+    inputs?: UiOptionsInput[];
+  };
+  /** elody:itemTypes, elody:defaultMatcher, elody:allowedMatchers, elody:valueMapping, elody:facet on the filter */
+  itemTypes?: string[];
+  defaultMatcher?: string;
+  allowedMatchers?: string[];
+  valueMappings?: UiValueMapping[];
+  facets?: UiFacet[];
+  /** sh:defaultValue a typed boolean: written bare */
+  defaultValueBare?: boolean;
   /** elody:keys: several keys, in order (key: ["a", "b"]) */
   keys?: string[];
   /** elody:selectionSpread: a shared fragment as the filter's selection set (...advancedFilter) */
@@ -158,7 +180,7 @@ export type UiFilter = {
   /** elody:matchersType: which matchers the filter offers */
   matchersType?: string;
   /** elody:lookup: the join the filter needs */
-  lookup?: { from: string; localField: string; foreignField: string; as: string };
+  lookup?: UiLookup;
   label?: string;
   defaultValues: string[];
   defaultValueAsList: boolean;
@@ -190,8 +212,13 @@ export type UiAction = {
 /** elody:menuInButtons renders the menu as buttons { contextMenu { ... } } (the newer form) */
 export type UiContextMenu = { forceShow: boolean; includeBasicActions: boolean; inButtons?: boolean; actions: UiAction[]; /** elody:menuSpread: hand-written action fragments spread in the menu */ spreads?: string[] };
 
+export type UiLookup = { from: string; localField: string; foreignField: string; as: string; /** elody:lookupResolveToSourceIds */ resolveToSourceIds?: boolean };
+/** elody:valueMapping: values the default is mapped from (defaultValueMapping) */
+export type UiValueMapping = { values: string[]; mapping: string; order: number };
+/** elody:facet: a facet of a filter (facets), recursive */
+export type UiFacet = { kind?: string; value?: string; key?: string; lookups: UiLookup[]; facets: UiFacet[]; order: number };
 /** elody:optionsInput: a further input of a selection filter's option search; value a string or a list */
-export type UiOptionsInput = { kind: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; operator?: string; order: number; /** elody:bareValues: the values are enum values, written unquoted */ bareValues?: boolean };
+export type UiOptionsInput = { kind: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; operator?: string; order: number; /** elody:bareValues: the values are enum values, written unquoted */ bareValues?: boolean; valueMappings?: UiValueMapping[] };
 
 /** elody:matchMetadataValue: a metadata key and the value it must hold (matchMetadataValue) */
 export type UiMetadataMatch = { key: string; value: string };

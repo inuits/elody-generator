@@ -73,6 +73,7 @@ describe("a list element with a declared list query", () => {
         '        relation: advancedFilter(type: selection, key: ["elody:1|identifiers"]) {',
         "          type",
         "          key",
+        "          matchExact",
         '          defaultValue(value: "$entity.relationValues.hasUser.key")',
         "          hidden(value: true)",
         "        }",
