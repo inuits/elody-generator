@@ -10,7 +10,7 @@
  * exactly what is missing. The proposal is a starting point: it is meant to be
  * read and tidied, not committed as it comes.
  */
-import { Kind, parse } from "graphql";
+import { Kind, parse, print } from "graphql";
 import type { ArgumentNode, FieldNode, FragmentDefinitionNode, InlineFragmentNode, ObjectValueNode, OperationDefinitionNode, SelectionNode, SelectionSetNode, ValueNode } from "graphql";
 import { readDefinitions, type Definition, type QueryFile } from "./compare.js";
 import { Ontology, defaultOntology } from "./ontology.js";
@@ -203,6 +203,7 @@ type Filter = {
   defaults: string[];
   defaultAsList: boolean;
   hidden: boolean;
+  keepDefaultValue?: boolean;
   options?: {
     type?: string;
     key?: string;
@@ -215,7 +216,7 @@ type Filter = {
     typeOperator?: string;
     typeBare?: boolean;
     /** the inputs beyond the search and the type, in order */
-    inputs?: { kind?: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; operator?: string; bareValues?: boolean; valueMappings?: ValueMapping[] }[];
+    inputs?: { kind?: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; resolveDefaultValueToOptionIds?: boolean; operator?: string; bareValues?: boolean; valueMappings?: ValueMapping[] }[];
   };
   itemTypes?: string[];
   defaultMatcher?: string;
@@ -292,7 +293,7 @@ type FieldsFragment = { name: string; fields: FormField[] };
 type ElementsFragment = { name: string; elements: Element[] };
 type ValuesFragment = { name: string; cardName?: string; fields: string[]; aliases: string[]; valuesFields: string[]; cardShows?: string[]; contextMenu?: Entity["contextMenu"] };
 
-type ListQuery = { node?: string; name: string; filtersName?: string; filtersType?: string; relationValues?: boolean; readsHost?: boolean; hostOptional?: boolean; results: { type: string; fragments: string[]; listingNode?: string; cardMenuSpread?: string }[]; filters: Filter[] };
+type ListQuery = { node?: string; name: string; filtersOnly?: boolean; filtersName?: string; filtersType?: string; relationValues?: boolean; readsHost?: boolean; hostOptional?: boolean; results: { type: string; fragments: string[]; listingNode?: string; cardMenuSpread?: string }[]; filters: Filter[] };
 type Picker = ListQuery;
 
 type Entity = {
@@ -349,6 +350,10 @@ type Entity = {
   /** a file of shared fragments alone, and where it is written */
   fragmentsOnly?: boolean;
   filePath?: string;
+  /** elody:cardName: the listing fragment's own name (another card of the type) */
+  cardName?: string;
+  /** elody:sortDocument: sort options documents of the type's own */
+  sortDocuments: { queryName: string; options: { labelKey: string; value: string; primary?: boolean; icon?: string }[] }[];
   operations?: Operation[];
   customOperations: { name: string; operations: Operation[] }[];
   listQueries: ListQuery[];
@@ -378,6 +383,8 @@ export class Extractor {
   /** the listings synthesised for results selected inline, extracted after the file's types */
   readonly inlineNames: string[] = [];
   private readonly inlineSet = new Set<string>();
+  /** the other cards of a type (fragment name by type name): fragments with a card the client names itself */
+  private readonly cardVariants = new Map<string, string>();
 
   /**
    * The results of a list document: per type its fragment spreads and, for fields selected inline,
@@ -469,6 +476,7 @@ export class Extractor {
   // -- types ------------------------------------------------------------------
 
   types(): string[] {
+    this.registerCardVariants();
     return [...this.definitions.values()]
       .filter((d) => d.kind === "fragment" && d.name.startsWith("minimal") && d.name !== "minimalBaseEntity" && !d.name.startsWith("minimalLinked"))
       .map((d) => d.name.slice("minimal".length))
@@ -476,6 +484,21 @@ export class Extractor {
       // a listing core (minimal<X>Core) belongs to the type that spreads it, not a type of its own
       .filter((name) => !(name.endsWith("Core") && this.fragment(`minimal${name.slice(0, -"Core".length)}`)))
       .concat(this.interfaceTypes());
+  }
+
+  /** A fragment on a type that shows a card under a name of its own (mediafileAsPreview): read as a listing of the type, declared with elody:cardName. */
+  private registerCardVariants(): void {
+    const shared = ["IntialValues", "teaserMetadata", "WindowElementPanel", "AdvancedFilters", "FormFields", "EntityViewElements", "Entity"];
+    for (const d of [...this.definitions.values()]) {
+      if (d.kind !== "fragment" || /^(minimal|full|filtersFor|preview)/.test(d.name) || /(Filters|SortOptions|BulkOperations|Fields|Element|IntialValues|TeaserMetadata)$/.test(d.name)) continue;
+      const fragment = d.node as FragmentDefinitionNode;
+      if (shared.includes(fragment.typeCondition.name.value)) continue;
+      if (!child(fragment, "teaserMetadata") || child(fragment, "entityView")) continue;
+      const name = d.name.charAt(0).toUpperCase() + d.name.slice(1);
+      if (this.definitions.has(`minimal${name}`)) continue;
+      this.definitions.set(`minimal${name}`, { ...d, name: `minimal${name}`, node: { ...fragment, name: { kind: Kind.NAME, value: `minimal${name}` } } });
+      this.cardVariants.set(name, d.name);
+    }
   }
 
   /** The GraphQL interfaces the subtypes share: filters, sort options or bulk operations named after a type without a listing fragment. */
@@ -531,10 +554,12 @@ export class Extractor {
       valuesFragments: [],
       panelFragments: [],
       filtersFragments: [],
+      sortDocuments: [],
     };
     const where = name;
     if (!minimal) entity.interface = true;
     if (this.inlineSet.has(name)) entity.inline = true;
+    if (this.cardVariants.has(name)) entity.cardName = this.cardVariants.get(name);
 
     // initial values: the detail fragment's order, the listing's values first when the detail lacks them
     const minimalValues = child(listing, "intialValues");
@@ -860,6 +885,9 @@ export class Extractor {
     this.sharedFragmentsOf(file, where, entity, byAlias, add);
     for (const [suffix, document] of [["Entities", "entities"], ["Filters", "filters"], ["SortOptions", "sortOptions"], ["BulkOperations", "bulkOperations"]] as const)
       if (this.operation(`Get${name}${suffix}`)) entity.documents.push(document);
+    // the signed-in user read as this type
+    const user = this.operation("getElodyUser");
+    if (user && spreads(child(user, "getElodyUser")?.selectionSet).includes(`minimal${name}`)) entity.documents.push("currentUser");
     return entity;
   }
 
@@ -1322,6 +1350,7 @@ export class Extractor {
         valueMappings: child(field, "defaultValueMapping") ? this.valueMappings(argument(child(field, "defaultValueMapping")!, "value")) : undefined,
         facets: argument(field, "facets") ? this.facets(argument(field, "facets")) : undefined,
         hidden: child(field, "hidden") !== undefined && input(child(field, "hidden")) !== "false",
+        keepDefaultValue: child(field, "doNotOverrideDefaultValue") !== undefined && input(child(field, "doNotOverrideDefaultValue")) !== "false" ? true : undefined,
       };
       const mapping = argument(field, "filterOptionsMapping");
       if (mapping?.kind === Kind.OBJECT) {
@@ -1369,6 +1398,7 @@ export class Extractor {
                     valueMappings: objectField(o, "defaultValueMapping") ? this.valueMappings(objectField(o, "defaultValueMapping")) : undefined,
                     matchExact: flag(o, "match_exact"),
                     distinctBy: scalar(objectField(o, "distinct_by")),
+                    resolveDefaultValueToOptionIds: flag(o, "resolveDefaultValueToOptionIds"),
                     operator: scalar(objectField(o, "operator")),
                   };
                 })
@@ -1805,6 +1835,7 @@ export class Extractor {
     if (f.parentKey) lines.push(`    elody:parentFilterKey ${q(f.parentKey)} ;`);
     if (f.aggregation) lines.push(`    elody:filterAggregation ${q(f.aggregation)} ;`);
     if (f.hidden) lines.push(`    dash:hidden true ;`);
+    if (f.keepDefaultValue) lines.push(`    elody:keepDefaultValue true ;`);
     for (const value of f.defaults) lines.push(`    sh:defaultValue ${f.defaultBare ? value : q(value)} ;`);
     for (const t of f.itemTypes ?? []) lines.push(`    elody:itemTypes ${q(t)} ;`);
     if (f.defaultMatcher) lines.push(`    elody:defaultMatcher ${q(f.defaultMatcher)} ;`);
@@ -1838,6 +1869,7 @@ export class Extractor {
       for (const [i, input] of (f.options.inputs ?? []).entries()) {
         const parts = [`sh:order ${i + 1}`, `elody:inputKind ${input.kind ?? "elody:TextFilter"}`, ...(input.key ? [`elody:key ${q(input.key)}`] : []), `elody:value ${Array.isArray(input.value) ? `( ${input.value.map(q).join(" ")} )` : q(input.value)}`];
         if (input.distinctBy) parts.push(`elody:inputDistinctBy ${q(input.distinctBy)}`);
+        if (input.resolveDefaultValueToOptionIds) parts.push("elody:inputResolveDefaultValueToOptionIds true");
         if (input.matchExact !== undefined) parts.push(`elody:inputMatchExact ${input.matchExact}`);
         if (input.operator) parts.push(`elody:inputOperator ${q(input.operator)}`);
         if (input.bareValues) parts.push(`elody:bareValues true`);
@@ -2052,6 +2084,88 @@ export class Extractor {
   }
 
   /** A file holding shared fragments alone (no type of its own): declared as a fragments-only entity named after the file. */
+  /**
+   * The orphan documents: queries nothing in these files references and no type claimed. An entities, filters,
+   * custom bulk operations or sort options document is declared on the type whose file holds it (a file without
+   * a type gets a fragments-only declaration); the rest is noted.
+   */
+  orphans(entities: Entity[]): Entity[] {
+    const texts = new Map<string, string>();
+    for (const d of this.definitions.values()) texts.set(d.name, print(d.node));
+    const referenced = (name: string) => {
+      const word = new RegExp(`(^|[^A-Za-z0-9_])${name}([^A-Za-z0-9_]|$)`);
+      for (const [other, text] of texts) if (other !== name && word.test(text)) return true;
+      return false;
+    };
+    const handled = new Set<string>();
+    for (const entity of entities) {
+      for (const suffix of ["Entities", "Filters", "SortOptions", "BulkOperations", "CreateForm"]) handled.add(`Get${entity.documentName}${suffix}`);
+      if (entity.form) handled.add(entity.form.queryName);
+      for (const form of entity.forms) handled.add(form.queryName);
+      for (const flow of entity.flows) handled.add(flow.queryName);
+      for (const source of entity.formSources) handled.add(source.queryName);
+      for (const custom of entity.customOperations) handled.add(custom.name);
+      for (const lq of [...entity.listQueries, ...entity.pickers]) {
+        handled.add(lq.name);
+        if (lq.filtersName) handled.add(lq.filtersName);
+      }
+      if (entity.documents.includes("currentUser")) handled.add("getElodyUser");
+    }
+    for (const name of [...this.declaredCustomOps, ...this.formSourceNames]) handled.add(name);
+    const added: Entity[] = [];
+    const ownerOf = (file: string): Entity => {
+      const own = entities.find((e) => e.documentName === e.graphqlType && !e.fragmentsOnly && this.definitions.get(this.anchorOf(e.documentName)?.name.value ?? "")?.file === file);
+      if (own) return own;
+      const shared = [...entities, ...added].find((e) => e.fragmentsOnly && e.filePath === file);
+      if (shared) return shared;
+      const fresh = this.sharedFile(file);
+      added.push(fresh);
+      return fresh;
+    };
+    const taken = new Set<string>();
+    for (const d of [...this.definitions.values()]) {
+      // the platform document (queries/<client>.queries.ts) is the PWA's, not a type's: its documents are not swept
+      if (d.kind !== "query" || !/(^|\/)queries\/entities\//.test(d.file) || handled.has(d.name) || taken.has(d.name) || referenced(d.name)) continue;
+      const query = d.node as OperationDefinitionNode;
+      const top = fields(query.selectionSet)[0]?.name.value;
+      const sortField = top === "EntityTypeSortOptions" ? child(fields(query.selectionSet)[0], "sortOptions") : undefined;
+      const sortOptionsField = sortField ? child(sortField, "options") : undefined;
+      const sortEntries = sortOptionsField ? list(argument(sortOptionsField, "input")).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT) : [];
+      const declarable = top === "Entities" || top === "EntityTypeFilters" || top === "CustomBulkOperations" || sortEntries.length > 0;
+      if (!declarable) {
+        this.note(`${d.file.replace(/^.*\//, "")}: nothing references the query ${d.name} and it has no term; it stays hand-written`);
+        continue;
+      }
+      const owner = ownerOf(d.file);
+      const where = `${owner.documentName} orphan`;
+      if (top === "Entities") {
+        // its filters document, by name, when that is an orphan too
+        const candidates = [`${d.name}Filters`, d.name.replace("List", "Filters"), d.name.replace("Entities", "Filters")];
+        const filters = candidates.find((c) => c !== d.name && this.definitions.get(c)?.kind === "query" && !handled.has(c) && !referenced(c));
+        const node = this.listQuery(d.name, filters, where, owner);
+        if (filters) taken.add(filters);
+        if (!owner.entityListQueries.includes(node)) owner.entityListQueries.push(node);
+        this.note(`${where}: nothing references the entities document ${d.name}; declared on the type as a list query`);
+      } else if (top === "EntityTypeFilters") {
+        const node = this.listQuery(d.name, d.name, where, owner);
+        const lq = owner.listQueries.find((l) => l.node === node);
+        if (lq) lq.filtersOnly = true;
+        if (!owner.entityListQueries.includes(node)) owner.entityListQueries.push(node);
+        this.note(`${where}: nothing references the filters document ${d.name}; declared on the type as a list query with filters alone`);
+      } else if (top === "CustomBulkOperations") {
+        this.customOperations(d.name, where, owner);
+        this.note(`${where}: nothing references the custom bulk operations ${d.name}; declared on the type`);
+      } else if (sortEntries.length) {
+        owner.sortDocuments.push({
+          queryName: d.name,
+          options: sortEntries.map((entry) => ({ labelKey: scalar(objectField(entry, "label")) ?? "", value: scalar(objectField(entry, "value")) ?? "", primary: objectField(entry, "primary") ? scalar(objectField(entry, "primary")) === "true" : undefined, icon: scalar(objectField(entry, "icon")) })),
+        });
+        this.note(`${where}: nothing references the sort options document ${d.name}; declared on the type as a sort document`);
+      }
+    }
+    return added;
+  }
+
   sharedFile(file: string): Entity {
     const name = file.replace(/^.*\//, "").replace(/\.queries\.ts$/, "");
     const entity: Entity = {
@@ -2078,6 +2192,7 @@ export class Extractor {
       valuesFragments: [],
       panelFragments: [],
       filtersFragments: [],
+      sortDocuments: [],
       fragmentsOnly: true,
       filePath: file,
     };
@@ -2343,6 +2458,7 @@ export class Extractor {
     out.push(`  elody:emit ${entity.inline ? '"inline"' : '"file"'} ;`);
     if (entity.fragmentsOnly) out.push(`  elody:fragmentsOnly true ;`);
     if (entity.filePath) out.push(`  elody:filePath ${q(entity.filePath)} ;`);
+    if (entity.cardName) out.push(`  elody:cardName ${q(entity.cardName)} ;`);
     if (entity.documents.length) out.push(`  elody:documents ${entity.documents.map(q).join(" , ")} ;`);
     if (entity.typePills) out.push(`  elody:typePills true ;`);
     if (entity.relationValues !== undefined) out.push(`  elody:relationValues ${entity.relationValues} ;`);
@@ -2551,8 +2667,15 @@ export class Extractor {
         extra.push(lines.join("\n"));
       }
     }
+    for (const document of entity.sortDocuments) {
+      out.push(
+        `  elody:sortDocument [ elody:queryName ${q(document.queryName)} ;`,
+        `    elody:sortOption ${document.options.map((o, i) => `[ sh:order ${i + 1}${o.icon ? ` ; elody:icon ${q(o.icon)}` : ""} ; elody:labelKey ${q(o.labelKey)} ; elody:value ${q(o.value)}${o.primary ? " ; elody:primary true" : ""} ]`).join(" , ")} ] ;`,
+      );
+    }
     for (const lq of [...entity.listQueries, ...entity.pickers.map((p) => ({ ...p, picker: true }))]) {
-      const lines = [`ui:${lq.node ?? lq.name}`, `  a ${"picker" in lq ? "elody:Picker" : "elody:ListQuery"} ;`, `  elody:queryName ${q(lq.name)} ;`];
+      // a filters document alone: the node is named after it, no entities document
+      const lines = [`ui:${lq.node ?? lq.name}`, `  a ${"picker" in lq ? "elody:Picker" : "elody:ListQuery"} ;`, ...(lq.filtersOnly ? [] : [`  elody:queryName ${q(lq.name)} ;`])];
       if (lq.filtersName) lines.push(`  elody:filtersQuery ${q(lq.filtersName)} ;`);
       if (lq.filtersType) lines.push(`  elody:filtersType ${q(lq.filtersType)} ;`);
       if (lq.relationValues) lines.push(`  elody:relationValues true ;`);
@@ -2587,6 +2710,8 @@ export function extractDeclaration(files: QueryFile[], options: ExtractOptions =
   const entities = types.map((name) => extractor.entity(name));
   // the files holding shared fragments alone, declared as fragments-only entities
   for (const file of extractor.sharedFiles()) entities.push(extractor.sharedFile(file));
+  // the orphan documents: declared on the type whose file holds them (a file without a type gets a declaration of its own)
+  entities.push(...extractor.orphans(entities));
   // the listings synthesised for results selected inline, declared after the types that led to them
   for (let name = extractor.inlineNames.shift(); name !== undefined; name = extractor.inlineNames.shift()) entities.push(extractor.entity(name));
   const ttl = extractor.write(entities, options);

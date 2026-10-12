@@ -185,6 +185,8 @@ export type UiFilter = {
   defaultValues: string[];
   defaultValueAsList: boolean;
   hidden: boolean;
+  /** elody:keepDefaultValue: doNotOverrideDefaultValue(value: true) */
+  keepDefaultValue?: boolean;
   displayedByDefault: boolean;
   tooltip: boolean;
 };
@@ -218,7 +220,7 @@ export type UiValueMapping = { values: string[]; mapping: string; order: number 
 /** elody:facet: a facet of a filter (facets), recursive */
 export type UiFacet = { kind?: string; value?: string; key?: string; lookups: UiLookup[]; facets: UiFacet[]; order: number };
 /** elody:optionsInput: a further input of a selection filter's option search; value a string or a list */
-export type UiOptionsInput = { kind: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; operator?: string; order: number; /** elody:bareValues: the values are enum values, written unquoted */ bareValues?: boolean; valueMappings?: UiValueMapping[] };
+export type UiOptionsInput = { kind: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; /** elody:inputResolveDefaultValueToOptionIds */ resolveDefaultValueToOptionIds?: boolean; operator?: string; order: number; /** elody:bareValues: the values are enum values, written unquoted */ bareValues?: boolean; valueMappings?: UiValueMapping[] };
 
 /** elody:matchMetadataValue: a metadata key and the value it must hold (matchMetadataValue) */
 export type UiMetadataMatch = { key: string; value: string };
@@ -354,6 +356,8 @@ export type UiRepetitiveForm = {
 
 /** A result type of a list query or picker: fragments spread on it and/or a listing rendered inline (an EntityUi with elody:emit "inline") */
 export type UiPickerResult = { type: string; fragments: string[]; listingIri?: string; listing?: UiEntity; order: number; /** elody:cardMenuSpread: a menu fragment on the result's card */ cardMenuSpread?: string };
+
+export type UiSortDocument = { queryName: string; options: { labelKey: string; value: string; primary?: boolean; icon?: string; order: number }[] };
 
 export type UiPicker = {
   queryName: string;
@@ -541,6 +545,10 @@ export type UiEntity = {
   /** elody:fragmentsOnly: a file of shared fragments alone; elody:filePath: where it is written, relative to src/ */
   fragmentsOnly?: boolean;
   filePath?: string;
+  /** elody:cardName: the listing fragment's own name when the client does not call it minimal<X> (another card of the type) */
+  cardName?: string;
+  /** elody:sortDocument: sort options documents of the type's own, options inline */
+  sortDocuments: UiSortDocument[];
   /** elody:thumbnail: the card's picture, from an initial value or the primary media file; sh:order places it among the card's fields */
   thumbnail?: { key?: string; fromMediafile?: boolean; order?: number };
   /** hand-written shared fragments spread into a block (elody:listingValuesSpread & co) */

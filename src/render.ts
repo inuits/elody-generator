@@ -175,32 +175,44 @@ export function renderSortOptions(entity: M.UiEntity, indent: number): string {
     .map(({ property }) => property);
   // no sortable property: nothing, unless the base options are excluded on purpose (an empty list)
   if (sortable.length === 0 && !entity.excludeBaseSortOptions) return "";
+  const options = sortable.map((property) => ({
+    icon: "NoIcon",
+    labelKey: property.sortLabelKey ?? property.label ?? property.key,
+    value: property.alias ?? property.key,
+    primary: property.sortPrimary,
+    pages: property.sortPages,
+  }));
+  const direction = sortable.find((property) => property.defaultSortDirection)?.defaultSortDirection;
+  return renderSortOptionsBlock(options, indent, entity.excludeBaseSortOptions, direction);
+}
 
-  const options = sortable
-    .map((property) =>
+type SortOptionLine = { icon?: string; labelKey: string; value: string; primary?: boolean; pages?: { routeName: string; entityType?: string }[] };
+
+/** The sortOptions block: the options as input, what is asked back. */
+function renderSortOptionsBlock(options: SortOptionLine[], indent: number, excludeBase: boolean, direction?: string): string {
+  const entries = options
+    .map((option) =>
       [
         `${pad(indent + 6)}{`,
-        `${pad(indent + 8)}icon: NoIcon`,
-        `${pad(indent + 8)}label: "${property.sortLabelKey ?? property.label ?? property.key}"`,
-        `${pad(indent + 8)}value: "${property.alias ?? property.key}"`,
-        ...(property.sortPrimary ? [`${pad(indent + 8)}primary: true`] : []),
-        ...(property.sortPages?.length
-          ? [`${pad(indent + 8)}availableInPages: [${property.sortPages.map((page) => `{ routeName: ${page.routeName}${page.entityType ? `, entityType: ${page.entityType}` : ""} }`).join(", ")}]`]
+        `${pad(indent + 8)}icon: ${option.icon ?? "NoIcon"}`,
+        `${pad(indent + 8)}label: "${option.labelKey}"`,
+        `${pad(indent + 8)}value: "${option.value}"`,
+        ...(option.primary ? [`${pad(indent + 8)}primary: true`] : []),
+        ...(option.pages?.length
+          ? [`${pad(indent + 8)}availableInPages: [${option.pages.map((page) => `{ routeName: ${page.routeName}${page.entityType ? `, entityType: ${page.entityType}` : ""} }`).join(", ")}]`]
           : []),
         `${pad(indent + 6)}}`,
       ].join("\n"),
     )
     .join("\n");
 
-  const direction = sortable.find((property) => property.defaultSortDirection)?.defaultSortDirection;
-
   const lines = [
     `${pad(indent)}sortOptions {`,
     `${pad(indent + 2)}options(`,
     `${pad(indent + 4)}input: [`,
-    options,
+    entries,
     `${pad(indent + 4)}]`,
-    ...(entity.excludeBaseSortOptions ? [`${pad(indent + 4)}excludeBaseSortOptions: true`] : []),
+    ...(excludeBase ? [`${pad(indent + 4)}excludeBaseSortOptions: true`] : []),
     `${pad(indent + 2)}) {`,
     `${pad(indent + 4)}icon`,
     `${pad(indent + 4)}label`,
@@ -216,6 +228,17 @@ export function renderSortOptions(entity: M.UiEntity, indent: number): string {
   if (direction) lines.push(`${pad(indent + 2)}isAsc(input: ${direction})`);
   lines.push(`${pad(indent)}}`);
   return lines.join("\n");
+}
+
+/** A sort options document of the type's own: EntityTypeSortOptions with its options inline. */
+export function renderSortDocument(document: M.UiSortDocument): string {
+  return [
+    `  query ${document.queryName}($entityType: String!) {`,
+    "    EntityTypeSortOptions(entityType: $entityType) {",
+    renderSortOptionsBlock(document.options.map((option) => ({ icon: option.icon, labelKey: option.labelKey, value: option.value, primary: option.primary })), 6, false),
+    "    }",
+    "  }",
+  ].join("\n");
 }
 
 const filterDefaultLiteral = (filter: M.UiFilter): string => {
@@ -275,7 +298,7 @@ function renderFilterOptions(options: NonNullable<M.UiFilter["options"]>, indent
       `${pad(indent + 4)}value: ${Array.isArray(input.value) ? `[${input.value.map((v) => (input.bareValues ? v : `"${v}"`)).join(", ")}]` : input.bareValues ? input.value : `"${input.value}"`}`,
       ...(input.distinctBy ? [`${pad(indent + 4)}distinct_by: "${input.distinctBy}"`] : []),
       ...(input.matchExact !== undefined ? [`${pad(indent + 4)}match_exact: ${input.matchExact}`] : []),
-      ...(input.valueMappings?.length ? [`${pad(indent + 4)}defaultValueMapping: ${valueMappingLiteral(input.valueMappings)}`] : []),
+      ...(input.resolveDefaultValueToOptionIds !== undefined ? [`${pad(indent + 4)}resolveDefaultValueToOptionIds: ${input.resolveDefaultValueToOptionIds}`] : []),
       ...(input.valueMappings?.length ? [`${pad(indent + 4)}defaultValueMapping: ${valueMappingLiteral(input.valueMappings)}`] : []),
       ...(input.operator ? [`${pad(indent + 4)}operator: ${input.operator}`] : []),
       `${pad(indent + 2)}}`,
@@ -326,6 +349,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
         ...(filter.tooltip ? ["tooltip(value: true)"] : []),
         ...(filter.defaultValues.length > 0 || filter.defaultValueAsList ? [`defaultValue(value: ${filterDefaultLiteral(filter)})`] : []),
         ...(filter.hidden ? ["hidden(value: true)"] : []),
+        ...(filter.keepDefaultValue ? ["doNotOverrideDefaultValue(value: true)"] : []),
       ];
       return [
         `${pad(indent + 2)}${aliased}advancedFilter(type: selection${parent}, key: ${key}${itemTypes}${operator}) {`,
@@ -408,6 +432,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(filter.tooltip ? [`${pad(indent + 4)}tooltip(value: true)`] : []),
       ...(filter.defaultValues.length > 0 || filter.defaultValueAsList ? [`${pad(indent + 4)}defaultValue(value: ${filterDefaultLiteral(filter)})`] : []),
       ...(filter.hidden ? [`${pad(indent + 4)}hidden(value: true)`] : []),
+      ...(filter.keepDefaultValue ? [`${pad(indent + 4)}doNotOverrideDefaultValue(value: true)`] : []),
       ...(filter.valueMappings?.length ? [`${pad(indent + 4)}defaultValueMapping(value: ${valueMappingLiteral(filter.valueMappings)}) {`, `${pad(indent + 6)}value`, `${pad(indent + 6)}mapping`, `${pad(indent + 4)}}`] : []),
     ];
     return [`${pad(indent + 2)}${aliased}advancedFilter(`, ...args, `${pad(indent + 2)}) {`, ...selection, `${pad(indent + 2)}}`].join("\n");
@@ -1187,6 +1212,8 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   // fragment and document names: elody:documentName when several declarations share a GraphQL type
   const type = entity.documentName ?? entity.graphqlType;
   const low = lowerFirst(type);
+  // the listing fragment's name: minimal<X>, or the client's own (elody:cardName)
+  const cardFragment = entity.cardName ?? `minimal${type}`;
   const fragments: string[] = [];
 
   const { head, values, relation, modes, card } = listingParts(entity, 4);
@@ -1195,8 +1222,8 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   } else if (entity.listingCore) {
     // the values and the card in a core other listings of the type reuse; the listing spreads it and adds the view modes
     fragments.push([`  fragment minimal${type}Core on ${onType} {`, ...head, ...values, ...card, "    ...minimalBaseEntity", "  }"].join("\n"));
-    fragments.push([`  fragment minimal${type} on ${onType} {`, `    ...minimal${type}Core`, ...relation, ...modes, "  }"].join("\n"));
-  } else fragments.push([`  fragment minimal${type} on ${onType} {`, ...head, ...values, ...relation, ...modes, ...card, "    ...minimalBaseEntity", "  }"].join("\n"));
+    fragments.push([`  fragment ${cardFragment} on ${onType} {`, `    ...minimal${type}Core`, ...relation, ...modes, "  }"].join("\n"));
+  } else fragments.push([`  fragment ${cardFragment} on ${onType} {`, ...head, ...values, ...relation, ...modes, ...card, "    ...minimalBaseEntity", "  }"].join("\n"));
 
   if (entity.detail && !entity.interface) {
     const full: string[] = [`  fragment full${type} on ${onType} {`];
@@ -1262,7 +1289,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
         "        uuid",
         "        type",
         `        ... on ${onType} {`,
-        `          ...minimal${type}`,
+        `          ...${cardFragment}`,
         "        }",
         "      }",
         "    }",
@@ -1306,7 +1333,12 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
       ].join("\n"),
     );
 
+  // the signed-in user read as this type
+  if (entity.documents.includes("currentUser")) documents.push(["  query getElodyUser {", "    getElodyUser {", `      ...${cardFragment}`, "    }", "  }"].join("\n"));
+
   for (const form of entity.createForms) documents.push(renderCreateForm(form));
+
+  for (const document of entity.sortDocuments) documents.push(renderSortDocument(document));
 
   for (const custom of entity.customBulkOperations)
     documents.push(

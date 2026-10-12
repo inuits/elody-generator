@@ -814,6 +814,20 @@ class Parse {
       elementsFragments,
       fragmentsOnly: r.literal(subject, elody("fragmentsOnly")) === true || undefined,
       filePath: r.value(subject, elody("filePath")) || undefined,
+      cardName: r.value(subject, elody("cardName")) || undefined,
+      sortDocuments: r
+        .nodes(subject, elody("sortDocument"))
+        .filter((node) => this.emitsOnce(`sort:${this.queryNameOf(node, "sort options document")}`))
+        .map((node) => ({
+          queryName: this.queryNameOf(node, "sort options document"),
+          options: r.byOrder(r.nodes(node, elody("sortOption"))).map((option) => ({
+            labelKey: String(r.value(option, elody("labelKey")) ?? ""),
+            value: String(r.value(option, elody("value")) ?? ""),
+            primary: this.optionalFlag(option, elody("primary")),
+            icon: r.value(option, elody("icon")) || undefined,
+            order: r.order(option),
+          })),
+        })),
       panelFragments: r
         .nodes(subject, elody("panelFragment"))
         .map((node) => ({ node, name: String(r.value(node, elody("fragmentName")) ?? "") }))
@@ -1077,6 +1091,7 @@ class Parse {
       defaultValues,
       defaultValueAsList: r.literal(node, elody("defaultValueAsList")) === true,
       hidden: this.hidden(node),
+      keepDefaultValue: this.optionalFlag(node, elody("keepDefaultValue")),
       displayedByDefault: r.literal(node, elody("displayedByDefault")) === true,
       tooltip,
     };
@@ -1173,6 +1188,7 @@ class Parse {
       value,
       matchExact: this.optionalFlag(node, elody("inputMatchExact")),
       distinctBy: r.value(node, elody("inputDistinctBy")) || undefined,
+      resolveDefaultValueToOptionIds: this.optionalFlag(node, elody("inputResolveDefaultValueToOptionIds")),
       operator: r.value(node, elody("inputOperator")) || undefined,
       bareValues: this.optionalFlag(node, elody("bareValues")),
       valueMappings: this.valueMappings(node),
