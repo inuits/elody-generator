@@ -245,14 +245,14 @@ class Parse {
     // the panels of the detail columns and of the elements fragments the file holds
     const elements = [...(detail?.columns.flatMap((column) => column.elements) ?? []), ...fragments.flatMap((fragment) => fragment.elements)];
     if (!elements.length) {
-      for (const { node, property } of parsed) if (property.cardEditable && !property.editInputType) property.editInputType = this.editWidget(node);
+      for (const { node, property } of parsed) if ((property.cardEditable || property.panelWidget) && !property.editInputType) property.editInputType = this.editWidget(node);
       return detail;
     }
     const edited = new Set(elements.flatMap((element) => element.panels.filter((panel) => panel.editable).flatMap((panel) => panel.fields)));
     // a card edited in place carries the property's widget too
     for (const { node, property } of parsed) if (property.cardEditable && !property.editInputType) property.editInputType = this.editWidget(node);
     for (const { node, property } of parsed)
-      if (edited.has(property.key) && !property.readOnly && !property.panelElement) property.editInputType = this.editWidget(node);
+      if ((edited.has(property.key) && !property.readOnly && !property.panelElement) || (property.panelWidget && !property.editInputType)) property.editInputType = this.editWidget(node);
     return detail;
   }
 
@@ -788,6 +788,8 @@ class Parse {
       excludeBaseSortOptions: r.literal(subject, elody("excludeBaseSortOptions")) === true,
       filtersFragmentName: r.value(subject, elody("filtersFragmentName")) || undefined,
       readsPermissions: r.literal(subject, elody("readsPermissions")) === true,
+      idField: r.literal(subject, elody("idField")) === true || undefined,
+      idValue: r.literal(subject, elody("idValue")) === true || undefined,
       mapFeatureFields: r.nodes(subject, elody("mapFeatureField")).length
         ? r.nodes(subject, elody("mapFeatureField")).map((path) => {
             const key = pathToKey.get(path);
@@ -881,6 +883,25 @@ class Parse {
       order: r.order(node),
       colSpan: typeof colSpan === "number" ? colSpan : undefined,
       unit: this.enumValue(node, elody("unit"), elody("Unit")),
+      cardLineClamp: r.value(node, elody("cardLineClamp")) || undefined,
+      panelLineClamp: r.value(node, elody("panelLineClamp")) || undefined,
+      panelAlias: r.value(node, elody("panelAlias")) || undefined,
+      highlightIfPrimaryThumbnail: this.optionalFlag(node, elody("highlightIfPrimaryThumbnail")),
+      validationMessage: r.value(node, elody("validationMessage")) || undefined,
+      virtualKeyboardLayouts: r.node(node, elody("virtualKeyboardLayouts")) ? r.list(r.node(node, elody("virtualKeyboardLayouts"))) : undefined,
+      valueTranslationKey: r.value(node, elody("valueTranslationKey")) || undefined,
+      permitted: r.literals(node, elody("permitted")).length ? r.literals(node, elody("permitted")) : undefined,
+      linkText: r.value(node, elody("linkText")) || undefined,
+      copyToClipboard: this.optionalFlag(node, elody("copyToClipboard")),
+      nonEditable: this.optionalFlag(node, elody("nonEditable")),
+      tooltipKey: r.value(node, elody("tooltipKey")) || undefined,
+      panelShowsUnit: this.optionalFlag(node, elody("panelShowsUnit")),
+      panelWidget: this.optionalFlag(node, elody("panelWidget")),
+      cardAlias: r.value(node, elody("cardAlias")) || undefined,
+      cardValidates: this.optionalFlag(node, elody("cardValidates")),
+      sortPages: r.nodes(node, elody("sortPage")).length
+        ? r.nodes(node, elody("sortPage")).map((page) => ({ routeName: String(r.value(page, elody("routeName")) ?? ""), entityType: r.value(page, elody("routeEntityType")) || undefined }))
+        : undefined,
       formatter: panelElement ? undefined : this.formatter(node),
       role,
       teaser: r.literal(node, elody("teaser")) !== false && !detailOnly,
@@ -975,6 +996,7 @@ class Parse {
       key: r.value(node, elody("key")),
       keyAsList: r.literal(node, elody("keyAsList")) !== false,
       parentKey: r.value(node, elody("parentFilterKey")) || undefined,
+      aggregation: r.value(node, elody("filterAggregation")) || undefined,
       optionsLabel: r.value(node, elody("optionsLabel")) || undefined,
       optionsValue: r.value(node, elody("optionsValue")) || undefined,
       selectionOption: r.value(node, elody("selectionOption")) || undefined,
@@ -1035,6 +1057,10 @@ class Parse {
           formTitle: r.value(action, elody("formTitle")),
           label: r.value(action, rdfs("label")),
           icon: r.value(action, elody("icon")),
+          can: r.literals(action, elody("can")).length ? r.literals(action, elody("can")) : undefined,
+          showAsButton: this.optionalFlag(action, elody("showAsButton")),
+          endpointUrl: r.value(action, elody("endpointUrl")) || undefined,
+          endpointMethod: r.value(action, elody("endpointMethod")) || undefined,
         };
       }),
     };
@@ -1217,6 +1243,7 @@ class Parse {
       creationType: r.value(node, elody("creationType")),
       // the legacy dialect always showed form errors
       showsFormErrors: this.optionalFlag(node, elody("showsFormErrors")) ?? (this.legacy ? true : undefined),
+      submitAction: r.value(node, elody("submitAction")) || undefined,
     };
   }
 
@@ -1262,6 +1289,18 @@ class Parse {
       validationRelationType: r.value(node, elody("validationRelationType")) || undefined,
       validationAmount: typeof r.literal(node, elody("validationAmount")) === "number" ? (r.literal(node, elody("validationAmount")) as number) : undefined,
       validationExact: this.optionalFlag(node, elody("validationExact")),
+      tooltipKey: r.value(node, elody("tooltipKey")) || undefined,
+      defaultValue: r.value(node, sh("defaultValue")) || undefined,
+      noWidget: this.optionalFlag(node, elody("noWidget")),
+      validationMessage: r.value(node, elody("validationMessage")) || undefined,
+      virtualKeyboardLayouts: r.node(node, elody("virtualKeyboardLayouts")) ? r.list(r.node(node, elody("virtualKeyboardLayouts"))) : undefined,
+      pickerSearch: r.node(node, elody("pickerSearch"))
+        ? ((search) => ({
+            mode: String(r.value(search, elody("pickerSearchMode")) ?? "Search"),
+            keys: r.node(search, elody("keys")) ? r.list(r.node(search, elody("keys"))) : [],
+            acceptedTypes: r.literals(search, elody("acceptedTypes")),
+          }))(r.node(node, elody("pickerSearch"))!)
+        : undefined,
       hidden: this.hidden(node) || undefined,
       editor,
       multilingual: this.o.multilingual(editor) || this.languageInOf(node).length > 0,
@@ -1531,9 +1570,12 @@ class Parse {
         alias,
         order: r.order(panel),
         label: this.labelOf(panel, rdfs("label"), `ui.${this.type}.group.${alias}`),
-        panelType: this.enumValue(panel, elody("panelKind"), elody("PanelKind"), elody("panelType")) ?? "metadata",
+        panelType: this.enumValue(panel, elody("panelKind"), elody("PanelKind"), elody("panelType")),
         collapsed: r.literal(panel, elody("collapsed")) === true,
         editable,
+        editableDefault: this.optionalFlag(panel, elody("editableDefault")),
+        repetitionKey: r.value(panel, elody("repetitionKey")) || undefined,
+        displayConditionKey: r.value(panel, elody("displayConditionKey")) || undefined,
         multipleColumns: this.optionalFlag(panel, elody("multipleColumns")),
         can: r.value(panel, elody("can")) || undefined,
         spreads: r.literals(panel, elody("spread")),
@@ -1561,9 +1603,12 @@ class Parse {
       alias: String(r.value(panel, elody("alias")) ?? ""),
       order: r.order(panel),
       label: r.value(panel, rdfs("label")),
-      panelType: this.enumValue(panel, elody("panelKind"), elody("PanelKind"), elody("panelType")) ?? "metadata",
+      panelType: this.enumValue(panel, elody("panelKind"), elody("PanelKind"), elody("panelType")),
       collapsed: r.literal(panel, elody("collapsed")) === true,
       editable,
+      editableDefault: this.optionalFlag(panel, elody("editableDefault")),
+      repetitionKey: r.value(panel, elody("repetitionKey")) || undefined,
+      displayConditionKey: r.value(panel, elody("displayConditionKey")) || undefined,
       multipleColumns: this.optionalFlag(panel, elody("multipleColumns")),
       can: r.value(panel, elody("can")) || undefined,
       spreads: r.literals(panel, elody("spread")),

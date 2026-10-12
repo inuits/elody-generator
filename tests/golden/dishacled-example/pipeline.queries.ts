@@ -93,6 +93,11 @@ export const pipelineQueries = gql`
         icon
         label
         value
+        primary
+        availableInPages {
+          routeName
+          entityType
+        }
       }
     }
   }

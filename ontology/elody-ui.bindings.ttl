@@ -221,6 +221,8 @@ elody:DynamicFormModal elody:enumValue "DynamicForm" .
 elody:EditMode elody:enumValue "editMode" .
 elody:EditOperation elody:enumValue "edit" .
 elody:EndpointCallAction elody:enumValue "EndpointCall" .
+elody:SetPrimaryThumbnailAction elody:enumValue "SetPrimaryThumbnail" .
+elody:SetPrimaryMediafileAction elody:enumValue "SetPrimaryMediafile" .
 elody:EntityDetailModal elody:enumValue "EntityDetailModal" .
 elody:EntityEditModal elody:enumValue "EntityEditModal" .
 elody:ExportCsvOperation elody:enumValue "exportCsv" .

@@ -76,6 +76,11 @@ export const alertQueries = gql`
         icon
         label
         value
+        primary
+        availableInPages {
+          routeName
+          entityType
+        }
       }
       isAsc(input: desc)
     }

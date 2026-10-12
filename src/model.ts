@@ -72,6 +72,28 @@ export type UiProperty = {
   /** elody:containsRelationPropertyKey / Value: only the relations whose property holds the value */
   containsRelationPropertyKey?: string;
   containsRelationPropertyValue?: string;
+  /** elody:lineClamp, elody:valueTranslationKey: on the card and in the panel; elody:permitted, elody:linkText, elody:copyToClipboard,
+   * elody:nonEditable, elody:tooltipKey, elody:panelShowsUnit, elody:panelWidget: in the panel; elody:cardAlias, elody:cardValidates: on the card */
+  cardLineClamp?: string;
+  panelLineClamp?: string;
+  panelAlias?: string;
+  highlightIfPrimaryThumbnail?: boolean;
+  /** elody:validationMessage: fastValidationMessage in the validation input */
+  validationMessage?: string;
+  /** elody:virtualKeyboardLayouts on a property edited in a panel */
+  virtualKeyboardLayouts?: string[];
+  valueTranslationKey?: string;
+  permitted?: string[];
+  linkText?: string;
+  copyToClipboard?: boolean;
+  nonEditable?: boolean;
+  tooltipKey?: string;
+  panelShowsUnit?: boolean;
+  panelWidget?: boolean;
+  cardAlias?: string;
+  cardValidates?: boolean;
+  /** elody:sortPage: the pages the sort option is offered on (availableInPages) */
+  sortPages?: { routeName: string; entityType?: string }[];
   /** elody:validationRule / elody:validationValue: a validation beyond required (url, customValue "min_value:1") */
   validationRule?: string;
   validationValue?: string;
@@ -100,6 +122,8 @@ export type UiFilter = {
   keyAsList: boolean;
   /** elody:parentFilterKey: the parentKey argument of a selection filter */
   parentKey?: string;
+  /** elody:filterAggregation: aggregation: "size" on a number filter */
+  aggregation?: string;
   /** elody:optionsType & co: a selection filter fetches its options from the entities of a type */
   /** type left out: the search is scoped by its inputs alone */
   options?: { type?: string; key?: string; matchExact?: boolean; distinctBy?: string; operator?: string; typeOperator?: string; inputs?: UiOptionsInput[] };
@@ -142,6 +166,12 @@ export type UiAction = {
   formTitle?: string;
   label?: string;
   icon?: string;
+  /** elody:can / elody:showAsButton on the action */
+  can?: string[];
+  showAsButton?: boolean;
+  /** elody:endpointUrl / elody:endpointMethod on a custom action (doCustomAction) */
+  endpointUrl?: string;
+  endpointMethod?: string;
 };
 
 /** elody:menuInButtons renders the menu as buttons { contextMenu { ... } } (the newer form) */
@@ -218,6 +248,13 @@ export type UiCreateFormField = {
   languageIn: string[];
   /** the sh:PropertyGroup the field belongs to: a titled section of the form */
   section?: { alias: string; label?: string };
+  /** elody:tooltipKey, sh:defaultValue, elody:noWidget, elody:virtualKeyboardLayouts, elody:pickerSearch */
+  tooltipKey?: string;
+  defaultValue?: string;
+  noWidget?: boolean;
+  validationMessage?: string;
+  virtualKeyboardLayouts?: string[];
+  pickerSearch?: { mode: string; keys: string[]; acceptedTypes: string[] };
 };
 
 export type UiCreateForm = {
@@ -231,7 +268,7 @@ export type UiCreateForm = {
   /** the form tab's GraphQL alias (elody:alias on the form); default "name" */
   tabAlias?: string;
   /** the submit action; elody:alias names it (default createAction) */
-  submit?: { alias?: string; label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors?: boolean };
+  submit?: { alias?: string; label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors?: boolean; /** elody:submitAction: actionType when not submit */ submitAction?: string };
 };
 
 export type UiRepetitiveStep = {
@@ -281,9 +318,15 @@ export type UiPanel = {
   alias: string;
   order: number;
   label?: string;
-  panelType: string;
+  /** elody:panelKind; none leaves panelType unsaid */
+  panelType?: string;
   collapsed: boolean;
   editable: boolean;
+  /** elody:editableDefault: isEditable left unsaid */
+  editableDefault?: boolean;
+  /** elody:repetitionKey / elody:displayConditionKey */
+  repetitionKey?: string;
+  displayConditionKey?: string;
   /** elody:multipleColumns: canBeMultipleColumns(input: true|false); undefined leaves it unsaid */
   multipleColumns?: boolean;
   /** elody:can: the permission editing the panel needs (can(input: "update:feedback")) */
@@ -396,6 +439,9 @@ export type UiEntity = {
   readsPermissions?: boolean;
   /** elody:mapFeatureField: the properties (keys) shown in the map view's popup (mapElement { mapFeatureMetadata }) */
   mapFeatureFields?: string[];
+  /** elody:idField: id at the top of the listing fragment; elody:idValue: id among the listing's initial values */
+  idField?: boolean;
+  idValue?: boolean;
   /** elody:listingCore: the listing fragment is split into minimal<Type>Core (values, card) and minimal<Type> (spread + view modes) */
   listingCore?: boolean;
   /** elody:deleteOptions: the deleteQueryOptions block of the detail fragment */

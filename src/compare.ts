@@ -230,6 +230,17 @@ export function normalizeNode<T extends ASTNode>(node: T): T {
         const fields = set.selections.filter((selection) => selection.kind !== Kind.FRAGMENT_SPREAD);
         // spreads go last: where a fragment is spread does not change what the PWA receives
         if (ORDERED_PARENTS.has(parentName)) return { ...set, selections: [...fields, ...spreads] };
+        // a field asked back twice (key ... key) is one field
+        const seen = new Set<string>();
+        const unique = fields.filter((f) => {
+          if (f.kind !== Kind.FIELD || f.selectionSet || (f.arguments && f.arguments.length)) return true;
+          const name = selectionName(f);
+          if (seen.has(name)) return false;
+          seen.add(name);
+          return true;
+        });
+        fields.length = 0;
+        fields.push(...unique);
         const isContent = CONTENT_CHILDREN[parentName];
         const content = isContent ? fields.filter((selection) => selection.kind === Kind.FIELD && isContent(selection.name.value)) : [];
         const settings = fields.filter((selection) => !content.includes(selection)).sort((a, b) => selectionName(a).localeCompare(selectionName(b)));

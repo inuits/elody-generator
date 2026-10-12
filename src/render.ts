@@ -14,7 +14,7 @@ const stringList = (values: string[]) => `[${values.map((value) => `"${value}"`)
 
 /** The listing fragment leaves out the detail-only properties; the detail fragment reads them all. */
 /** validation(input: { value: ... }): required (sh:minCount 1) and the declared rule, with its argument. */
-export function renderValidation(field: { required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean }, depth: number): string[] {
+export function renderValidation(field: { required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; validationMessage?: string }, depth: number): string[] {
   const rules = [...(field.required ? ["required"] : []), ...(field.validationRule ? [field.validationRule] : [])];
   if (!rules.length) return [];
   const value = rules.length === 1 ? rules[0] : `[${rules.join(", ")}]`;
@@ -23,13 +23,13 @@ export function renderValidation(field: { required: boolean; validationRule?: st
     field.validationRelationType !== undefined || field.validationAmount !== undefined
       ? `, has_required_relation: { ${[...(field.validationRelationType !== undefined ? [`relationType: "${field.validationRelationType}"`] : []), ...(field.validationAmount !== undefined ? [`amount: ${field.validationAmount}`] : []), ...(field.validationExact !== undefined ? [`exact: ${field.validationExact}`] : [])].join(", ")} }`
       : "";
-  const extra = (field.validationValue !== undefined ? `, ${field.validationRule === "regex" ? "regex" : "customValue"}: "${field.validationValue}"` : "") + relation;
+  const extra = (field.validationMessage ? `, fastValidationMessage: "${field.validationMessage}"` : "") + (field.validationValue !== undefined ? `, ${field.validationRule === "regex" ? "regex" : "customValue"}: "${field.validationValue}"` : "") + relation;
   return [`${pad(depth)}validation(input: { value: ${value}${extra} }) {`, `${pad(depth + 2)}...validation`, `${pad(depth)}}`];
 }
 
 export function renderInitialValues(entity: M.UiEntity, indent: number, withFormatters = true, listing = false): string {
   // the detail values read the permissions first (canUpdate, canDelete) when declared
-  const permissions = !listing && entity.readsPermissions ? [`${pad(indent)}canUpdate`, `${pad(indent)}canDelete`] : [];
+  const permissions = [...(!listing && entity.readsPermissions ? [`${pad(indent)}canUpdate`, `${pad(indent)}canDelete`] : []), ...(listing && entity.idValue ? [`${pad(indent)}id`] : [])];
   const values = entity.properties
     .filter((property) => property.readsValue && (listing ? !property.detailOnly : !property.listingOnly))
     .map((property) => {
@@ -95,17 +95,20 @@ export function renderTeaserFields(entity: M.UiEntity, indent: number): string {
   const at = Math.min(Math.max(entity.thumbnail?.order ?? 0, 0), fields.length);
   const rendered = fields.map((property) => {
       const lines = [
-        `${pad(indent)}${property.alias ?? property.key}: ${property.cardField ?? "metaData"} {`,
+        `${pad(indent)}${property.cardAlias ?? property.alias ?? property.key}: ${property.cardField ?? "metaData"} {`,
         `${pad(indent + 2)}label(input: "${property.label ?? property.key}")`,
         `${pad(indent + 2)}key(input: "${property.cardKey ?? property.alias ?? property.key}")`,
       ];
+      if (property.cardLineClamp) lines.push(`${pad(indent + 2)}lineClamp(input: "${property.cardLineClamp}")`);
+      if (property.valueTranslationKey) lines.push(`${pad(indent + 2)}valueTranslationKey(input: "${property.valueTranslationKey}")`);
+      if (property.highlightIfPrimaryThumbnail !== undefined) lines.push(`${pad(indent + 2)}highlightIfPrimaryThumbnail(input: ${property.highlightIfPrimaryThumbnail})`);
       if (property.multilingual) lines.push(`${pad(indent + 2)}isMultilingual(input: true)`);
       if (property.languageIn.length) lines.push(`${pad(indent + 2)}languageIn(input: ${stringList(property.languageIn)})`);
       if (property.colSpan !== undefined) lines.push(`${pad(indent + 2)}colSpan(input: "${property.colSpan}")`);
       if (property.unit) lines.push(`${pad(indent + 2)}unit(input: ${property.unit})`);
       // a card edited in place carries the property's input field
       const widget = property.cardEditable ? (property.editInputType ?? property.inputType) : undefined;
-      if (widget) lines.push(`${pad(indent + 2)}inputField(type: ${widget}) {`, `${pad(indent + 4)}...inputfield`, ...renderValidation(property, indent + 4), `${pad(indent + 2)}}`);
+      if (widget) lines.push(`${pad(indent + 2)}inputField(type: ${widget}) {`, `${pad(indent + 4)}...inputfield`, ...(property.cardValidates === false ? [] : renderValidation(property, indent + 4)), `${pad(indent + 2)}}`);
       lines.push(`${pad(indent)}}`);
       return lines.join("\n");
     });
@@ -175,6 +178,9 @@ export function renderSortOptions(entity: M.UiEntity, indent: number): string {
         `${pad(indent + 8)}label: "${property.sortLabelKey ?? property.label ?? property.key}"`,
         `${pad(indent + 8)}value: "${property.alias ?? property.key}"`,
         ...(property.sortPrimary ? [`${pad(indent + 8)}primary: true`] : []),
+        ...(property.sortPages?.length
+          ? [`${pad(indent + 8)}availableInPages: [${property.sortPages.map((page) => `{ routeName: ${page.routeName}${page.entityType ? `, entityType: ${page.entityType}` : ""} }`).join(", ")}]`]
+          : []),
         `${pad(indent + 6)}}`,
       ].join("\n"),
     )
@@ -193,6 +199,12 @@ export function renderSortOptions(entity: M.UiEntity, indent: number): string {
     `${pad(indent + 4)}icon`,
     `${pad(indent + 4)}label`,
     `${pad(indent + 4)}value`,
+    // asked back regardless: what is asked back beyond the client's does not count
+    `${pad(indent + 4)}primary`,
+    `${pad(indent + 4)}availableInPages {`,
+    `${pad(indent + 6)}routeName`,
+    `${pad(indent + 6)}entityType`,
+    `${pad(indent + 4)}}`,
     `${pad(indent + 2)}}`,
   ];
   if (direction) lines.push(`${pad(indent + 2)}isAsc(input: ${direction})`);
@@ -314,6 +326,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(filter.matchersType ? [`${pad(indent + 4)}matchersType: ${filter.matchersType}`] : []),
       ...(filter.parentKey ? [`${pad(indent + 4)}parentKey: "${filter.parentKey}"`] : []),
       ...(filter.keys ? [`${pad(indent + 4)}key: [${filter.keys.map((k) => `"${k}"`).join(", ")}]`] : filter.key ? [`${pad(indent + 4)}key: ${filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`}`] : []),
+      ...(filter.aggregation ? [`${pad(indent + 4)}aggregation: "${filter.aggregation}"`] : []),
       ...(filter.operator ? [`${pad(indent + 4)}operator: ${filter.operator}`] : []),
       ...(filter.label ? [`${pad(indent + 4)}label: "${filter.label}"`] : []),
       ...(filter.selectionOption ? [`${pad(indent + 4)}selectionOption: ${filter.selectionOption}`] : []),
@@ -333,6 +346,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(filter.matchersType ? [`${pad(indent + 4)}matchersType`] : []),
       ...(filter.parentKey ? [`${pad(indent + 4)}parentKey`] : []),
       ...(filter.key || filter.keys ? [`${pad(indent + 4)}key`] : []),
+      ...(filter.aggregation ? [`${pad(indent + 4)}aggregation`] : []),
       ...(filter.operator ? [`${pad(indent + 4)}operator`] : []),
       ...(filter.label ? [`${pad(indent + 4)}label`] : []),
       // a filter that fetches its options asks the option settings back whether declared or not: what is asked back more is harmless
@@ -377,6 +391,10 @@ export function renderContextMenu(entity: M.UiEntity, indent: number): string {
       if (action.formTitle) lines.push(`${pad(inner + 2)}formTitle(input: "${action.formTitle}")`);
       if (action.label) lines.push(`${pad(inner + 2)}label(input: "${action.label}")`);
       if (action.icon) lines.push(`${pad(inner + 2)}icon(input: "${action.icon}")`);
+      if (action.endpointUrl) lines.push(`${pad(inner + 2)}endpointUrl(input: "${action.endpointUrl}")`);
+      if (action.endpointMethod) lines.push(`${pad(inner + 2)}endpointMethod(input: "${action.endpointMethod}")`);
+      if (action.showAsButton !== undefined) lines.push(`${pad(inner + 2)}showAsButton(input: ${action.showAsButton})`);
+      if (action.can?.length) lines.push(`${pad(inner + 2)}can(input: [${action.can.map((c) => `"${c}"`).join(", ")}])`);
       lines.push(`${pad(inner + 2)}__typename`);
       lines.push(`${pad(inner)}}`);
     }
@@ -494,11 +512,21 @@ export function renderFormField(field: M.UiCreateFormField, indent: number): str
     `${pad(indent + 2)}key(input: "${field.key}")`,
     ...(field.multilingual ? [`${pad(indent + 2)}isMultilingual(input: true)`] : []),
     ...(field.languageIn.length ? [`${pad(indent + 2)}languageIn(input: ${stringList(field.languageIn)})`] : []),
-    `${pad(indent + 2)}inputField(type: ${field.inputType}) {`,
-    `${pad(indent + 4)}...inputfield`,
+    ...(field.tooltipKey ? [`${pad(indent + 2)}tooltip(input: "${field.tooltipKey}")`] : []),
+    ...(field.defaultValue !== undefined ? [`${pad(indent + 2)}defaultValue(input: "${field.defaultValue}")`] : []),
   ];
-  lines.push(...renderValidation(field, indent + 4));
-  lines.push(`${pad(indent + 2)}}`);
+  if (!field.noWidget) {
+    lines.push(`${pad(indent + 2)}inputField(type: ${field.inputType}) {`, `${pad(indent + 4)}...inputfield`);
+    lines.push(...renderValidation(field, indent + 4));
+    if (field.virtualKeyboardLayouts?.length)
+      lines.push(`${pad(indent + 4)}virtualKeyboardConfig(input: { layouts: [${field.virtualKeyboardLayouts.map((l) => `"${l}"`).join(", ")}] }) {`, `${pad(indent + 6)}layouts`, `${pad(indent + 4)}}`);
+    if (field.pickerSearch) {
+      const search = field.pickerSearch;
+      const parts = [`mode: ${search.mode}`, ...(search.keys.length ? [`metadataKeys: [${search.keys.map((k) => `"${k}"`).join(", ")}]`] : []), ...(search.acceptedTypes.length ? [`acceptedTypes: [${search.acceptedTypes.map((t) => `"${t}"`).join(", ")}]`] : [])];
+      lines.push(`${pad(indent + 4)}entityPickerSearchConfig(input: { ${parts.join(", ")} }) {`, `${pad(indent + 6)}mode`, `${pad(indent + 6)}metadataKeys`, `${pad(indent + 6)}acceptedTypes`, `${pad(indent + 6)}staticFilters`, `${pad(indent + 4)}}`);
+    }
+    lines.push(`${pad(indent + 2)}}`);
+  }
   if (field.hidden) lines.push(`${pad(indent + 2)}hiddenField(input: { hidden: true }) {`, `${pad(indent + 4)}...hiddenField`, `${pad(indent + 2)}}`);
   lines.push(`${pad(indent)}}`);
   return lines.join("\n");
@@ -558,7 +586,7 @@ export function renderCreateForm(form: M.UiCreateForm): string {
         `          ${form.submit.alias ?? "createAction"}: action {`,
         `            label(input: "${form.submit.label ?? ""}")`,
         ...(form.submit.icon !== undefined ? [`            icon(input: ${form.submit.icon})`] : []),
-        "            actionType(input: submit)",
+        `            actionType(input: ${form.submit.submitAction ?? "submit"})`,
         ...(form.submit.actionQuery !== undefined ? [`            actionQuery(input: "${form.submit.actionQuery}")`] : []),
         ...(form.submit.creationType ? [`            creationType(input: ${form.submit.creationType})`] : []),
         ...(form.submit.showsFormErrors ? ["            showsFormErrors(input: true)"] : []),
@@ -714,11 +742,13 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
       `${pad(depth + 2)}panelHeaderContent(panelHeaderContentInput: { label: "${panel.label ?? ""}" }) {`,
       `${pad(depth + 4)}label`,
       `${pad(depth + 2)}}`,
-      `${pad(depth + 2)}panelType(input: ${panel.panelType})`,
+      ...(panel.panelType ? [`${pad(depth + 2)}panelType(input: ${panel.panelType})`] : []),
       `${pad(depth + 2)}isCollapsed(input: ${panel.collapsed})`,
-      `${pad(depth + 2)}isEditable(input: ${panel.editable})`,
+      ...(panel.editableDefault ? [] : [`${pad(depth + 2)}isEditable(input: ${panel.editable})`]),
       ...(panel.multipleColumns !== undefined ? [`${pad(depth + 2)}canBeMultipleColumns(input: ${panel.multipleColumns})`] : []),
       ...(panel.can ? [`${pad(depth + 2)}can(input: "${panel.can}")`] : []),
+      ...(panel.repetitionKey ? [`${pad(depth + 2)}repetitionConfig(repetitionKey: "${panel.repetitionKey}") {`, `${pad(depth + 4)}repetitionKey`, `${pad(depth + 2)}}`] : []),
+      ...(panel.displayConditionKey ? [`${pad(depth + 2)}displayCondition {`, `${pad(depth + 4)}key(input: "${panel.displayConditionKey}")`, `${pad(depth + 2)}}`] : []),
     ];
     // the panel's items: its fields in order, each element at its sh:order position among them
     const items: (string | M.UiElement)[] = [...panel.fields];
@@ -734,20 +764,29 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
         lines.push(renderPanelElement(entity, property, depth + 2));
         continue;
       }
-      lines.push(`${pad(depth + 2)}${property.alias ?? key}: metaData {`);
+      lines.push(`${pad(depth + 2)}${property.panelAlias ?? property.alias ?? key}: metaData {`);
       lines.push(`${pad(depth + 4)}label(input: "${property.detailLabelKey ?? property.label ?? property.key}")`);
       lines.push(`${pad(depth + 4)}key(input: "${key}")`);
-      if (property.unit) lines.push(`${pad(depth + 4)}unit(input: ${property.unit})`);
+      if (property.tooltipKey) lines.push(`${pad(depth + 4)}tooltip(input: "${property.tooltipKey}")`);
+      if (property.panelLineClamp) lines.push(`${pad(depth + 4)}lineClamp(input: "${property.panelLineClamp}")`);
+      if (property.valueTranslationKey) lines.push(`${pad(depth + 4)}valueTranslationKey(input: "${property.valueTranslationKey}")`);
+      if (property.linkText) lines.push(`${pad(depth + 4)}linkText(input: "${property.linkText}")`);
+      if (property.copyToClipboard !== undefined) lines.push(`${pad(depth + 4)}copyToClipboard(input: ${property.copyToClipboard})`);
+      if (property.nonEditable !== undefined) lines.push(`${pad(depth + 4)}nonEditableField(input: ${property.nonEditable})`);
+      if (property.unit && property.panelShowsUnit !== false) lines.push(`${pad(depth + 4)}unit(input: ${property.unit})`);
       if (property.multilingual) lines.push(`${pad(depth + 4)}isMultilingual(input: true)`);
       if (property.languageIn.length) lines.push(`${pad(depth + 4)}languageIn(input: ${stringList(property.languageIn)})`);
       // an editable panel edits a field with the create form's widget; a nested value always shows its table
-      const inputType = property.inputType ?? (panel.editable ? property.editInputType : undefined);
+      const inputType = property.inputType ?? (panel.editable || property.panelWidget ? property.editInputType : undefined);
       if (inputType) {
         lines.push(`${pad(depth + 4)}inputField(type: ${inputType}) {`);
         lines.push(`${pad(depth + 6)}...inputfield`);
         if (panel.editable) lines.push(...renderValidation(property, depth + 6));
+        if (property.virtualKeyboardLayouts?.length)
+          lines.push(`${pad(depth + 6)}virtualKeyboardConfig(input: { layouts: [${property.virtualKeyboardLayouts.map((l) => `"${l}"`).join(", ")}] }) {`, `${pad(depth + 8)}layouts`, `${pad(depth + 6)}}`);
         lines.push(`${pad(depth + 4)}}`);
       }
+      if (property.permitted?.length) lines.push(`${pad(depth + 4)}permitted(input: [${property.permitted.map((p) => `"${p}"`).join(", ")}])`);
       lines.push(`${pad(depth + 2)}}`);
     }
     for (const spread of panel.spreads) lines.push(`${pad(depth + 2)}...${spread}`);
@@ -963,6 +1002,7 @@ export function renderDeleteOptions(options: M.UiDeleteOptions, indent: number):
 /** The pieces of a listing at an indentation: the config head, the values block, relationValues, the view modes and the card. */
 export function listingParts(entity: M.UiEntity, indent: number): { head: string[]; values: string[]; relation: string[]; modes: string[]; card: string[] } {
   const head: string[] = [];
+  if (entity.idField) head.push(`${pad(indent)}id`);
   if (entity.dynamicFormConfigField)
     head.push(entity.dynamicFormConfigField === "dynamicFormConfig" ? `${pad(indent)}dynamicFormConfig` : `${pad(indent)}dynamicFormConfig: ${entity.dynamicFormConfigField}`);
   if (entity.portsField) head.push(entity.portsField === "ports" ? `${pad(indent)}ports` : `${pad(indent)}ports: ${entity.portsField}`);

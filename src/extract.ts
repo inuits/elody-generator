@@ -107,9 +107,26 @@ type Property = {
   labelRole: boolean;
   /** isMultilingual: one value per language, edited with the language-aware editor */
   multilingual?: boolean;
+  cardLineClamp?: string;
+  panelLineClamp?: string;
+  panelAlias?: string;
+  highlightIfPrimaryThumbnail?: boolean;
+  validationMessage?: string;
+  virtualKeyboardLayouts?: string[];
+  valueTranslationKey?: string;
+  permitted?: string[];
+  linkText?: string;
+  copyToClipboard?: boolean;
+  nonEditable?: boolean;
+  tooltipKey?: string;
+  panelShowsUnit?: boolean;
+  panelWidget?: boolean;
+  cardAlias?: string;
+  cardValidates?: boolean;
+  sortPages?: { routeName: string; entityType?: string }[];
 };
 
-type Panel = { alias: string; label?: string; kind?: string; collapsed: boolean; editable: boolean; multipleColumns?: boolean; can?: string; fields: string[]; spreads: string[]; elements: Element[] };
+type Panel = { alias: string; label?: string; kind?: string; collapsed: boolean; editable: boolean; editableDefault?: boolean; repetitionKey?: string; displayConditionKey?: string; multipleColumns?: boolean; can?: string; fields: string[]; spreads: string[]; elements: Element[] };
 type WindowStatus = { labelKey?: string; statusKey: string; statusInputField: string };
 type Element =
   | { kind: "window"; alias?: string; label?: string; expandButton?: boolean; editButton?: boolean; hideInHistory?: boolean; windowStatus?: WindowStatus; panels: Panel[] }
@@ -166,6 +183,7 @@ type Filter = {
   keys?: string[];
   keyAsList: boolean;
   parentKey?: string;
+  aggregation?: string;
   label?: string;
   displayed: boolean;
   tooltip: boolean;
@@ -193,8 +211,8 @@ type Filter = {
   lookup?: { from: string; localField: string; foreignField: string; as: string };
 };
 
-type FormField = { key: string; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; hidden?: boolean; clientField?: string };
-type Form = { queryName: string; label?: string; tabAlias?: string; fields: FormField[]; fieldsSpreads: string[]; copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string }[] }; submit?: { alias?: string; label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors: boolean } };
+type FormField = { key: string; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; hidden?: boolean; clientField?: string; validationMessage?: string; tooltipKey?: string; defaultValue?: string; noWidget?: boolean; virtualKeyboardLayouts?: string[]; pickerSearch?: { mode: string; keys: string[]; acceptedTypes: string[] } };
+type Form = { queryName: string; label?: string; tabAlias?: string; fields: FormField[]; fieldsSpreads: string[]; copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string }[] }; submit?: { alias?: string; label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors: boolean; submitAction?: string } };
 
 type Operation = {
   order?: number;
@@ -256,6 +274,9 @@ type Entity = {
   spreads: { listingValues: string[]; detailValues: string[]; card: string[]; filters: string[] };
   relationValues?: boolean;
   readsPermissions?: boolean;
+  /** id at the top of the listing fragment / among the listing's initial values */
+  idField?: boolean;
+  idValue?: boolean;
   /** the properties (keys) shown in the map view's popup (mapElement { mapFeatureMetadata }) */
   mapFeatureFields?: string[];
   /** the operations the lists offer on their result: their forms are opened too */
@@ -293,7 +314,7 @@ type Entity = {
   operations?: Operation[];
   customOperations: { name: string; operations: Operation[] }[];
   listQueries: ListQuery[];
-  contextMenu?: { forceShow: boolean; basic: boolean; inButtons?: boolean; actions: { alias: string; form?: string; kind?: string; label?: string; icon?: string; formQuery?: string; formFlow?: string; formTitle?: string }[] };
+  contextMenu?: { forceShow: boolean; basic: boolean; inButtons?: boolean; actions: { alias: string; form?: string; kind?: string; label?: string; icon?: string; formQuery?: string; formFlow?: string; formTitle?: string; can?: string[]; showAsButton?: boolean; endpointUrl?: string; endpointMethod?: string }[] };
 };
 
 // -- the input field types a client uses --------------------------------------
@@ -548,7 +569,9 @@ export class Extractor {
       const property = byAlias.get(a);
       if (property?.inListing && !listingFormatted.has(a)) property.listingFormatter = false;
     }
-    for (const field of fields(minimalValues?.selectionSet)) if (field.name.value !== "keyValue") this.note(`${where}: initial value ${alias(field)} is not a keyValue; left out`);
+    for (const field of fields(minimalValues?.selectionSet))
+      if (field.name.value === "id" && !field.alias) entity.idValue = true;
+      else if (field.name.value !== "keyValue") this.note(`${where}: initial value ${alias(field)} is not a keyValue; left out`);
     // (a value read in the listing only is said with elody:listingOnly; a value read on the detail page only with elody:detailOnly)
     entity.spreads.listingValues = spreads(minimalValues?.selectionSet).filter((s) => s !== "typePillsIntialValues");
     entity.spreads.detailValues = spreads(fullValues?.selectionSet);
@@ -577,8 +600,15 @@ export class Extractor {
         // the card reads under a key of its own (typePill, a raw key under a title alias)
         if (key !== (property.alias ?? property.key)) property.cardKey = key;
         property.teaser = true;
+        // found by its key but shown under another alias: the card's own alias
+        if (key === property.key && alias(field) !== (property.alias ?? property.key) && alias(field) !== key) property.cardAlias = alias(field);
         if (!cardIndex.has(property)) cardIndex.set(property, cardIndex.size);
         property.labelKey = input(child(field, "label"));
+        const clamp = input(child(field, "lineClamp"));
+        if (clamp) property.cardLineClamp = clamp;
+        const translation = input(child(field, "valueTranslationKey"));
+        if (translation) property.valueTranslationKey = translation;
+        if (child(field, "highlightIfPrimaryThumbnail")) property.highlightIfPrimaryThumbnail = input(child(field, "highlightIfPrimaryThumbnail")) === "true";
         if (input(child(field, "isMultilingual")) === "true") property.multilingual = true;
         const unit = input(child(field, "unit"));
         if (unit) property.unit = this.instance("Unit", unit, `${where} ${key}`);
@@ -601,6 +631,7 @@ export class Extractor {
             property.validationRule = validation.rule;
             property.validationValue = validation.value;
           }
+          if (!child(widget, "validation")) property.cardValidates = false;
         }
       } else if (field.name.value === "thumbnail") {
         const filename = child(field, "filename");
@@ -631,6 +662,7 @@ export class Extractor {
       if (["intialValues", "relationValues", "allowedViewModes", "teaserMetadata"].includes(field.name.value)) continue;
       if (alias(field) === "dynamicFormConfig") entity.dynamicFormConfig = field.name.value;
       else if (alias(field) === "ports") entity.ports = field.name.value;
+      else if (field.name.value === "id" && !field.alias) entity.idField = true;
       else if (field.name.value === "mapElement") this.mapFeatures(field, where, entity);
       else this.note(`${where}: listing fragment field ${field.name.value} has no term; left out`);
     }
@@ -695,13 +727,15 @@ export class Extractor {
       property.sortable = true;
       if (scalar(objectField(entry, "primary")) === "true") property.sortPrimary = true;
       if (label && label !== property.labelKey) property.sortLabelKey = label;
+      const pages = list(objectField(entry, "availableInPages")).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT);
+      if (pages.length) property.sortPages = pages.map((page) => ({ routeName: scalar(objectField(page, "routeName")) ?? "", entityType: scalar(objectField(page, "entityType")) }));
       sortedAliases.push(value);
       position += 1;
     }
     if (options && scalar(argument(options, "excludeBaseSortOptions")) === "true") entity.excludeBaseSortOptions = true;
     for (const entry of list(options ? argument(options, "input") : undefined))
       if (entry.kind === Kind.OBJECT)
-        for (const extra of entry.fields.map((f) => f.name.value).filter((n) => !["icon", "label", "value", "primary"].includes(n)))
+        for (const extra of entry.fields.map((f) => f.name.value).filter((n) => !["icon", "label", "value", "primary", "availableInPages"].includes(n)))
           this.note(`${where}: sort option field ${extra} has no term; left out`);
     const direction = input(child(child(sort, "sortOptions"), "isAsc"));
     if (direction && sortedAliases.length) {
@@ -843,7 +877,7 @@ export class Extractor {
    * validation(input: { value: required }) is sh:minCount 1; another rule (url, customValue with its
    * customValue, ...) is elody:validationRule / elody:validationValue. The value may be a list.
    */
-  private validation(validation: FieldNode | undefined, where: string): { required: boolean; rule?: string; value?: string; relationType?: string; amount?: number; exact?: boolean } {
+  private validation(validation: FieldNode | undefined, where: string): { required: boolean; rule?: string; value?: string; relationType?: string; amount?: number; exact?: boolean; message?: string } {
     if (!validation) return { required: false };
     const input = argument(validation, "input");
     const raw = input?.kind === Kind.OBJECT ? objectField(input, "value") : undefined;
@@ -859,6 +893,7 @@ export class Extractor {
       required: rules.includes("required"),
       rule: others[0],
       value: custom,
+      message: input?.kind === Kind.OBJECT ? scalar(objectField(input, "fastValidationMessage")) : undefined,
       relationType: relation?.kind === Kind.OBJECT ? scalar(objectField(relation, "relationType")) : undefined,
       amount: amount === undefined ? undefined : Number(amount),
       exact: relation?.kind === Kind.OBJECT && scalar(objectField(relation, "exact")) !== undefined ? scalar(objectField(relation, "exact")) === "true" : undefined,
@@ -868,20 +903,24 @@ export class Extractor {
   private contextMenu(field: FieldNode, where: string): Entity["contextMenu"] {
     const menu: NonNullable<Entity["contextMenu"]> = { forceShow: false, basic: spreads(field.selectionSet).includes("basicContextMenuActions"), actions: [] };
     for (const action of fields(field.selectionSet)) {
-      // a link action follows the entity's link: label and icon only; general and custom actions have no terms yet
-      if (!["doElodyAction", "doLinkAction"].includes(action.name.value)) {
+      // a link action follows the entity's link: label and icon only; a general or custom action names its form
+      if (!["doElodyAction", "doLinkAction", "doGeneralAction", "doCustomAction"].includes(action.name.value)) {
         if (action.name.value !== "__typename") this.note(`${where}: context menu action ${action.name.value} has no term; left out`);
         continue;
       }
       menu.actions.push({
         alias: alias(action),
-        form: action.name.value === "doLinkAction" ? "doLinkAction" : undefined,
+        form: action.name.value === "doElodyAction" ? undefined : action.name.value,
+        endpointUrl: input(child(action, "endpointUrl")),
+        endpointMethod: input(child(action, "endpointMethod")),
         kind: action.name.value === "doLinkAction" ? undefined : this.instance("ActionKind", input(child(action, "action")), `${where} context menu`),
         label: input(child(action, "label")),
         icon: input(child(action, "icon")),
         formQuery: input(child(action, "formQuery")),
         formFlow: input(child(action, "formFlow")),
         formTitle: input(child(action, "formTitle")),
+        can: child(action, "can") ? list(argument(child(action, "can")!, "input")).map((v) => scalar(v) ?? "") : undefined,
+        showAsButton: input(child(action, "showAsButton")) === undefined ? undefined : input(child(action, "showAsButton")) === "true",
       });
     }
     return menu;
@@ -954,6 +993,8 @@ export class Extractor {
       const header = child(panel, "panelHeaderContent");
       const headerLabel = header ? scalar(objectField(argument(header, "panelHeaderContentInput") as ObjectValueNode, "label")) : input(child(panel, "label"));
       if (!header && child(panel, "label")) this.note(`${where}: panel ${alias(panel)} is headed with label(input:), the old form; declared as panelHeaderContent`);
+      const repetition = child(panel, "repetitionConfig");
+      const condition = child(panel, "displayCondition");
       const result: Panel = {
         alias: alias(panel),
         label: headerLabel,
@@ -961,6 +1002,9 @@ export class Extractor {
         kind: this.instance("PanelKind", input(child(panel, "panelType")), `${where} panel ${alias(panel)}`),
         collapsed: input(child(panel, "isCollapsed")) === "true",
         editable: input(child(panel, "isEditable")) !== "false",
+        editableDefault: input(child(panel, "isEditable")) === undefined ? true : undefined,
+        repetitionKey: repetition ? str(repetition, "repetitionKey") : undefined,
+        displayConditionKey: condition ? input(child(condition, "key")) : undefined,
         multipleColumns: input(child(panel, "canBeMultipleColumns")) === undefined ? undefined : input(child(panel, "canBeMultipleColumns")) === "true",
         fields: [],
         spreads: spreads(panel.selectionSet),
@@ -975,7 +1019,7 @@ export class Extractor {
           continue;
         }
         if (field.name.value !== "metaData") {
-          if (!["panelHeaderContent", "label", "panelType", "isCollapsed", "isEditable", "canBeMultipleColumns", "can"].includes(field.name.value))
+          if (!["panelHeaderContent", "label", "panelType", "isCollapsed", "isEditable", "canBeMultipleColumns", "can", "repetitionConfig", "displayCondition"].includes(field.name.value))
             this.note(`${where}: panel ${alias(panel)} field ${alias(field)} (${field.name.value}) has no term; left out`);
           continue;
         }
@@ -992,11 +1036,26 @@ export class Extractor {
         if (input(child(field, "isMultilingual")) === "true") property.multilingual = true;
         const unit = input(child(field, "unit"));
         if (unit && !property.unit) property.unit = this.instance("Unit", unit, `${where} ${key}`);
+        if (!unit && property.unit && property.teaser) property.panelShowsUnit = false;
+        const tooltip = input(child(field, "tooltip"));
+        if (tooltip) property.tooltipKey = tooltip;
+        if (alias(field) !== key && alias(field) !== (property.alias ?? property.key)) property.panelAlias = alias(field);
+        const clamp = input(child(field, "lineClamp"));
+        if (clamp) property.panelLineClamp = clamp;
+        const translation = input(child(field, "valueTranslationKey"));
+        if (translation) property.valueTranslationKey = translation;
+        const linkText = input(child(field, "linkText"));
+        if (linkText) property.linkText = linkText;
+        if (child(field, "copyToClipboard")) property.copyToClipboard = input(child(field, "copyToClipboard")) === "true";
+        if (child(field, "nonEditableField")) property.nonEditable = input(child(field, "nonEditableField")) === "true";
+        const permitted = child(field, "permitted");
+        if (permitted) property.permitted = list(argument(permitted, "input")).map((v) => scalar(v) ?? "");
         const label = input(child(field, "label"));
         if (label && !property.labelKey) property.labelKey = label;
         else if (label && property.labelKey && label !== property.labelKey) property.detailLabelKey = label;
         const widget = child(field, "inputField");
         if (widget) {
+          if (!result.editable) property.panelWidget = true;
           const type = str(widget, "type") ?? "baseTextField";
           const base = BASE_FIELDS[type];
           if (base) {
@@ -1012,6 +1071,10 @@ export class Extractor {
             property.validationAmount = validation.amount;
             property.validationExact = validation.exact;
           }
+          if (validation.message) property.validationMessage = validation.message;
+          const keyboardField = child(widget, "virtualKeyboardConfig");
+          const keyboard = keyboardField ? argument(keyboardField, "input") : undefined;
+          if (keyboard?.kind === Kind.OBJECT) property.virtualKeyboardLayouts = list(objectField(keyboard, "layouts")).map((v) => scalar(v) ?? "");
         } else if (result.editable) property.readOnly = true;
         // the panel references the property shape by its path, which is the key (an aliased value keeps its key)
         result.fields.push(property.key);
@@ -1178,6 +1241,7 @@ export class Extractor {
         keys: keyValue?.kind === Kind.LIST && keyValue.values.length > 1 ? keyValue.values.map((v) => scalar(v) ?? "") : undefined,
         keyAsList: keyValue?.kind === Kind.LIST,
         parentKey: str(field, "parentKey"),
+        aggregation: str(field, "aggregation"),
         label: str(field, "label"),
         displayed: str(field, "isDisplayedByDefault") === "true",
         tooltip: child(field, "tooltip") !== undefined,
@@ -1245,7 +1309,7 @@ export class Extractor {
           .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
           .map((option) => ({ label: scalar(objectField(option, "label")) ?? "", value: scalar(objectField(option, "value")) ?? "" }));
       for (const a of field.arguments ?? [])
-        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator", "showTimeForDateFilter", "matchersType", "lookup", "options"].includes(a.name.value))
+        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "aggregation", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator", "showTimeForDateFilter", "matchersType", "lookup", "options"].includes(a.name.value))
           this.note(`${where}: filter ${alias(field)} argument ${a.name.value} has no term; left out`);
       result.push(filter);
     }
@@ -1353,7 +1417,7 @@ export class Extractor {
           showsFormErrors: input(child(field, "showsFormErrors")) === "true",
         };
         const kind = input(child(field, "actionType"));
-        if (kind && kind !== "submit") this.note(`${where}: form ${queryName} submits with ${kind}; declared as a plain submit`);
+        if (kind && kind !== "submit") form.submit.submitAction = kind;
       } else this.note(`${where}: form ${queryName} field ${alias(field)} (${field.name.value}) has no term; left out`);
     }
     return form;
@@ -1367,6 +1431,10 @@ export class Extractor {
     const key = input(child(field, "key")) ?? alias(field);
     const multilingual = input(child(field, "isMultilingual")) === "true";
     const validation = this.validation(child(widget, "validation"), `${where} field ${key}`);
+    const keyboardField = child(widget, "virtualKeyboardConfig");
+    const keyboard = keyboardField ? argument(keyboardField, "input") : undefined;
+    const searchField = child(widget, "entityPickerSearchConfig");
+    const search = searchField ? argument(searchField, "input") : undefined;
     return {
       key,
       alias: alias(field) !== key ? alias(field) : undefined,
@@ -1382,6 +1450,15 @@ export class Extractor {
       validationExact: validation.exact,
       hidden: child(field, "hiddenField") ? true : undefined,
       clientField: base ? undefined : type,
+      validationMessage: validation.message,
+      tooltipKey: input(child(field, "tooltip")),
+      defaultValue: input(child(field, "defaultValue")),
+      noWidget: widget ? undefined : true,
+      virtualKeyboardLayouts: keyboard?.kind === Kind.OBJECT ? list(objectField(keyboard, "layouts")).map((v) => scalar(v) ?? "") : undefined,
+      pickerSearch:
+        search?.kind === Kind.OBJECT
+          ? { mode: scalar(objectField(search, "mode")) ?? "Search", keys: list(objectField(search, "metadataKeys")).map((v) => scalar(v) ?? ""), acceptedTypes: list(objectField(search, "acceptedTypes")).map((v) => scalar(v) ?? "") }
+          : undefined,
     };
   }
 
@@ -1539,6 +1616,23 @@ export class Extractor {
     if (p.validationRelationType) lines.push(`    elody:validationRelationType ${q(p.validationRelationType)} ;`);
     if (p.validationAmount !== undefined) lines.push(`    elody:validationAmount ${p.validationAmount} ;`);
     if (p.validationExact !== undefined) lines.push(`    elody:validationExact ${p.validationExact} ;`);
+    if (p.cardLineClamp) lines.push(`    elody:cardLineClamp ${q(p.cardLineClamp)} ;`);
+    if (p.panelLineClamp) lines.push(`    elody:panelLineClamp ${q(p.panelLineClamp)} ;`);
+    if (p.panelAlias) lines.push(`    elody:panelAlias ${q(p.panelAlias)} ;`);
+    if (p.highlightIfPrimaryThumbnail !== undefined) lines.push(`    elody:highlightIfPrimaryThumbnail ${p.highlightIfPrimaryThumbnail} ;`);
+    if (p.validationMessage) lines.push(`    elody:validationMessage ${q(p.validationMessage)} ;`);
+    if (p.virtualKeyboardLayouts?.length) lines.push(`    elody:virtualKeyboardLayouts ( ${p.virtualKeyboardLayouts.map(q).join(" ")} ) ;`);
+    if (p.valueTranslationKey) lines.push(`    elody:valueTranslationKey ${q(p.valueTranslationKey)} ;`);
+    for (const permitted of p.permitted ?? []) lines.push(`    elody:permitted ${q(permitted)} ;`);
+    if (p.linkText) lines.push(`    elody:linkText ${q(p.linkText)} ;`);
+    if (p.copyToClipboard !== undefined) lines.push(`    elody:copyToClipboard ${p.copyToClipboard} ;`);
+    if (p.nonEditable !== undefined) lines.push(`    elody:nonEditable ${p.nonEditable} ;`);
+    if (p.tooltipKey) lines.push(`    elody:tooltipKey ${q(p.tooltipKey)} ;`);
+    if (p.panelShowsUnit === false) lines.push(`    elody:panelShowsUnit false ;`);
+    if (p.panelWidget) lines.push(`    elody:panelWidget true ;`);
+    if (p.cardAlias) lines.push(`    elody:cardAlias ${q(p.cardAlias)} ;`);
+    if (p.cardValidates === false) lines.push(`    elody:cardValidates false ;`);
+    for (const page of p.sortPages ?? []) lines.push(`    elody:sortPage [ elody:routeName ${q(page.routeName)}${page.entityType ? ` ; elody:routeEntityType ${q(page.entityType)}` : ""} ] ;`);
     if (p.labelRole) lines.push(`    shui:propertyRole shui:LabelRole ;`);
     const editor = p.multilingual ? (p.editor === "shui:TextAreaEditor" ? "shui:TextAreaWithLangEditor" : "shui:TextFieldWithLangEditor") : p.editor;
     if (editor) lines.push(`    shui:editor ${editor} ;`);
@@ -1579,6 +1673,7 @@ export class Extractor {
     if (f.keys) lines.push(`    elody:keys ( ${f.keys.map(q).join(" ")} ) ;`);
     else if (f.key !== undefined) lines.push(`    elody:key ${q(f.key)} ;`);
     if (f.parentKey) lines.push(`    elody:parentFilterKey ${q(f.parentKey)} ;`);
+    if (f.aggregation) lines.push(`    elody:filterAggregation ${q(f.aggregation)} ;`);
     if (f.hidden) lines.push(`    dash:hidden true ;`);
     for (const value of f.defaults) lines.push(`    sh:defaultValue ${q(value)} ;`);
     if (f.defaultAsList) lines.push(`    elody:defaultValueAsList true ;`);
@@ -1723,10 +1818,13 @@ export class Extractor {
         const p: string[] = [`${id}`, `  a elody:Panel ;`, `  rdfs:label ${q(panel.label ?? "")} ;`, `  sh:order 1 ;`, `  elody:alias ${q(panel.alias)} ;`];
         p.push(`  elody:collapsed ${panel.collapsed} ;`);
         if (!panel.editable) p.push(`  dash:readOnly true ;`);
+        if (panel.editableDefault) p.push(`  elody:editableDefault true ;`);
         if (panel.multipleColumns !== undefined) p.push(`  elody:multipleColumns ${panel.multipleColumns} ;`);
         if (panel.can) p.push(`  elody:can ${q(panel.can)} ;`);
+        if (panel.repetitionKey) p.push(`  elody:repetitionKey ${q(panel.repetitionKey)} ;`);
+        if (panel.displayConditionKey) p.push(`  elody:displayConditionKey ${q(panel.displayConditionKey)} ;`);
         for (const s of panel.spreads) p.push(`  elody:spread ${q(s)} ;`);
-        p.push(`  elody:panelKind ${panel.kind ?? "elody:MetadataPanel"} ;`);
+        if (panel.kind) p.push(`  elody:panelKind ${panel.kind} ;`);
         if (panel.fields.length) p.push(`  elody:field ${panel.fields.map((f) => `em:${f}`).join(" , ")} ;`);
         if (panel.elements.length)
           p.push(`  elody:element`, panel.elements.map((element, i) => (element.kind === "list" ? this.listElementNode(element, element.order ?? i + 1, "    ", forms) : "")).filter(Boolean).join(" ,\n") + " ;");
@@ -1789,7 +1887,17 @@ export class Extractor {
     if (field.validationAmount !== undefined) s.push(`      elody:validationAmount ${field.validationAmount} ;`);
     if (field.validationExact !== undefined) s.push(`      elody:validationExact ${field.validationExact} ;`);
     if (field.hidden) s.push(`      dash:hidden true ;`);
-    if (field.editor) s.push(`      shui:editor ${field.editor} ;`);
+    if (field.tooltipKey) s.push(`      elody:tooltipKey ${q(field.tooltipKey)} ;`);
+    if (field.validationMessage) s.push(`      elody:validationMessage ${q(field.validationMessage)} ;`);
+    if (field.defaultValue !== undefined) s.push(`      sh:defaultValue ${q(field.defaultValue)} ;`);
+    if (field.noWidget) s.push(`      elody:noWidget true ;`);
+    if (field.virtualKeyboardLayouts?.length) s.push(`      elody:virtualKeyboardLayouts ( ${field.virtualKeyboardLayouts.map(q).join(" ")} ) ;`);
+    if (field.pickerSearch) {
+      const search = field.pickerSearch;
+      const parts = [`elody:pickerSearchMode ${q(search.mode)}`, ...(search.keys.length ? [`elody:keys ( ${search.keys.map(q).join(" ")} )`] : []), ...search.acceptedTypes.map((t) => `elody:acceptedTypes ${q(t)}`)];
+      s.push(`      elody:pickerSearch [ ${parts.join(" ; ")} ] ;`);
+    }
+    if (field.editor && !field.noWidget) s.push(`      shui:editor ${field.editor} ;`);
     if (field.clientField) s.push(`      elody:clientInputField ${q(field.clientField)} ;`);
     if (field.label) s.push(`      elody:labelKey ${q(field.label)} ;`);
     s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
@@ -1807,6 +1915,8 @@ export class Extractor {
     if (entity.relationValues !== undefined) out.push(`  elody:relationValues ${entity.relationValues} ;`);
     if (entity.readsPermissions) out.push(`  elody:readsPermissions true ;`);
     if (entity.mapFeatureFields?.length) out.push(`  elody:mapFeatureField ${entity.mapFeatureFields.map((f) => `em:${f}`).join(" , ")} ;`);
+    if (entity.idField) out.push(`  elody:idField true ;`);
+    if (entity.idValue) out.push(`  elody:idValue true ;`);
     if (entity.interface) out.push(`  elody:interface true ;`);
     if (entity.listingCore) out.push(`  elody:listingCore true ;`);
     if (entity.entityListQueries.length) out.push(`  elody:listQuery ${entity.entityListQueries.map((n) => `ui:${n}`).join(" , ")} ;`);
@@ -1901,6 +2011,10 @@ export class Extractor {
         if (action.icon) a.push(`      elody:icon ${q(action.icon)} ;`);
         if (action.formFlow) a.push(`      elody:formFlow ${q(action.formFlow)} ;`);
         if (action.formTitle) a.push(`      elody:formTitle ${q(action.formTitle)} ;`);
+        if (action.endpointUrl) a.push(`      elody:endpointUrl ${q(action.endpointUrl)} ;`);
+        if (action.endpointMethod) a.push(`      elody:endpointMethod ${q(action.endpointMethod)} ;`);
+        if (action.showAsButton !== undefined) a.push(`      elody:showAsButton ${action.showAsButton} ;`);
+        for (const can of action.can ?? []) a.push(`      elody:can ${q(can)} ;`);
         if (action.formQuery && this.formSourceNames.has(action.formQuery)) a.push(`      elody:formSourceRef ui:${action.formQuery} ;`);
         else if (action.formQuery) {
           a.push(`      elody:form ui:${action.formQuery} ;`);
@@ -1970,6 +2084,7 @@ export class Extractor {
         if (f.submit.actionQuery) s.push(`    elody:actionQuery ${q(f.submit.actionQuery)} ;`);
         if (f.submit.creationType) s.push(`    elody:creationType ${q(f.submit.creationType)} ;`);
         if (f.submit.icon) s.push(`    elody:icon ${q(f.submit.icon)} ;`);
+        if (f.submit.submitAction) s.push(`    elody:submitAction ${q(f.submit.submitAction)} ;`);
         if (f.submit.showsFormErrors) s.push(`    elody:showsFormErrors true ;`);
         s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ] ;");
         lines.push(`  elody:submit`, ...s);

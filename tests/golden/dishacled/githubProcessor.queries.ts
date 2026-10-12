@@ -193,6 +193,11 @@ export const githubProcessorQueries = gql`
         icon
         label
         value
+        primary
+        availableInPages {
+          routeName
+          entityType
+        }
       }
     }
   }
