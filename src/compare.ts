@@ -16,7 +16,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from "os";
 import { basename, dirname, join, relative } from "path";
 import { Kind, parse, print, visit } from "graphql";
-import type { ASTNode, DocumentNode, FragmentDefinitionNode, OperationDefinitionNode, SelectionNode, SelectionSetNode } from "graphql";
+import type { ASTNode, DocumentNode, FieldNode, FragmentDefinitionNode, OperationDefinitionNode, SelectionNode, SelectionSetNode } from "graphql";
 import { generate } from "./generate.js";
 import type { Ontology } from "./ontology.js";
 import { readUiDeclaration } from "./parse.js";
@@ -213,8 +213,40 @@ const selectionName = (selection: SelectionNode): string =>
 const byName = (a: { name: { value: string } }, b: { name: { value: string } }) => a.name.value.localeCompare(b.name.value);
 
 /** The definition without `__typename`, comments or location, string literals unquoted the same way, named things in a fixed order. */
-export function normalizeNode<T extends ASTNode>(node: T): T {
+/**
+ * Fields with the same response name and the same arguments in one selection set are one field in
+ * GraphQL (their selections merge): a client that repeats subMenu(name: "x") { ... } per item says the
+ * same as one block holding every item.
+ */
+export function mergeSameFields<T extends ASTNode>(node: T): T {
   return visit(node, {
+    SelectionSet: {
+      enter(set) {
+        const merged: SelectionNode[] = [];
+        const index = new Map<string, number>();
+        for (const selection of set.selections) {
+          if (selection.kind !== Kind.FIELD || !selection.selectionSet) {
+            merged.push(selection);
+            continue;
+          }
+          const key = `${selectionName(selection)}(${(selection.arguments ?? []).map((a) => print(a)).sort().join(",")})`;
+          const at = index.get(key);
+          if (at === undefined) {
+            index.set(key, merged.length);
+            merged.push(selection);
+          } else {
+            const earlier = merged[at] as FieldNode;
+            merged[at] = { ...earlier, selectionSet: { ...earlier.selectionSet!, selections: [...earlier.selectionSet!.selections, ...selection.selectionSet.selections] } };
+          }
+        }
+        return merged.length === set.selections.length ? undefined : { ...set, selections: merged };
+      },
+    },
+  }) as T;
+}
+
+export function normalizeNode<T extends ASTNode>(node: T): T {
+  return visit(mergeSameFields(node), {
     Field: {
       enter: (field) =>
         field.name.value === "__typename" ? null : field.alias && field.alias.value === field.name.value ? { ...field, alias: undefined } : undefined,
@@ -273,7 +305,7 @@ export function normalizeNode<T extends ASTNode>(node: T): T {
 export const normalizeDefinition = (node: ExecutableDefinition): string => print(normalizeNode(node));
 
 /** The fields whose selection set asks values back: a bulk or sort option, a filter, an option search, a lookup. */
-const ASKED_BACK_PARENTS = new Set(["options", "advancedFilter", "advancedFilterInputForRetrievingOptions", "lookup", "filterOptionsMapping", "actionContext", "bulkOperationModal"]);
+const ASKED_BACK_PARENTS = new Set(["options", "advancedFilter", "advancedFilterInputForRetrievingOptions", "lookup", "filterOptionsMapping", "actionContext", "bulkOperationModal", "menuItem", "typeLink", "route", "modal"]);
 
 /**
  * What the generated document asks back beyond the client's does not count: a field without
@@ -289,7 +321,8 @@ export function pruneAskedBack<T extends ASTNode>(client: ASTNode, generated: T)
       const byName = new Map(own.selections.map((selection) => [selectionName(selection), selection]));
       const kept = other.selections
         .filter((selection) => {
-          if (!askedBack || selection.kind !== Kind.FIELD || (selection.arguments && selection.arguments.length > 0)) return true;
+          // in an asked-back block a generated field or fragment spread the client did not ask for does not count
+          if (!askedBack || selection.kind === Kind.INLINE_FRAGMENT || (selection.kind === Kind.FIELD && selection.arguments && selection.arguments.length > 0)) return true;
           return byName.has(selectionName(selection));
         })
         .map((selection) => walk(byName.get(selectionName(selection)), selection, askedBack) as SelectionNode);

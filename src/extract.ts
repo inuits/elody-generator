@@ -177,7 +177,9 @@ type Element =
     };
 type Column = { alias?: string; size?: string; elements: Element[]; elementSpreads: string[] };
 type PreviewLayout = { queryName: string; columns: Column[] };
+type MenuItem = { alias: string; labelKey: string; entityType?: string; icon?: string; isLoggedIn?: boolean; requiresAuth?: boolean; can?: string[]; route?: string; modal?: { kind?: string; form?: string; closeConfirmation?: boolean; permission?: string }; subMenu?: { name: string; items: MenuItem[] } };
 type AppSettings = {
+  menu: MenuItem[];
   documents: string[];
   paginationLimits?: number[];
   dropzoneOptions: { icon?: string; labelKey: string; value: string }[];
@@ -2484,7 +2486,10 @@ export class Extractor {
     };
     const sortBase = baseOf("GetSortOptions", "sortOptions");
     const bulkBase = baseOf("GetBulkOperations", "bulkOperationOptions");
+    const menuQuery = op("GetMenu");
+    const menuRoot = menuQuery ? child(child(fields(menuQuery.selectionSet)[0], "menu"), "menu") ?? child(fields(menuQuery.selectionSet)[0], "menu") : undefined;
     entity.app = {
+      menu: menuRoot ? this.menuItems(menuRoot.selectionSet, `${where} menu`) : [],
       documents,
       paginationLimits: paginationOptions ? list(argument(paginationOptions, "input")).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT).map((o) => Number(scalar(objectField(o, "value")))) : undefined,
       dropzoneOptions: dropzoneOptions ? list(argument(dropzoneOptions, "input")).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT).map((o) => ({ icon: scalar(objectField(o, "icon")), labelKey: scalar(objectField(o, "label")) ?? "", value: scalar(objectField(o, "value")) ?? "" })) : [],
@@ -2499,6 +2504,15 @@ export class Extractor {
       sortOptions: sortBase ? list(argument(sortBase, "input")).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT).map((o) => ({ labelKey: scalar(objectField(o, "label")) ?? "", value: scalar(objectField(o, "value")) ?? "", primary: objectField(o, "primary") ? scalar(objectField(o, "primary")) === "true" : undefined, icon: scalar(objectField(o, "icon")) })) : [],
       typeEntries: [],
     };
+    // the modal forms the menu opens are forms of the app when nothing else declares them
+    const opened = (items: MenuItem[]): string[] => items.flatMap((i) => [...(i.modal?.form ? [i.modal.form] : []), ...(i.subMenu ? opened(i.subMenu.items) : [])]);
+    for (const formName of new Set(opened(entity.app.menu))) {
+      const query = op(formName);
+      if (query && fields(query.selectionSet).some((f) => f.name.value === "GetDynamicForm") && !entity.forms.some((f) => f.queryName === formName)) {
+        const form = this.formWithFields(this.form(query, formName, where), where);
+        if (form) entity.forms.push(form);
+      }
+    }
     if (bulkBase) entity.operations = this.operations(bulkBase, `${where} base bulk operations`, entity);
     const entitiesQuery = op("getEntities");
     if (entitiesQuery && this.resultsRelationValues(entitiesQuery)) entity.relationValues = true;
@@ -2510,6 +2524,44 @@ export class Extractor {
     const unknown = here.filter((d) => d.kind !== "fragment" && !PLATFORM_DOCUMENTS.has(d.name));
     this.note(`${where}: ${documents.length} platform documents declared; ${unknown.length} other operations in the file, swept as orphans or left hand-written`);
     return entity;
+  }
+
+  /** The items of a menu or sub-menu: their settings from the arguments, their link, their sub-menu (repeated subMenu blocks merge). */
+  private menuItems(set: SelectionSetNode | undefined, where: string): MenuItem[] {
+    const items: MenuItem[] = [];
+    for (const field of fields(set)) {
+      if (field.name.value !== "menuItem") {
+        if (field.name.value !== "name") this.note(`${where}: field ${field.name.value} has no term; left out`);
+        continue;
+      }
+      for (const a of field.arguments ?? []) if (!["label", "entityType", "icon", "isLoggedIn", "requiresAuth", "can", "typeLink"].includes(a.name.value)) this.note(`${where}: item ${alias(field)} argument ${a.name.value} has no term; left out`);
+      const link = argument(field, "typeLink");
+      const route = link?.kind === Kind.OBJECT ? objectField(link, "route") : undefined;
+      const modal = link?.kind === Kind.OBJECT ? objectField(link, "modal") : undefined;
+      const item: MenuItem = {
+        alias: alias(field),
+        labelKey: str(field, "label") ?? "",
+        entityType: str(field, "entityType"),
+        icon: str(field, "icon"),
+        isLoggedIn: argument(field, "isLoggedIn") ? str(field, "isLoggedIn") === "true" : undefined,
+        requiresAuth: argument(field, "requiresAuth") ? str(field, "requiresAuth") === "true" : undefined,
+        can: argument(field, "can") ? list(argument(field, "can")).map((v) => scalar(v) ?? "") : undefined,
+        route: route?.kind === Kind.OBJECT ? scalar(objectField(route, "destination")) : undefined,
+        modal:
+          modal?.kind === Kind.OBJECT
+            ? { kind: this.instance("ModalKind", scalar(objectField(modal, "typeModal")), `${where} item ${alias(field)}`), form: scalar(objectField(modal, "formQuery")), closeConfirmation: objectField(modal, "askForCloseConfirmation") ? scalar(objectField(modal, "askForCloseConfirmation")) === "true" : undefined, permission: this.instance("Permission", scalar(objectField(modal, "neededPermission")), `${where} item ${alias(field)}`) }
+            : undefined,
+      };
+      // the sub-menu: every subMenu block of the item, merged (GraphQL merges fields of one name)
+      const subs = fields(field.selectionSet).filter((f) => f.name.value === "subMenu");
+      if (subs.length) {
+        const name = str(subs[0], "name") ?? "";
+        const merged: SelectionSetNode = { kind: Kind.SELECTION_SET, selections: subs.flatMap((s) => s.selectionSet?.selections ?? []) };
+        item.subMenu = { name, items: this.menuItems(merged, `${where} ${name}`) };
+      }
+      items.push(item);
+    }
+    return items;
   }
 
   /** The entries of the type-wide documents: what the file says beyond what the declared types derive. */
@@ -2912,6 +2964,19 @@ export class Extractor {
       if (a.filterMatcherQueryName) out.push(`  elody:filterMatcherQueryName ${q(a.filterMatcherQueryName)} ;`);
       if (a.filterMatcherKeys) out.push(`  elody:filterMatcherKeys ( ${a.filterMatcherKeys.map(q).join(" ")} ) ;`);
       if (a.filterMatcherLegacy) out.push(`  elody:filterMatcherLegacy true ;`);
+      const menuNode = (item: MenuItem, i: number, pad: string): string => {
+        const parts = [`sh:order ${i + 1}`, `elody:alias ${q(item.alias)}`, `elody:labelKey ${q(item.labelKey)}`, ...(item.entityType ? [`elody:entityType ${q(item.entityType)}`] : []), ...(item.icon ? [`elody:icon ${q(item.icon)}`] : []), ...(item.isLoggedIn !== undefined ? [`elody:isLoggedIn ${item.isLoggedIn}`] : []), ...(item.requiresAuth !== undefined ? [`elody:requiresAuth ${item.requiresAuth}`] : []), ...(item.can ?? []).map((c) => `elody:can ${q(c)}`)];
+        if (item.route !== undefined) parts.push(`elody:route ${q(item.route)}`);
+        if (item.modal) {
+          const m = [`elody:modalKind ${item.modal.kind ?? "elody:DynamicFormModal"}`, ...(item.modal.form ? [`elody:form ui:${item.modal.form}`] : []), ...(item.modal.closeConfirmation !== undefined ? [`elody:closeConfirmation ${item.modal.closeConfirmation}`] : []), ...(item.modal.permission ? [`elody:permission ${item.modal.permission}`] : [])];
+          if (item.modal.form && !formNodes.has(item.modal.form)) this.stubs.add(item.modal.form);
+          parts.push(`elody:modal [ ${m.join(" ; ")} ]`);
+        }
+        const head = `${pad}[ ${parts.join(" ; ")}`;
+        if (!item.subMenu) return `${head} ]`;
+        return `${head} ;\n${pad}  elody:subMenu [ elody:menuName ${q(item.subMenu.name)} ;\n${pad}    elody:menuItem\n${item.subMenu.items.map((sub, j) => menuNode(sub, j, pad + "      ")).join(" ,\n")} ] ]`;
+      };
+      if (a.menu.length) out.push(`  elody:menuItem\n${a.menu.map((item, i) => menuNode(item, i, "    ")).join(" ,\n")} ;`);
       if (a.sortOptions.length) out.push(`  elody:sortOption ${a.sortOptions.map((o, i) => `[ sh:order ${i + 1}${o.icon ? ` ; elody:icon ${q(o.icon)}` : ""} ; elody:labelKey ${q(o.labelKey)} ; elody:value ${q(o.value)}${o.primary ? " ; elody:primary true" : ""} ]`).join(" , ")} ;`);
       if (a.typeEntries.length)
         out.push(

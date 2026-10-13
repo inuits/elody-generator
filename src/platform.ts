@@ -57,7 +57,7 @@ const filterMatcherMapping = (app: M.UiApp): string => {
 };
 
 /** The names the catalogue knows: constants, the matcher mapping, and the type-wide documents. */
-export const PLATFORM_DOCUMENTS = new Set([...Object.keys(CONSTANTS), "getFilterMatcherMapping", "GetFilterMatcherMapping", "fullEntity", "getEntities", "getTenants", "getEntityById", "getAdvancedFilters", "GetSortOptions", "GetBulkOperations", "getPreviewComponents", "FetchMediafilesOfEntity", "SetPrimaryThumbnail", "SetPrimaryMediafile"]);
+export const PLATFORM_DOCUMENTS = new Set([...Object.keys(CONSTANTS), "GetMenu", "getFilterMatcherMapping", "GetFilterMatcherMapping", "fullEntity", "getEntities", "getTenants", "getEntityById", "getAdvancedFilters", "GetSortOptions", "GetBulkOperations", "getPreviewComponents", "FetchMediafilesOfEntity", "SetPrimaryThumbnail", "SetPrimaryMediafile"]);
 
 /** The main declaration of each GraphQL type: not an app, an inline listing, a shared file or another card of the type. */
 export function mainEntities(all: M.UiEntity[]): M.UiEntity[] {
@@ -144,13 +144,43 @@ function derived(name: string, app: M.UiApp, all: M.UiEntity[]): string | undefi
   return undefined;
 }
 
+/** One menu item with its asked-back fields, its link and its sub-menu, at a depth. */
+function renderMenuItem(item: M.UiMenuItem, indent: number): string[] {
+  const pad = " ".repeat(indent);
+  const args = [`label: "${item.labelKey}"`];
+  // every setting is asked back; what a client does not ask back does not count
+  const asked = ["label", "entityType", "icon", "isLoggedIn", "requiresAuth", "can"];
+  if (item.entityType) args.push(`entityType: ${item.entityType}`);
+  if (item.icon) args.push(`icon: ${item.icon}`);
+  if (item.isLoggedIn !== undefined) args.push(`isLoggedIn: ${item.isLoggedIn}`);
+  if (item.requiresAuth !== undefined) args.push(`requiresAuth: ${item.requiresAuth}`);
+  if (item.can?.length) args.push(`can: [${item.can.map((c) => `"${c}"`).join(", ")}]`);
+  if (item.route !== undefined) args.push(`typeLink: { route: { destination: "${item.route}" } }`);
+  else if (item.modal) {
+    const m = [`typeModal: ${item.modal.kind}`, ...(item.modal.form ? [`formQuery: "${item.modal.form}"`] : []), ...(item.modal.closeConfirmation !== undefined ? [`askForCloseConfirmation: ${item.modal.closeConfirmation}`] : []), ...(item.modal.permission ? [`neededPermission: ${item.modal.permission}`] : [])];
+    args.push(`typeLink: { modal: { ${m.join(", ")} } }`);
+  }
+  const lines = [`${pad}${item.alias}: menuItem(`, ...args.map((a) => `${pad}  ${a}`), `${pad}) {`, ...asked.map((a) => `${pad}  ${a}`)];
+  // the link asked back: a route's destination, or the modal through the platform's fragment and its fields (what is asked back more does not count)
+  if (item.route !== undefined) lines.push(`${pad}  typeLink {`, `${pad}    route {`, `${pad}      destination`, `${pad}    }`, `${pad}  }`);
+  else if (item.modal) lines.push(`${pad}  typeLink {`, `${pad}    modal {`, `${pad}      ...menuModalLink`, `${pad}      typeModal`, `${pad}      formQuery`, `${pad}      askForCloseConfirmation`, `${pad}      neededPermission`, `${pad}    }`, `${pad}  }`);
+  if (item.subMenu) lines.push(`${pad}  subMenu(name: "${item.subMenu.name}") {`, `${pad}    name`, ...item.subMenu.items.flatMap((sub) => renderMenuItem(sub, indent + 4)), `${pad}  }`);
+  lines.push(`${pad}}`);
+  return lines;
+}
+
+/** The menu document: the app's items, each asking its settings and link back. */
+function renderMenu(app: M.UiApp): string {
+  return [`  query GetMenu($name: String!) {`, "    Menu(name: $name) {", "      menu {", "        name", ...app.menu.flatMap((item) => renderMenuItem(item, 8)), "      }", "    }", "  }"].join("\n");
+}
+
 /** The platform documents the app names, in the catalogue's order, each rendered once. */
 export function renderPlatformDocuments(app: M.UiApp, all: M.UiEntity[]): { fragments: string[]; documents: string[]; unknown: string[] } {
   const fragments: string[] = [];
   const documents: string[] = [];
   const unknown: string[] = [];
   for (const name of app.documents) {
-    const text = name === "getFilterMatcherMapping" || name === "GetFilterMatcherMapping" ? filterMatcherMapping({ ...app, filterMatcherQueryName: name }) : CONSTANTS[name] ? CONSTANTS[name](app) : derived(name, app, all);
+    const text = name === "GetMenu" ? renderMenu(app) : name === "getFilterMatcherMapping" || name === "GetFilterMatcherMapping" ? filterMatcherMapping({ ...app, filterMatcherQueryName: name }) : CONSTANTS[name] ? CONSTANTS[name](app) : derived(name, app, all);
     if (!text) unknown.push(name);
     else if (text.startsWith("  fragment ")) fragments.push(text);
     else documents.push(text);

@@ -399,8 +399,13 @@ export type UiPreview = {
   layout?: UiPreviewLayout;
   metadataLayout?: UiPreviewLayout;
 };
+/** elody:MenuItem: an item of the app's menu */
+export type UiMenuItem = { alias: string; labelKey: string; entityType?: string; icon?: string; isLoggedIn?: boolean; requiresAuth?: boolean; can?: string[]; route?: string; modal?: { kind: string; form?: string; closeConfirmation?: boolean; permission?: string }; subMenu?: { name: string; items: UiMenuItem[] }; order: number };
+
 /** elody:App: the platform document's settings */
 export type UiApp = {
+  /** elody:menuItem: the menu (GetMenu) */
+  menu: UiMenuItem[];
   documents: string[];
   paginationLimits?: number[];
   dropzoneOptions: { icon?: string; labelKey: string; value: string; order: number }[];

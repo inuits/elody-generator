@@ -1642,6 +1642,7 @@ class Parse {
     const limits = r.term(subject, elody("paginationLimit"));
     const keys = r.term(subject, elody("filterMatcherKeys"));
     return {
+      menu: r.byOrder(r.nodes(subject, elody("menuItem"))).map((item) => this.menuItem(item)),
       documents: r.literals(subject, elody("platformDocument")),
       paginationLimits: limits ? r.list(limits.value).map(Number) : undefined,
       dropzoneOptions: r.byOrder(r.nodes(subject, elody("dropzoneOption"))).map((option) => ({ icon: r.value(option, elody("icon")) || undefined, labelKey: String(r.value(option, elody("labelKey")) ?? ""), value: String(r.value(option, elody("value")) ?? ""), order: r.order(option) })),
@@ -1655,6 +1656,28 @@ class Parse {
       filterMatcherLegacy: this.optionalFlag(subject, elody("filterMatcherLegacy")),
       sortOptions: r.byOrder(r.nodes(subject, elody("sortOption"))).map((option) => ({ labelKey: String(r.value(option, elody("labelKey")) ?? ""), value: String(r.value(option, elody("value")) ?? ""), primary: this.optionalFlag(option, elody("primary")), icon: r.value(option, elody("icon")) || undefined, order: r.order(option) })),
       typeEntries: r.nodes(subject, elody("typeEntry")).map((entry) => ({ document: String(r.value(entry, elody("platformDocument")) ?? ""), graphqlType: String(r.value(entry, elody("graphqlType")) ?? ""), fragment: r.value(entry, elody("fragmentName")) || undefined, operations: r.nodes(entry, elody("operation")).length ? r.byOrder(r.nodes(entry, elody("operation"))).map((op) => this.bulkOperation(op)) : undefined, excluded: this.optionalFlag(entry, elody("excluded")) })),
+    };
+  }
+
+  /** elody:menuItem: an item of the menu, with its link and its sub-menu. */
+  private menuItem(node: string): M.UiMenuItem {
+    const r = this.r;
+    const modal = r.node(node, elody("modal"));
+    const sub = r.node(node, elody("subMenu"));
+    return {
+      alias: String(r.value(node, elody("alias")) ?? ""),
+      labelKey: String(r.value(node, elody("labelKey")) ?? ""),
+      entityType: r.value(node, elody("entityType")) || undefined,
+      icon: r.value(node, elody("icon")) || undefined,
+      isLoggedIn: this.optionalFlag(node, elody("isLoggedIn")),
+      requiresAuth: this.optionalFlag(node, elody("requiresAuth")),
+      can: r.literals(node, elody("can")).length ? r.literals(node, elody("can")) : undefined,
+      route: r.value(node, elody("route")) || undefined,
+      modal: modal
+        ? { kind: this.enumValue(modal, elody("modalKind"), elody("ModalKind")) ?? "DynamicForm", form: this.formRef(modal, elody("form")), closeConfirmation: this.optionalFlag(modal, elody("closeConfirmation")), permission: this.enumValue(modal, elody("permission"), elody("Permission")) }
+        : undefined,
+      subMenu: sub ? { name: String(r.value(sub, elody("menuName")) ?? ""), items: r.byOrder(r.nodes(sub, elody("menuItem"))).map((item) => this.menuItem(item)) } : undefined,
+      order: r.order(node),
     };
   }
 
