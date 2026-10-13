@@ -35,6 +35,9 @@ export async function readUiDeclaration(ttl: string, ontology: Ontology = defaul
   const editors = await scoreEditors(reading);
   const parse = new Parse(reading, ontology, editors);
   const entities = [...reading.subjectsOfType(elody("EntityUi")), ...reading.subjectsOfType(elody("App"))].map((subject) => parse.entity(subject));
+  // the app's dialect holds for every declaration of the client
+  const dialect = entities.find((entity) => entity.app)?.app;
+  if (dialect?.panelHeaderLegacy) for (const entity of entities) entity.panelHeaderLegacy = true;
   // a result rendered from an inline listing references that EntityUi: resolved once every type is parsed
   const byIri = new Map(entities.map((entity) => [entity.iri, entity]));
   for (const entity of entities)
@@ -817,6 +820,7 @@ class Parse {
       fragmentsOnly: r.literal(subject, elody("fragmentsOnly")) === true || undefined,
       filePath: r.value(subject, elody("filePath")) || undefined,
       cardName: r.value(subject, elody("cardName")) || undefined,
+      detailName: r.value(subject, elody("detailName")) || undefined,
       bulkDocuments: r
         .nodes(subject, elody("bulkDocument"))
         .filter((node) => this.emitsOnce(`bulk:${this.queryNameOf(node, "bulk operations document")}`))
@@ -1643,6 +1647,7 @@ class Parse {
     const keys = r.term(subject, elody("filterMatcherKeys"));
     return {
       menu: r.byOrder(r.nodes(subject, elody("menuItem"))).map((item) => this.menuItem(item)),
+      panelHeaderLegacy: this.optionalFlag(subject, elody("panelHeaderLegacy")),
       documents: r.literals(subject, elody("platformDocument")),
       paginationLimits: limits ? r.list(limits.value).map(Number) : undefined,
       dropzoneOptions: r.byOrder(r.nodes(subject, elody("dropzoneOption"))).map((option) => ({ icon: r.value(option, elody("icon")) || undefined, labelKey: String(r.value(option, elody("labelKey")) ?? ""), value: String(r.value(option, elody("value")) ?? ""), order: r.order(option) })),

@@ -406,6 +406,8 @@ export type UiMenuItem = { alias: string; labelKey: string; entityType?: string;
 export type UiApp = {
   /** elody:menuItem: the menu (GetMenu) */
   menu: UiMenuItem[];
+  /** elody:panelHeaderLegacy: the client heads panels with label(input:), the older baseGraphql form */
+  panelHeaderLegacy?: boolean;
   documents: string[];
   paginationLimits?: number[];
   dropzoneOptions: { icon?: string; labelKey: string; value: string; order: number }[];
@@ -640,6 +642,8 @@ export type UiEntity = {
   filePath?: string;
   /** elody:cardName: the listing fragment's own name when the client does not call it minimal<X> (another card of the type) */
   cardName?: string;
+  /** elody:detailName: the detail fragment's own name when the client does not call it full<X> */
+  detailName?: string;
   /** elody:sortDocument: sort options documents of the type's own, options inline */
   sortDocuments: UiSortDocument[];
   /** elody:bulkDocument: bulk operations documents of the type's or the app's own */
@@ -648,6 +652,8 @@ export type UiEntity = {
   preview?: UiPreview;
   /** elody:App: this declaration is the app's, the platform document rendered from the types */
   app?: UiApp;
+  /** the app's dialect, copied onto every declaration: panels headed with label(input:) */
+  panelHeaderLegacy?: boolean;
   /** elody:thumbnail: the card's picture, from an initial value or the primary media file; sh:order places it among the card's fields */
   thumbnail?: { key?: string; fromMediafile?: boolean; order?: number };
   /** hand-written shared fragments spread into a block (elody:listingValuesSpread & co) */

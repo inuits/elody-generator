@@ -967,7 +967,7 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
     const lines = [
       `${pad(depth)}${panel.alias}: panels {`,
       // a panel without a header (elody:panelHeader false): the panels of a metadata preview
-      ...(panel.header === false ? [] : [`${pad(depth + 2)}panelHeaderContent(panelHeaderContentInput: { label: "${panel.label ?? ""}" }) {`, `${pad(depth + 4)}label`, `${pad(depth + 2)}}`]),
+      ...(panel.header === false ? [] : entity.panelHeaderLegacy ? [`${pad(depth + 2)}label(input: "${panel.label ?? ""}")`] : [`${pad(depth + 2)}panelHeaderContent(panelHeaderContentInput: { label: "${panel.label ?? ""}" }) {`, `${pad(depth + 4)}label`, `${pad(depth + 2)}}`]),
       ...(panel.panelType ? [`${pad(depth + 2)}panelType(input: ${panel.panelType})`] : []),
       `${pad(depth + 2)}isCollapsed(input: ${panel.collapsed})`,
       ...(panel.editableDefault ? [] : [`${pad(depth + 2)}isEditable(input: ${panel.editable})`]),
@@ -1359,7 +1359,8 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string, all: M
   } else fragments.push([`  fragment ${cardFragment} on ${onType} {`, ...head, ...values, ...relation, ...modes, ...card, "    ...minimalBaseEntity", "  }"].join("\n"));
 
   if (entity.detail && !entity.interface) {
-    const full: string[] = [`  fragment full${type} on ${onType} {`];
+    // the detail fragment's name: full<X>, or the client's own (elody:detailName)
+    const full: string[] = [`  fragment ${entity.detailName ?? `full${type}`} on ${onType} {`];
     if (entity.detail.shapeDriven) full.push("    shapeFields");
     // no block when nothing is read on the detail page (an empty selection set is not GraphQL)
     const detailValues = renderInitialValues(entity, 6, entity.detailFormatters !== false);

@@ -180,6 +180,7 @@ type PreviewLayout = { queryName: string; columns: Column[] };
 type MenuItem = { alias: string; labelKey: string; entityType?: string; icon?: string; isLoggedIn?: boolean; requiresAuth?: boolean; can?: string[]; route?: string; modal?: { kind?: string; form?: string; closeConfirmation?: boolean; permission?: string }; subMenu?: { name: string; items: MenuItem[] } };
 type AppSettings = {
   menu: MenuItem[];
+  panelHeaderLegacy?: boolean;
   documents: string[];
   paginationLimits?: number[];
   dropzoneOptions: { icon?: string; labelKey: string; value: string }[];
@@ -380,6 +381,8 @@ type Entity = {
   filePath?: string;
   /** elody:cardName: the listing fragment's own name (another card of the type) */
   cardName?: string;
+  /** elody:detailName: the detail fragment's own name, the client's casing of full<X> */
+  detailName?: string;
   /** elody:sortDocument: sort options documents of the type's own */
   sortDocuments: { queryName: string; options: { labelKey: string; value: string; primary?: boolean; icon?: string }[] }[];
   /** elody:bulkDocument: bulk operations documents of the type's or the app's own */
@@ -423,6 +426,8 @@ export class Extractor {
   private readonly previewLayoutNames = new Set<string>();
   private readonly claimedPreviews = new Set<string>();
   private readonly writtenLayouts = new Set<string>();
+  /** a panel headed with label(input:) was read: the client runs the older baseGraphql */
+  private legacyPanelHeaders = false;
 
   /**
    * The results of a list document: per type its fragment spreads and, for fields selected inline,
@@ -491,6 +496,13 @@ export class Extractor {
 
   private note(message: string) {
     if (!this.notes.includes(message)) this.notes.push(message);
+  }
+
+  /** the name of the type's detail fragment: full<X>, or the client's own casing of it (declared as elody:detailName) */
+  private detailFragmentName(name: string): string | undefined {
+    const want = `full${name}`;
+    if (this.fragment(want)) return want;
+    return [...this.definitions.keys()].find((n) => n.toLowerCase() === want.toLowerCase() && this.fragment(n));
   }
 
   private fragment(name: string): FragmentDefinitionNode | undefined {
@@ -578,7 +590,9 @@ export class Extractor {
 
   entity(name: string): Entity {
     const minimal = this.fragment(`minimal${name}`);
-    const full = this.fragment(`full${name}`);
+    // the detail fragment: full<X>, or the client's own casing of it (fullMediafile next to minimalMediaFile)
+    const detailName = this.detailFragmentName(name);
+    const full = detailName ? this.fragment(detailName) : undefined;
     const anchor = this.anchorOf(name)!;
     const graphqlType = anchor.typeCondition.name.value;
     // a split listing: minimal<X> spreads minimal<X>Core, which holds the values and the card
@@ -616,6 +630,7 @@ export class Extractor {
     if (!minimal) entity.interface = true;
     if (this.inlineSet.has(name)) entity.inline = true;
     if (this.cardVariants.has(name)) entity.cardName = this.cardVariants.get(name);
+    if (detailName && detailName !== `full${name}`) entity.detailName = detailName;
     // minimalLinked<X>: the card the platform's link mutations show, another card of the type
     if (/^Linked[A-Z]/.test(name) && graphqlType !== name) entity.cardName = `minimal${name}`;
 
@@ -1223,7 +1238,10 @@ export class Extractor {
       }
       const header = child(panel, "panelHeaderContent");
       const headerLabel = header ? scalar(objectField(argument(header, "panelHeaderContentInput") as ObjectValueNode, "label")) : input(child(panel, "label"));
-      if (!header && child(panel, "label")) this.note(`${where}: panel ${alias(panel)} is headed with label(input:), the old form; declared as panelHeaderContent`);
+      if (!header && child(panel, "label")) {
+        this.note(`${where}: panel ${alias(panel)} is headed with label(input:), the old form; the app declares elody:panelHeaderLegacy`);
+        this.legacyPanelHeaders = true;
+      }
       const repetition = child(panel, "repetitionConfig");
       const condition = child(panel, "displayCondition");
       const result: Panel = {
@@ -2576,16 +2594,17 @@ export class Extractor {
     }
     const low = (n: string) => n.charAt(0).toLowerCase() + n.slice(1);
     const has = (n: string) => this.fragment(n) !== undefined;
+    const detailOf = (e: Entity) => e.detailName ?? `full${e.documentName}`;
     const derived: Record<string, { graphqlType: string; spread: string }[]> = {
-      fullEntity: main.filter((e) => !e.interface && has(`full${e.documentName}`)).map((e) => ({ graphqlType: e.graphqlType, spread: `full${e.documentName}` })),
+      fullEntity: main.filter((e) => !e.interface && has(detailOf(e))).map((e) => ({ graphqlType: e.graphqlType, spread: detailOf(e) })),
       getEntities: main.filter((e) => !e.interface).map((e) => ({ graphqlType: e.graphqlType, spread: `minimal${e.documentName}` })),
       getAdvancedFilters: main.filter((e) => e.filters.length > 0).map((e) => ({ graphqlType: e.graphqlType, spread: e.filtersFragmentName ?? `filtersFor${e.documentName}` })),
       GetSortOptions: main.filter((e) => e.properties.some((p) => p.sortable) || e.excludeBaseSortOptions).map((e) => ({ graphqlType: e.graphqlType, spread: `${low(e.documentName)}SortOptions` })),
       GetBulkOperations: main.filter((e) => e.operations !== undefined).map((e) => ({ graphqlType: e.graphqlType, spread: `${low(e.documentName)}BulkOperations` })),
       getPreviewComponents: main.filter((e) => e.preview).map((e) => ({ graphqlType: e.graphqlType, spread: e.preview!.fragmentName ?? `previewFor${e.documentName}` })),
       FetchMediafilesOfEntity: main.filter((e) => e.graphqlType === "MediaFileEntity").map((e) => ({ graphqlType: e.graphqlType, spread: `minimal${e.documentName}` })),
-      SetPrimaryThumbnail: main.filter((e) => ["Media", "Asset"].includes(e.graphqlType) && has(`full${e.documentName}`)).map((e) => ({ graphqlType: e.graphqlType, spread: `full${e.documentName}` })),
-      SetPrimaryMediafile: main.filter((e) => ["Media", "Asset"].includes(e.graphqlType) && has(`full${e.documentName}`)).map((e) => ({ graphqlType: e.graphqlType, spread: `full${e.documentName}` })),
+      SetPrimaryThumbnail: main.filter((e) => ["Media", "Asset"].includes(e.graphqlType) && has(detailOf(e))).map((e) => ({ graphqlType: e.graphqlType, spread: detailOf(e) })),
+      SetPrimaryMediafile: main.filter((e) => ["Media", "Asset"].includes(e.graphqlType) && has(detailOf(e))).map((e) => ({ graphqlType: e.graphqlType, spread: detailOf(e) })),
     };
     for (const [document, derivedPairs] of Object.entries(derived)) {
       if (!app.app!.documents.includes(document)) continue;
@@ -2964,6 +2983,7 @@ export class Extractor {
       if (a.filterMatcherQueryName) out.push(`  elody:filterMatcherQueryName ${q(a.filterMatcherQueryName)} ;`);
       if (a.filterMatcherKeys) out.push(`  elody:filterMatcherKeys ( ${a.filterMatcherKeys.map(q).join(" ")} ) ;`);
       if (a.filterMatcherLegacy) out.push(`  elody:filterMatcherLegacy true ;`);
+      if (a.panelHeaderLegacy || this.legacyPanelHeaders) out.push(`  elody:panelHeaderLegacy true ;`);
       const menuNode = (item: MenuItem, i: number, pad: string): string => {
         const parts = [`sh:order ${i + 1}`, `elody:alias ${q(item.alias)}`, `elody:labelKey ${q(item.labelKey)}`, ...(item.entityType ? [`elody:entityType ${q(item.entityType)}`] : []), ...(item.icon ? [`elody:icon ${q(item.icon)}`] : []), ...(item.isLoggedIn !== undefined ? [`elody:isLoggedIn ${item.isLoggedIn}`] : []), ...(item.requiresAuth !== undefined ? [`elody:requiresAuth ${item.requiresAuth}`] : []), ...(item.can ?? []).map((c) => `elody:can ${q(c)}`)];
         if (item.route !== undefined) parts.push(`elody:route ${q(item.route)}`);
@@ -2992,6 +3012,7 @@ export class Extractor {
     if (entity.fragmentsOnly) out.push(`  elody:fragmentsOnly true ;`);
     if (entity.filePath && !entity.app) out.push(`  elody:filePath ${q(entity.filePath)} ;`);
     if (entity.cardName) out.push(`  elody:cardName ${q(entity.cardName)} ;`);
+    if (entity.detailName) out.push(`  elody:detailName ${q(entity.detailName)} ;`);
     if (entity.documents.length) out.push(`  elody:documents ${entity.documents.map(q).join(" , ")} ;`);
     if (entity.typePills) out.push(`  elody:typePills true ;`);
     if (entity.relationValues !== undefined) out.push(`  elody:relationValues ${entity.relationValues} ;`);

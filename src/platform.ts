@@ -74,6 +74,8 @@ export function mainEntities(all: M.UiEntity[]): M.UiEntity[] {
 }
 
 const nameOf = (entity: M.UiEntity) => entity.documentName ?? entity.graphqlType;
+/** the detail fragment's name: full<X>, or the client's own (elody:detailName) */
+const detailOf = (entity: M.UiEntity) => entity.detailName ?? `full${nameOf(entity)}`;
 const onType = (entity: M.UiEntity, spread: string, indent: number) => `${" ".repeat(indent)}... on ${entity.graphqlType} {\n${" ".repeat(indent + 2)}...${spread}\n${" ".repeat(indent)}}`;
 
 /** The (type, fragment) pairs of a type-wide document: derived from the types, then the app's entries applied. */
@@ -107,7 +109,7 @@ function derived(name: string, app: M.UiApp, all: M.UiEntity[]): string | undefi
   const mediafile = main.find((e) => e.graphqlType === "MediaFileEntity");
   switch (name) {
     case "fullEntity":
-      return [`  fragment fullEntity on Entity {`, "    id", "    uuid", "    type", ...inline(pairs(name, app, details.map((e) => ({ graphqlType: e.graphqlType, spread: `full${nameOf(e)}` }))), 4), "  }"].join("\n");
+      return [`  fragment fullEntity on Entity {`, "    id", "    uuid", "    type", ...inline(pairs(name, app, details.map((e) => ({ graphqlType: e.graphqlType, spread: detailOf(e) }))), 4), "  }"].join("\n");
     case "getEntities":
       return [`  query getEntities(`, ...LIST_VARIABLES, ...(app.preferredLanguage ? ["    $preferredLanguage: String"] : []), "  ) {", "    Entities(", ...LIST_ARGUMENTS, ...(app.preferredLanguage ? ["      preferredLanguage: $preferredLanguage"] : []), "    ) {", "      count", "      limit", "      results {", "        id", "        uuid", "        type", ...(app.relationValues ? ["        relationValues"] : []), ...inline(pairs(name, app, cards.map((e) => ({ graphqlType: e.graphqlType, spread: e.cardName ?? `minimal${nameOf(e)}` }))), 8), "      }", "    }", "  }"].join("\n");
     case "getTenants":
@@ -137,7 +139,7 @@ function derived(name: string, app: M.UiApp, all: M.UiEntity[]): string | undefi
     }
     case "SetPrimaryThumbnail":
     case "SetPrimaryMediafile": {
-      const media = pairs(name, app, main.filter((e) => ["Media", "Asset"].includes(e.graphqlType) && e.detail).map((e) => ({ graphqlType: e.graphqlType, spread: `full${nameOf(e)}` })));
+      const media = pairs(name, app, main.filter((e) => ["Media", "Asset"].includes(e.graphqlType) && e.detail).map((e) => ({ graphqlType: e.graphqlType, spread: detailOf(e) })));
       return [`  mutation ${name}($entityId: String!, $mediafileId: String!) {`, `    ${lowerFirst(name)}(entityId: $entityId, mediafileId: $mediafileId) {`, ...(media.length ? inline(media, 6) : ["      __typename"]), "    }", "  }"].join("\n");
     }
   }
