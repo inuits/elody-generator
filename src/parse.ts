@@ -91,7 +91,7 @@ export const pickerFiltersNameFor = (queryName: string): string =>
 
 /** Element classes the ontology defines but the generator cannot render yet. */
 const UNRENDERED_ELEMENTS = [
-  "MediaFileElement", "GraphElement", "HierarchyListElement",
+  "MediaFileElement", "HierarchyListElement",
   "ManifestViewerElement", "ActionElement", "WysiwygElement",
 ].map((name) => elody(name));
 
@@ -1608,8 +1608,14 @@ class Parse {
                 ? "entityViewer"
                 : types.includes(elody("CommentsElement"))
                   ? "comments"
-                  : "window";
+                  : types.includes(elody("GraphElement"))
+                    ? "graph"
+                    : "window";
 
+    const kindOf = kind;
+    const labelsTerm = r.term(element, elody("datasetLabels"));
+    const filterNode = r.node(element, elody("datasetFilter"));
+    const datapoints = r.literal(element, elody("datapoints"));
     let customBulkOperations: string | undefined;
     const customTerm = r.term(element, elody("customBulkOperations"));
     if (customTerm?.termType === "Literal") {
@@ -1689,6 +1695,13 @@ class Parse {
         : undefined,
       addEntitiesToForms: this.optionalFlag(element, elody("addEntitiesToForms")),
       cropCoordinatesKey: r.value(element, elody("cropCoordinatesKey")) || undefined,
+      graphType: this.enumValue(element, elody("graphType"), elody("GraphType")),
+      datasource: r.value(element, elody("datasource")) || undefined,
+      datasetLabels: labelsTerm ? r.list(labelsTerm.value) : r.literals(element, elody("datasetLabel")).length ? r.literals(element, elody("datasetLabel")) : kindOf === "graph" ? [] : undefined,
+      datasetFilter: filterNode ? { key: String(r.value(filterNode, elody("key")) ?? ""), values: r.literals(filterNode, elody("value")) } : undefined,
+      timeUnit: this.enumValue(element, elody("timeUnit"), elody("TimeUnit")),
+      datapoints: typeof datapoints === "number" ? datapoints : undefined,
+      convertTo: r.value(element, elody("convertTo")) || undefined,
       parentFilterKey: r.value(element, elody("parentFilterKey")) || undefined,
       readOnly: r.literal(element, dash("readOnly")) === true || undefined,
       createFields: r.nodes(element, elody("createField")).length

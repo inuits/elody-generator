@@ -421,7 +421,7 @@ export type UiPanel = {
   elements: UiElement[];
 };
 
-export type UiElementKind = "shaclShape" | "window" | "list" | "markdown" | "singleMedia" | "map" | "entityViewer" | "comments";
+export type UiElementKind = "shaclShape" | "window" | "list" | "markdown" | "singleMedia" | "map" | "entityViewer" | "comments" | "graph";
 
 /** elody:Taggable: what a rich-text editor can tag */
 export type UiTaggable = { tag?: string; entityType: string; relationType: string; filterKey?: string; triggerCharacter?: string; triggerMinCharacters?: number; flowQuery?: string; flowButtonLabel?: string; order: number };
@@ -482,6 +482,14 @@ export type UiElement = {
   readOnly?: boolean;
   createFields?: { key: string; labelKey?: string; inputType?: string; order: number }[];
   composer?: UiComposer;
+  /** a graph element: elody:graphType, elody:datasource, elody:datasetLabels, elody:datasetFilter, elody:timeUnit, elody:datapoints, elody:convertTo */
+  graphType?: string;
+  datasource?: string;
+  datasetLabels?: string[];
+  datasetFilter?: { key: string; values: string[] };
+  timeUnit?: string;
+  datapoints?: number;
+  convertTo?: string;
   /** a map element: elody:mapType, elody:center, elody:wktKey, elody:config */
   mapType?: string;
   center?: string;

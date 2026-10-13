@@ -144,6 +144,7 @@ type Element =
   | { kind: "singleMedia"; label?: string; collapsed: boolean }
   | { kind: "entityViewer"; label?: string; relationType?: string; metadataKey?: string }
   | { kind: "map"; label?: string; collapsed: boolean; mapType?: string; center?: string; wktKey?: string; config: { key: string; value: ValueNode | undefined }[] }
+  | { kind: "graph"; alias?: string; label?: string; collapsed: boolean; graphType?: string; datasource?: string; datasetLabels: string[]; datasetFilter?: { key: string; values: string[] }; timeUnit?: string; datapoints?: number; convertTo?: string }
   | { kind: "comments"; alias?: string; label?: string; parentFilterKey?: string; readOnly?: boolean; createFields: { key: string; labelKey?: string; inputType?: string }[]; composer?: { label?: string; metadataKey: string; extensions: string[]; editorStyles?: string; multilingual?: boolean; taggables: { tag?: string; entityType: string; relationType: string; filterKey?: string; triggerCharacter?: string; triggerMinCharacters?: number; flowQuery?: string; flowButtonLabel?: string }[] } }
   | {
       kind: "list";
@@ -1100,6 +1101,27 @@ export class Extractor {
             .map((entry) => ({ key: scalar(objectField(entry, "key")) ?? "", value: objectField(entry, "value") })),
         });
       } else if (element.name.value === "commentsElement") elements.push(this.comments(element, where));
+      else if (element.name.value === "graphElement") {
+        for (const f of fields(element.selectionSet)) if (!["label", "isCollapsed", "type", "datasource", "dataset", "timeUnit", "datapoints", "convert_to"].includes(f.name.value)) this.note(`${where}: graph element ${alias(element)} field ${f.name.value} has no term; left out`);
+        const dataset = child(element, "dataset");
+        const datasetInput = dataset ? argument(dataset, "input") : undefined;
+        const labels = datasetInput?.kind === Kind.OBJECT ? list(objectField(datasetInput, "labels")).map((v) => scalar(v) ?? "") : [];
+        const filterValue = datasetInput?.kind === Kind.OBJECT ? objectField(datasetInput, "filter") : undefined;
+        const points = input(child(element, "datapoints"));
+        elements.push({
+          kind: "graph",
+          alias: element.alias?.value,
+          label: input(child(element, "label")),
+          collapsed: input(child(element, "isCollapsed")) === "true",
+          graphType: this.instance("GraphType", input(child(element, "type")), `${where} graph element`),
+          datasource: input(child(element, "datasource")),
+          datasetLabels: labels,
+          datasetFilter: filterValue?.kind === Kind.OBJECT ? { key: scalar(objectField(filterValue, "key")) ?? "", values: list(objectField(filterValue, "values")).map((v) => scalar(v) ?? "") } : undefined,
+          timeUnit: this.instance("TimeUnit", input(child(element, "timeUnit")), `${where} graph element`),
+          datapoints: points !== undefined ? Number(points) : undefined,
+          convertTo: input(child(element, "convert_to")),
+        });
+      }
       else this.note(`${where}: detail element ${element.name.value} is not rendered by the generator; left out`);
     }
     return elements;
@@ -2517,6 +2539,19 @@ export class Extractor {
       return [`      [ a elody:EntityViewerElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, element.relationType ? `      elody:relationType ${q(element.relationType)} ]` : `      elody:metadataKey ${q(element.metadataKey ?? "")} ]`].join("\n");
     if (element.kind === "singleMedia")
       return [`      [ a elody:SingleMediaFileElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ]`].join("\n");
+    if (element.kind === "graph") {
+      const s = [`      [ a elody:GraphElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ;`];
+      if (element.alias) s.push(`      elody:alias ${q(element.alias)} ;`);
+      if (element.graphType) s.push(`      elody:graphType ${element.graphType} ;`);
+      if (element.datasource) s.push(`      elody:datasource ${q(element.datasource)} ;`);
+      s.push(`      elody:datasetLabels ( ${element.datasetLabels.map(q).join(" ")} ) ;`);
+      if (element.datasetFilter) s.push(`      elody:datasetFilter [ elody:key ${q(element.datasetFilter.key)} ; elody:value ${element.datasetFilter.values.map(q).join(" , ")} ] ;`);
+      if (element.timeUnit) s.push(`      elody:timeUnit ${element.timeUnit} ;`);
+      if (element.datapoints !== undefined) s.push(`      elody:datapoints ${element.datapoints} ;`);
+      if (element.convertTo) s.push(`      elody:convertTo ${q(element.convertTo)} ;`);
+      s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
+      return s.join("\n");
+    }
     if (element.kind === "comments") {
       const s = [`      [ a elody:CommentsElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`];
       if (element.alias) s.push(`      elody:alias ${q(element.alias)} ;`);

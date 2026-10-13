@@ -1001,6 +1001,18 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
       lines.push(`${pad(depth)}}`);
       return lines.join("\n");
     }
+    if (element.kind === "graph") {
+      const lines = [`${pad(depth)}${element.alias ? `${element.alias}: ` : ""}graphElement {`, `${pad(depth + 2)}label(input: "${element.label ?? ""}")`, `${pad(depth + 2)}isCollapsed(input: ${element.collapsed ?? false})`];
+      if (element.graphType) lines.push(`${pad(depth + 2)}type(input: ${element.graphType})`);
+      if (element.datasource) lines.push(`${pad(depth + 2)}datasource(input: "${element.datasource}")`);
+      const filter = element.datasetFilter ? `, filter: { key: "${element.datasetFilter.key}", values: [${element.datasetFilter.values.map((v) => `"${v}"`).join(", ")}] }` : "";
+      lines.push(`${pad(depth + 2)}dataset(input: { labels: [${(element.datasetLabels ?? []).map((l) => `"${l}"`).join(", ")}]${filter} }) {`, `${pad(depth + 4)}labels`, `${pad(depth + 2)}}`);
+      if (element.timeUnit) lines.push(`${pad(depth + 2)}timeUnit(input: ${element.timeUnit})`);
+      if (element.datapoints !== undefined) lines.push(`${pad(depth + 2)}datapoints(input: ${element.datapoints})`);
+      if (element.convertTo) lines.push(`${pad(depth + 2)}convert_to(input: "${element.convertTo}")`);
+      lines.push(`${pad(depth)}}`);
+      return lines.join("\n");
+    }
     if (element.kind === "comments") {
       const lines = [`${pad(depth)}${element.alias ? `${element.alias}: ` : ""}commentsElement {`, `${pad(depth + 2)}label(input: "${element.label ?? ""}")`];
       if (element.parentFilterKey) lines.push(`${pad(depth + 2)}parentEntityFilterKey(input: "${element.parentFilterKey}")`);
