@@ -88,6 +88,8 @@ export type UiProperty = {
   detailFormatter?: boolean;
   detailContainsRelation?: boolean;
   cardLineClamp?: string;
+  /** elody:cardLinkText: the card field shows the link text too */
+  cardLinkText?: boolean;
   panelLineClamp?: string;
   panelAlias?: string;
   highlightIfPrimaryThumbnail?: boolean;
@@ -644,6 +646,8 @@ export type UiEntity = {
   filePath?: string;
   /** elody:cardName: the listing fragment's own name when the client does not call it minimal<X> (another card of the type) */
   cardName?: string;
+  /** elody:withoutBaseEntity: the listing fragment does not spread ...minimalBaseEntity */
+  withoutBaseEntity?: boolean;
   /** elody:detailName: the detail fragment's own name when the client does not call it full<X> */
   detailName?: string;
   /** elody:bulkFragmentName: the bulk operations fragment's own name when the client does not call it <x>BulkOperations */

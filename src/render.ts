@@ -107,6 +107,7 @@ export function renderTeaserFields(entity: M.UiEntity, indent: number): string {
         `${pad(indent + 2)}key(input: "${property.cardKey ?? property.alias ?? property.key}")`,
       ];
       if (property.cardLineClamp) lines.push(`${pad(indent + 2)}lineClamp(input: "${property.cardLineClamp}")`);
+      if (property.cardLinkText && property.linkText) lines.push(`${pad(indent + 2)}linkText(input: "${property.linkText}")`);
       if (property.valueTranslationKey) lines.push(`${pad(indent + 2)}valueTranslationKey(input: "${property.valueTranslationKey}")`);
       if (property.highlightIfPrimaryThumbnail !== undefined) lines.push(`${pad(indent + 2)}highlightIfPrimaryThumbnail(input: ${property.highlightIfPrimaryThumbnail})`);
       if (property.multilingual) lines.push(`${pad(indent + 2)}isMultilingual(input: true)`);
@@ -1363,13 +1364,15 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string, all: M
   const fragments: string[] = [];
 
   const { head, values, relation, modes, card } = listingParts(entity, 4);
+  // the shared base card, spread last unless the client leaves it out (elody:withoutBaseEntity)
+  const baseEntity = entity.withoutBaseEntity ? [] : ["    ...minimalBaseEntity"];
   if (entity.interface) {
     // an interface the subtypes share: no listing fragment of its own
   } else if (entity.listingCore) {
     // the values and the card in a core other listings of the type reuse; the listing spreads it and adds the view modes
-    fragments.push([`  fragment minimal${type}Core on ${onType} {`, ...head, ...values, ...card, "    ...minimalBaseEntity", "  }"].join("\n"));
+    fragments.push([`  fragment minimal${type}Core on ${onType} {`, ...head, ...values, ...card, ...baseEntity, "  }"].join("\n"));
     fragments.push([`  fragment ${cardFragment} on ${onType} {`, `    ...minimal${type}Core`, ...relation, ...modes, "  }"].join("\n"));
-  } else fragments.push([`  fragment ${cardFragment} on ${onType} {`, ...head, ...values, ...relation, ...modes, ...card, "    ...minimalBaseEntity", "  }"].join("\n"));
+  } else fragments.push([`  fragment ${cardFragment} on ${onType} {`, ...head, ...values, ...relation, ...modes, ...card, ...baseEntity, "  }"].join("\n"));
 
   if (entity.detail && !entity.interface) {
     // the detail fragment's name: full<X>, or the client's own (elody:detailName)

@@ -117,6 +117,8 @@ type Property = {
   detailFormatter?: boolean;
   detailContainsRelation?: boolean;
   cardLineClamp?: string;
+  /** elody:cardLinkText: the card field shows the link text too */
+  cardLinkText?: boolean;
   panelLineClamp?: string;
   panelAlias?: string;
   highlightIfPrimaryThumbnail?: boolean;
@@ -382,6 +384,8 @@ type Entity = {
   filePath?: string;
   /** elody:cardName: the listing fragment's own name (another card of the type) */
   cardName?: string;
+  /** elody:withoutBaseEntity: the listing fragment does not spread ...minimalBaseEntity */
+  withoutBaseEntity?: boolean;
   /** elody:detailName: the detail fragment's own name, the client's casing of full<X> */
   detailName?: string;
   /** elody:bulkFragmentName: the bulk operations fragment's own name, the client's casing of <x>BulkOperations */
@@ -674,6 +678,8 @@ export class Extractor {
     };
     const where = name;
     if (!minimal) entity.interface = true;
+    // the shared base card the listing spreads (in its core when split): its absence is declared
+    if (minimal && !this.inlineSet.has(name) && ![...spreads(minimal.selectionSet), ...spreads(core?.selectionSet)].includes("minimalBaseEntity")) entity.withoutBaseEntity = true;
     if (this.inlineSet.has(name)) entity.inline = true;
     if (this.cardVariants.has(name)) entity.cardName = this.cardVariants.get(name);
     if (detailName && detailName !== `full${name}`) entity.detailName = detailName;
@@ -690,8 +696,14 @@ export class Extractor {
       const key = str(field, "key") ?? a;
       const source = str(field, "source");
       let property = byAlias.get(a);
-      // the listing reads another value under the detail page's alias (title: the label here, a relation there): two shapes
-      if (property && listing && property.inDetail && !property.inListing && (property.key !== (source === "relations" ? a : key) || property.relationType !== (source === "relations" ? key : undefined)))
+      // the listing reads another value under the detail page's alias (title: the label here, a relation there, a technical origin there): two shapes
+      if (
+        property &&
+        listing &&
+        property.inDetail &&
+        !property.inListing &&
+        (property.key !== (source === "relations" ? a : key) || property.relationType !== (source === "relations" ? key : undefined) || property.technicalOrigin !== (str(field, "technicalOrigin") ?? undefined))
+      )
         property = undefined;
       if (!property) {
         property = {
@@ -2109,6 +2121,7 @@ export class Extractor {
     if (p.detailFormatter === false) lines.push(`    elody:detailFormatter false ;`);
     if (p.detailContainsRelation === false) lines.push(`    elody:detailContainsRelation false ;`);
     if (p.cardLineClamp) lines.push(`    elody:cardLineClamp ${q(p.cardLineClamp)} ;`);
+    if (p.cardLinkText) lines.push(`    elody:cardLinkText true ;`);
     if (p.panelLineClamp) lines.push(`    elody:panelLineClamp ${q(p.panelLineClamp)} ;`);
     if (p.panelAlias) lines.push(`    elody:panelAlias ${q(p.panelAlias)} ;`);
     if (p.highlightIfPrimaryThumbnail !== undefined) lines.push(`    elody:highlightIfPrimaryThumbnail ${p.highlightIfPrimaryThumbnail} ;`);
@@ -2776,6 +2789,12 @@ export class Extractor {
     const colSpan = input(child(field, "colSpan"));
     if (colSpan) property.colSpan = Number(colSpan);
     if (field.name.value !== "metaData") property.cardField = field.name.value;
+    // the link text shown on the card as well
+    const linkText = input(child(field, "linkText"));
+    if (linkText) {
+      property.cardLinkText = true;
+      property.linkText ??= linkText;
+    }
     // a card edited in place: the input field sits on the card field
     const widget = child(field, "inputField");
     if (widget) {
@@ -3072,6 +3091,7 @@ export class Extractor {
     if (entity.fragmentsOnly) out.push(`  elody:fragmentsOnly true ;`);
     if (entity.filePath && !entity.app) out.push(`  elody:filePath ${q(entity.filePath)} ;`);
     if (entity.cardName) out.push(`  elody:cardName ${q(entity.cardName)} ;`);
+    if (entity.withoutBaseEntity) out.push(`  elody:withoutBaseEntity true ;`);
     if (entity.detailName) out.push(`  elody:detailName ${q(entity.detailName)} ;`);
     if (entity.bulkFragmentName) out.push(`  elody:bulkFragmentName ${q(entity.bulkFragmentName)} ;`);
     if (entity.sortFragmentName) out.push(`  elody:sortFragmentName ${q(entity.sortFragmentName)} ;`);
