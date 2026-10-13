@@ -357,6 +357,20 @@ export type UiRepetitiveForm = {
 /** A result type of a list query or picker: fragments spread on it and/or a listing rendered inline (an EntityUi with elody:emit "inline") */
 export type UiPickerResult = { type: string; fragments: string[]; listingIri?: string; listing?: UiEntity; order: number; /** elody:cardMenuSpread: a menu fragment on the result's card */ cardMenuSpread?: string };
 
+export type UiPreviewLayout = { queryName: string; columns: UiColumn[]; /** false when an earlier type already emitted the document of that name */ emit: boolean };
+export type UiPreview = {
+  /** elody:fragmentName: the fragment's own name when it is not previewFor<X> */
+  fragmentName?: string;
+  kind: string;
+  coverage: string;
+  labelKey?: string;
+  openByDefault?: boolean;
+  showCurrentPreviewFlow?: boolean;
+  keepLastActiveItemHighlighted?: boolean;
+  displayOpenDetailPageButton?: boolean;
+  layout?: UiPreviewLayout;
+  metadataLayout?: UiPreviewLayout;
+};
 export type UiSortDocument = { queryName: string; options: { labelKey: string; value: string; primary?: boolean; icon?: string; order: number }[] };
 
 export type UiPicker = {
@@ -378,6 +392,8 @@ export type UiPicker = {
 };
 
 export type UiPanel = {
+  /** elody:panelHeader false: no header (no panelHeaderContent) */
+  header?: boolean;
   alias: string;
   order: number;
   label?: string;
@@ -421,6 +437,8 @@ export type UiElement = {
   metadataKey?: string;
   collapsed?: boolean;
   expandButton?: boolean;
+  /** elody:windowLayout: how the window lays out its panels (layout) */
+  windowLayout?: string;
   panels: UiPanel[];
   entityTypes: string[];
   relationType?: string;
@@ -549,6 +567,8 @@ export type UiEntity = {
   cardName?: string;
   /** elody:sortDocument: sort options documents of the type's own, options inline */
   sortDocuments: UiSortDocument[];
+  /** elody:preview: how the type is previewed from a list, and the layouts the preview loads */
+  preview?: UiPreview;
   /** elody:thumbnail: the card's picture, from an initial value or the primary media file; sh:order places it among the card's fields */
   thumbnail?: { key?: string; fromMediafile?: boolean; order?: number };
   /** hand-written shared fragments spread into a block (elody:listingValuesSpread & co) */

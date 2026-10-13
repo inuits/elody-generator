@@ -310,3 +310,11 @@ elody:Width70 elody:enumValue "seventy" .
 elody:Width80 elody:enumValue "eighty" .
 elody:Width90 elody:enumValue "ninety" .
 elody:WktMap elody:enumValue "wktMap" .
+elody:ColumnListPreview elody:enumValue "ColumnList" .
+elody:MediaViewerPreview elody:enumValue "MediaViewer" .
+elody:MapPreview elody:enumValue "Map" .
+elody:HistoryPreview elody:enumValue "History" .
+elody:OneListItem elody:enumValue "OneListItem" .
+elody:AllListItems elody:enumValue "AllListItems" .
+elody:VerticalLayout elody:enumValue "Vertical" .
+elody:HorizontalGridLayout elody:enumValue "HorizontalGrid" .

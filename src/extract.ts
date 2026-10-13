@@ -135,10 +135,10 @@ type Property = {
 };
 
 type PanelFieldOverride = { key: string; labelKey?: string; alias?: string; widget?: boolean };
-type Panel = { alias: string; label?: string; kind?: string; collapsed: boolean; editable: boolean; editableDefault?: boolean; repetitionKey?: string; displayConditionKey?: string; bulkDataSource?: string; overrides: PanelFieldOverride[]; multipleColumns?: boolean; can?: string; fields: string[]; spreads: string[]; elements: Element[] };
+type Panel = { header?: boolean; alias: string; label?: string; kind?: string; collapsed: boolean; editable: boolean; editableDefault?: boolean; repetitionKey?: string; displayConditionKey?: string; bulkDataSource?: string; overrides: PanelFieldOverride[]; multipleColumns?: boolean; can?: string; fields: string[]; spreads: string[]; elements: Element[] };
 type WindowStatus = { labelKey?: string; statusKey: string; statusInputField: string };
 type Element =
-  | { kind: "window"; alias?: string; label?: string; expandButton?: boolean; editButton?: boolean; hideInHistory?: boolean; windowStatus?: WindowStatus; contextMenu?: Entity["contextMenu"]; panelSpreads: string[]; panels: Panel[] }
+  | { kind: "window"; alias?: string; label?: string; expandButton?: boolean; windowLayout?: string; editButton?: boolean; hideInHistory?: boolean; windowStatus?: WindowStatus; contextMenu?: Entity["contextMenu"]; panelSpreads: string[]; panels: Panel[] }
   | { kind: "shaclShape"; label?: string; fieldsKey?: string; collapsed: boolean }
   | { kind: "markdown"; label?: string; metadataKey?: string; collapsed: boolean }
   | { kind: "singleMedia"; label?: string; collapsed: boolean }
@@ -173,6 +173,7 @@ type Element =
       listQuery?: string;
     };
 type Column = { alias?: string; size?: string; elements: Element[]; elementSpreads: string[] };
+type PreviewLayout = { queryName: string; columns: Column[] };
 type DeleteOptions = {
   deleteEntityLabel?: string;
   deleteRelationsQuery?: string;
@@ -354,6 +355,8 @@ type Entity = {
   cardName?: string;
   /** elody:sortDocument: sort options documents of the type's own */
   sortDocuments: { queryName: string; options: { labelKey: string; value: string; primary?: boolean; icon?: string }[] }[];
+  /** elody:preview: the previewFor<X> fragment and the layouts it names */
+  preview?: { fragmentName?: string; kind?: string; coverage?: string; labelKey?: string; openByDefault?: boolean; showCurrentPreviewFlow?: boolean; keepLastActiveItemHighlighted?: boolean; displayOpenDetailPageButton?: boolean; layout?: PreviewLayout; metadataLayout?: PreviewLayout };
   operations?: Operation[];
   customOperations: { name: string; operations: Operation[] }[];
   listQueries: ListQuery[];
@@ -385,6 +388,9 @@ export class Extractor {
   private readonly inlineSet = new Set<string>();
   /** the other cards of a type (fragment name by type name): fragments with a card the client names itself */
   private readonly cardVariants = new Map<string, string>();
+  /** the preview layouts a previewFor<X> fragment names: not orphans */
+  private readonly previewLayoutNames = new Set<string>();
+  private readonly claimedPreviews = new Set<string>();
 
   /**
    * The results of a list document: per type its fragment spreads and, for fields selected inline,
@@ -484,6 +490,23 @@ export class Extractor {
       // a listing core (minimal<X>Core) belongs to the type that spreads it, not a type of its own
       .filter((name) => !(name.endsWith("Core") && this.fragment(`minimal${name.slice(0, -"Core".length)}`)))
       .concat(this.interfaceTypes());
+  }
+
+  /** The columns of a layout: the detail's entityView, or a preview's PreviewElement. */
+  private columnsOf(view: FieldNode | undefined, where: string, entity: Entity, byAlias: Map<string, Property>): Column[] {
+    const columns: Column[] = [];
+    for (const [columnIndex, column] of fields(view?.selectionSet).filter((f) => f.name.value === "column").entries()) {
+      const size = this.instance("ColumnSize", scalar(child(column, "size") ? argument(child(column, "size")!, "size") : undefined), `${where} column`);
+      // a column alias of its own (tipsColumn); column, column2, ... are what the generator names them
+      const positional = columnIndex === 0 ? "column" : `column${columnIndex + 1}`;
+      const given = column.alias?.value ?? "column";
+      const columnAlias = given !== positional ? given : undefined;
+      const elements = this.elementsOf(child(column, "elements")?.selectionSet, where, entity, byAlias);
+      const elementSpreads = spreads(child(column, "elements")?.selectionSet);
+      if (elements.length || elementSpreads.length) columns.push({ alias: columnAlias, size, elements, elementSpreads });
+      else this.note(`${where}: a column holds nothing the generator renders; left out`);
+    }
+    return columns;
   }
 
   /** A fragment on a type that shows a card under a name of its own (mediafileAsPreview): read as a listing of the type, declared with elody:cardName. */
@@ -760,16 +783,44 @@ export class Extractor {
 
     // the detail layout
     const view = full ? child(full, "entityView") : undefined;
-    for (const [columnIndex, column] of fields(view?.selectionSet).filter((f) => f.name.value === "column").entries()) {
-      const size = this.instance("ColumnSize", scalar(child(column, "size") ? argument(child(column, "size")!, "size") : undefined), `${where} column`);
-      // a column alias of its own (tipsColumn); column, column2, ... are what the generator names them
-      const positional = columnIndex === 0 ? "column" : `column${columnIndex + 1}`;
-      const given = column.alias?.value ?? "column";
-      const columnAlias = given !== positional ? given : undefined;
-      const elements = this.elementsOf(child(column, "elements")?.selectionSet, where, entity, byAlias);
-      const elementSpreads = spreads(child(column, "elements")?.selectionSet);
-      if (elements.length || elementSpreads.length) entity.columns.push({ alias: columnAlias, size, elements, elementSpreads });
-      else this.note(`${where}: a column holds nothing the generator renders; left out`);
+    entity.columns.push(...this.columnsOf(view, where, entity, byAlias));
+    // the preview: the previewFor<X> fragment and the layouts it names
+    // its fragment is previewFor<X>, else a previewFor* fragment on the GraphQL type no other type claimed
+    const previewFragment =
+      this.fragment(`previewFor${name}`) ??
+      [...this.definitions.values()].find((d) => d.kind === "fragment" && /^previewFor/.test(d.name) && (d.node as FragmentDefinitionNode).typeCondition.name.value === graphqlType && !this.claimedPreviews.has(d.name))?.node as FragmentDefinitionNode | undefined;
+    const component = previewFragment ? child(previewFragment, "previewComponent") : undefined;
+    if (component && previewFragment) {
+      this.claimedPreviews.add(previewFragment.name.value);
+      const previewWhere = `${where} previewFor${name}`;
+      const configuration = child(component, "previewConfiguration");
+      const flag = (field: FieldNode | undefined, name: string) => (child(field, name) ? input(child(field, name)) !== "false" : undefined);
+      for (const f of fields(component.selectionSet))
+        if (!["type", "listItemsCoverage", "title", "previewQuery", "openByDefault", "metadataPreviewQuery", "showCurrentPreviewFlow", "previewConfiguration"].includes(f.name.value)) this.note(`${previewWhere}: field ${f.name.value} has no term; left out`);
+      for (const f of fields(configuration?.selectionSet))
+        if (!["keepLastActiveItemHighlighted", "displayOpenDetailPageButton"].includes(f.name.value)) this.note(`${previewWhere}: configuration field ${f.name.value} has no term; left out`);
+      const layout = (queryName: string | undefined): PreviewLayout | undefined => {
+        if (!queryName) return undefined;
+        const query = this.operation(queryName);
+        if (!query) {
+          this.note(`${previewWhere}: layout ${queryName} is not in these files; the name stays`);
+          return { queryName, columns: [] };
+        }
+        this.previewLayoutNames.add(queryName);
+        return { queryName, columns: this.columnsOf(child(query, "PreviewElement"), `${where} ${queryName}`, entity, byAlias) };
+      };
+      entity.preview = {
+        fragmentName: previewFragment.name.value !== `previewFor${name}` ? previewFragment.name.value : undefined,
+        kind: this.instance("PreviewKind", input(child(component, "type")), previewWhere),
+        coverage: this.instance("ListItemCoverage", input(child(component, "listItemsCoverage")), previewWhere),
+        labelKey: input(child(component, "title")),
+        openByDefault: flag(component, "openByDefault"),
+        showCurrentPreviewFlow: flag(component, "showCurrentPreviewFlow"),
+        keepLastActiveItemHighlighted: flag(configuration, "keepLastActiveItemHighlighted"),
+        displayOpenDetailPageButton: flag(configuration, "displayOpenDetailPageButton"),
+        layout: layout(input(child(component, "previewQuery"))),
+        metadataLayout: layout(input(child(component, "metadataPreviewQuery"))),
+      };
     }
     if (full)
       for (const field of fields(full.selectionSet)) {
@@ -1056,7 +1107,7 @@ export class Extractor {
     const panels: Panel[] = [];
     for (const panel of fields(element.selectionSet)) {
       if (panel.name.value !== "panels") {
-        if (!["label", "expandButtonOptions", "editMetadataButton", "hideInHistory", "windowElementStatus", "contextMenuActions"].includes(panel.name.value)) this.note(`${where}: window element field ${panel.name.value} has no term; left out`);
+        if (!["label", "layout", "expandButtonOptions", "editMetadataButton", "hideInHistory", "windowElementStatus", "contextMenuActions"].includes(panel.name.value)) this.note(`${where}: window element field ${panel.name.value} has no term; left out`);
         continue;
       }
       const header = child(panel, "panelHeaderContent");
@@ -1067,6 +1118,7 @@ export class Extractor {
       const result: Panel = {
         alias: alias(panel),
         label: headerLabel,
+        header: !header && !child(panel, "label") ? false : undefined,
         can: input(child(panel, "can")),
         kind: this.instance("PanelKind", input(child(panel, "panelType")), `${where} panel ${alias(panel)}`),
         collapsed: input(child(panel, "isCollapsed")) === "true",
@@ -1187,6 +1239,7 @@ export class Extractor {
       alias: element.alias?.value,
       label: input(child(element, "label")),
       expandButton: child(element, "expandButtonOptions") ? shown !== "false" : undefined,
+      windowLayout: child(element, "layout") ? this.instance("WindowLayout", input(child(element, "layout")), `${where} window element`) : undefined,
       editButton: child(element, "editMetadataButton") !== undefined,
       hideInHistory: input(child(element, "hideInHistory")) === "true",
       windowStatus,
@@ -2111,7 +2164,7 @@ export class Extractor {
       }
       if (entity.documents.includes("currentUser")) handled.add("getElodyUser");
     }
-    for (const name of [...this.declaredCustomOps, ...this.formSourceNames]) handled.add(name);
+    for (const name of [...this.declaredCustomOps, ...this.formSourceNames, ...this.previewLayoutNames]) handled.add(name);
     const added: Entity[] = [];
     const ownerOf = (file: string): Entity => {
       const own = entities.find((e) => e.documentName === e.graphqlType && !e.fragmentsOnly && this.definitions.get(this.anchorOf(e.documentName)?.name.value ?? "")?.file === file);
@@ -2349,7 +2402,8 @@ export class Extractor {
         // two windows may both hold an unaliased panel: the second gets a numbered id
         for (let n = 2; panelIds.has(id); n++) id = `ui:${name}Ui-${panel.alias}-${n}`;
         panelIds.add(id);
-        const p: string[] = [`${id}`, `  a elody:Panel ;`, `  rdfs:label ${q(panel.label ?? "")} ;`, `  sh:order 1 ;`, `  elody:alias ${q(panel.alias)} ;`];
+        const p: string[] = [`${id}`, `  a elody:Panel ;`, ...(panel.header === false ? [] : [`  rdfs:label ${q(panel.label ?? "")} ;`]), `  sh:order 1 ;`, `  elody:alias ${q(panel.alias)} ;`];
+        if (panel.header === false) p.push(`  elody:panelHeader false ;`);
         p.push(`  elody:collapsed ${panel.collapsed} ;`);
         if (!panel.editable) p.push(`  dash:readOnly true ;`);
         if (panel.editableDefault) p.push(`  elody:editableDefault true ;`);
@@ -2374,6 +2428,7 @@ export class Extractor {
       const w = [`      [ a elody:WindowElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`];
       if (element.alias) w.push(`      elody:alias ${q(element.alias)} ;`);
       if (element.expandButton !== undefined) w.push(`      elody:expandButton ${element.expandButton} ;`);
+      if (element.windowLayout) w.push(`      elody:windowLayout ${element.windowLayout} ;`);
       if (element.editButton) w.push(`      elody:editButton true ;`);
       if (element.hideInHistory) w.push(`      elody:hideInHistory true ;`);
       if (element.windowStatus) {
@@ -2533,8 +2588,9 @@ export class Extractor {
       fragment.filters.forEach((f, index) => (f.order = index + 1));
       out.push(`  elody:filtersFragment`, `    [ elody:fragmentName ${q(fragment.name)} ;`, `    elody:filter`, fragment.filters.map((f) => this.filter(f).replace(/^/gm, "  ")).join(" ,\n") + " ] ;");
     }
-    if (entity.columns.length) {
-      const columns = entity.columns.map((column, c) => {
+    const extra: string[] = [];
+    const columnNodes = (columnList: Column[]) =>
+      columnList.map((column, c) => {
         const lines = [`    [ sh:order ${c + 1} ;`];
         if (column.alias) lines.push(`    elody:alias ${q(column.alias)} ;`);
         if (column.size) lines.push(`    elody:size ${column.size} ;`);
@@ -2544,6 +2600,28 @@ export class Extractor {
         else lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " ]");
         return lines.join("\n");
       });
+    if (entity.preview) {
+      const p = entity.preview;
+      const parts = [`elody:previewKind ${p.kind ?? "elody:ColumnListPreview"}`, `elody:coverage ${p.coverage ?? "elody:OneListItem"}`];
+      if (p.fragmentName) parts.push(`elody:fragmentName ${q(p.fragmentName)}`);
+      if (p.labelKey) parts.push(`elody:labelKey ${q(p.labelKey)}`);
+      if (p.openByDefault !== undefined) parts.push(`elody:openByDefault ${p.openByDefault}`);
+      if (p.showCurrentPreviewFlow !== undefined) parts.push(`elody:showCurrentPreviewFlow ${p.showCurrentPreviewFlow}`);
+      if (p.keepLastActiveItemHighlighted !== undefined) parts.push(`elody:keepLastActiveItemHighlighted ${p.keepLastActiveItemHighlighted}`);
+      if (p.displayOpenDetailPageButton !== undefined) parts.push(`elody:displayOpenDetailPageButton ${p.displayOpenDetailPageButton}`);
+      if (p.layout) parts.push(`elody:previewLayout ui:${p.layout.queryName}`);
+      if (p.metadataLayout) parts.push(`elody:metadataPreviewLayout ui:${p.metadataLayout.queryName}`);
+      out.push(`  elody:preview [ ${parts.join(" ; ")} ] ;`);
+      for (const layout of [p.layout, p.metadataLayout]) {
+        if (!layout) continue;
+        const lines = [`ui:${layout.queryName}`, `  a elody:PreviewLayout ;`, `  elody:queryName ${q(layout.queryName)} ;`];
+        if (layout.columns.length) lines.push(`  elody:column`, columnNodes(layout.columns).join(" ,\n") + " .");
+        else lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " .");
+        extra.push(lines.join("\n"));
+      }
+    }
+    if (entity.columns.length) {
+      const columns = columnNodes(entity.columns);
       const detail = [`    [ elody:column`, columns.join(" ,\n").replace(/^/gm, "  ")];
       if (entity.shapeDriven) detail.push(`    ; elody:shapeDriven true`);
       if (entity.fragmentFields.length) detail.push(`    ; elody:fragmentField ${entity.fragmentFields.map(q).join(" , ")}`);
@@ -2570,7 +2648,6 @@ export class Extractor {
 
 
     // form, bulk operations, custom bulk operations
-    const extra: string[] = [];
     const allForms = [...(entity.form ? [entity.form] : []), ...entity.forms];
     if (allForms.length) out.push(`  elody:form ${allForms.map((f) => `ui:${f.queryName}`).join(" , ")} ;`);
     if (entity.flows.length) out.push(`  elody:guidedFlow ${entity.flows.map((f) => `ui:${f.queryName}`).join(" , ")} ;`);

@@ -877,6 +877,7 @@ class Parse {
       filters: r.byOrder(r.nodes(subject, elody("filter"))).map((node) => this.filter(node)),
       contextMenu: this.contextMenu(r.node(subject, elody("contextMenu"))),
       detail: this.withEditWidgets(this.detail(r.node(subject, elody("detail")), pathToKey), parsed, elementsFragments),
+      preview: this.preview(r.node(subject, elody("preview")), pathToKey),
       formSources: r.nodes(subject, elody("formSource")).map((node) => this.formSource(node)),
       bulkOperations: r.byOrder(r.nodes(subject, elody("bulkOperation"))).map((node) => this.bulkOperation(node)),
       customBulkOperations: r.nodes(subject, elody("customBulkOperations")).filter((node) => this.emitsOnce(`custom:${this.queryNameOf(node, "custom bulk operations set")}`)).map((node) => ({
@@ -1547,6 +1548,30 @@ class Parse {
     };
   }
 
+  /** elody:preview: the preview of the type, with the layouts it loads (each a column list like the detail's). */
+  private preview(node: string | undefined, pathToKey: Map<string, string>): M.UiPreview | undefined {
+    if (!node) return undefined;
+    const r = this.r;
+    const layout = (layoutNode: string | undefined): M.UiPreviewLayout | undefined => {
+      if (!layoutNode) return undefined;
+      const queryName = this.queryNameOf(layoutNode, "preview layout");
+      const columns = this.detail(layoutNode, pathToKey)?.columns ?? [];
+      return { queryName, columns, emit: columns.length > 0 && this.emitsOnce(`document:${queryName}`) };
+    };
+    return {
+      fragmentName: r.value(node, elody("fragmentName")) || undefined,
+      kind: this.enumValue(node, elody("previewKind"), elody("PreviewKind")) ?? "ColumnList",
+      coverage: this.enumValue(node, elody("coverage"), elody("ListItemCoverage")) ?? "OneListItem",
+      labelKey: r.value(node, elody("labelKey")) || undefined,
+      openByDefault: this.optionalFlag(node, elody("openByDefault")),
+      showCurrentPreviewFlow: this.optionalFlag(node, elody("showCurrentPreviewFlow")),
+      keepLastActiveItemHighlighted: this.optionalFlag(node, elody("keepLastActiveItemHighlighted")),
+      displayOpenDetailPageButton: this.optionalFlag(node, elody("displayOpenDetailPageButton")),
+      layout: layout(r.node(node, elody("previewLayout"))),
+      metadataLayout: layout(r.node(node, elody("metadataPreviewLayout"))),
+    };
+  }
+
   private detail(node: string | undefined, pathToKey: Map<string, string>): M.UiDetail | undefined {
     if (!node) return undefined;
     const r = this.r;
@@ -1643,6 +1668,7 @@ class Parse {
       metadataKey: r.value(element, elody("metadataKey")),
       collapsed: r.literal(element, elody("collapsed")) === true,
       expandButton: this.optionalFlag(element, elody("expandButton")),
+      windowLayout: this.enumValue(element, elody("windowLayout"), elody("WindowLayout")),
       panels: r.byOrder(r.nodes(element, elody("panel"))).map((panel) => this.panel(panel, pathToKey)),
       contextMenu: this.contextMenu(r.node(element, elody("contextMenu"))),
       panelSpreads: r.literals(element, elody("panelSpread")).length ? r.literals(element, elody("panelSpread")) : undefined,
@@ -1710,6 +1736,7 @@ class Parse {
         alias,
         order: r.order(panel),
         label: this.labelOf(panel, rdfs("label"), `ui.${this.type}.group.${alias}`),
+        header: this.optionalFlag(panel, elody("panelHeader")),
         panelType: this.enumValue(panel, elody("panelKind"), elody("PanelKind"), elody("panelType")),
         collapsed: r.literal(panel, elody("collapsed")) === true,
         editable,
@@ -1745,6 +1772,7 @@ class Parse {
       alias: String(r.value(panel, elody("alias")) ?? ""),
       order: r.order(panel),
       label: r.value(panel, rdfs("label")),
+      header: this.optionalFlag(panel, elody("panelHeader")),
       panelType: this.enumValue(panel, elody("panelKind"), elody("PanelKind"), elody("panelType")),
       collapsed: r.literal(panel, elody("collapsed")) === true,
       editable,

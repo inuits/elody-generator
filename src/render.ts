@@ -907,9 +907,8 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
   const renderPanel = (panel: M.UiPanel, depth: number): string => {
     const lines = [
       `${pad(depth)}${panel.alias}: panels {`,
-      `${pad(depth + 2)}panelHeaderContent(panelHeaderContentInput: { label: "${panel.label ?? ""}" }) {`,
-      `${pad(depth + 4)}label`,
-      `${pad(depth + 2)}}`,
+      // a panel without a header (elody:panelHeader false): the panels of a metadata preview
+      ...(panel.header === false ? [] : [`${pad(depth + 2)}panelHeaderContent(panelHeaderContentInput: { label: "${panel.label ?? ""}" }) {`, `${pad(depth + 4)}label`, `${pad(depth + 2)}}`]),
       ...(panel.panelType ? [`${pad(depth + 2)}panelType(input: ${panel.panelType})`] : []),
       `${pad(depth + 2)}isCollapsed(input: ${panel.collapsed})`,
       ...(panel.editableDefault ? [] : [`${pad(depth + 2)}isEditable(input: ${panel.editable})`]),
@@ -1025,6 +1024,7 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
       lines.push(`${pad(depth + 4)}...editMetadataButton`);
       lines.push(`${pad(depth + 2)}}`);
     }
+    if (element.windowLayout) lines.push(`${pad(depth + 2)}layout(input: ${element.windowLayout})`);
     if (element.expandButton !== undefined) {
       lines.push(`${pad(depth + 2)}expandButtonOptions {`);
       lines.push(`${pad(depth + 4)}shown(input: ${element.expandButton})`);
@@ -1050,9 +1050,38 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
 export function renderDetailView(entity: M.UiEntity, indent: number): string {
   const detail = entity.detail;
   if (!detail || detail.columns.length === 0) return "";
-  const renderElement = elementRenderer(entity);
+  return [`${pad(indent)}entityView {`, ...renderColumns(entity, detail.columns, indent), `${pad(indent)}}`].join("\n");
+}
 
-  const columns = detail.columns.map((column, index) => {
+/** The previewFor<X> fragment: how the type is previewed from a list. */
+export function renderPreviewFragment(entity: M.UiEntity): string {
+  const preview = entity.preview!;
+  const type = entity.documentName ?? entity.graphqlType;
+  const lines = [`  fragment ${preview.fragmentName ?? `previewFor${type}`} on ${entity.graphqlType} {`, "    previewComponent {", `      type(input: ${preview.kind})`, `      listItemsCoverage(input: ${preview.coverage})`];
+  if (preview.labelKey) lines.push(`      title(input: "${preview.labelKey}")`);
+  if (preview.layout) lines.push(`      previewQuery(input: "${preview.layout.queryName}")`);
+  if (preview.openByDefault !== undefined) lines.push(`      openByDefault(input: ${preview.openByDefault})`);
+  if (preview.metadataLayout) lines.push(`      metadataPreviewQuery(input: "${preview.metadataLayout.queryName}")`);
+  if (preview.showCurrentPreviewFlow !== undefined) lines.push(`      showCurrentPreviewFlow(input: ${preview.showCurrentPreviewFlow})`);
+  if (preview.keepLastActiveItemHighlighted !== undefined || preview.displayOpenDetailPageButton !== undefined) {
+    lines.push("      previewConfiguration {");
+    if (preview.keepLastActiveItemHighlighted !== undefined) lines.push(`        keepLastActiveItemHighlighted(input: ${preview.keepLastActiveItemHighlighted})`);
+    if (preview.displayOpenDetailPageButton !== undefined) lines.push(`        displayOpenDetailPageButton(input: ${preview.displayOpenDetailPageButton})`);
+    lines.push("      }");
+  }
+  lines.push("    }", "  }");
+  return lines.join("\n");
+}
+
+/** A layout the preview loads: PreviewElement with a column of elements, like the detail's. */
+export function renderPreviewDocument(entity: M.UiEntity, layout: M.UiPreviewLayout): string {
+  return [`  query ${layout.queryName} {`, "    PreviewElement {", ...renderColumns(entity, layout.columns, 4), "    }", "  }"].join("\n");
+}
+
+/** The columns of a layout (the detail's entityView, a preview's PreviewElement), each with its elements. */
+function renderColumns(entity: M.UiEntity, columnList: M.UiColumn[], indent: number): string[] {
+  const renderElement = elementRenderer(entity);
+  return columnList.map((column, index) => {
     const alias = column.alias ? (column.alias === "column" ? "column" : `${column.alias}: column`) : index === 0 ? "column" : `column${index + 1}: column`;
     return [
       `${pad(indent + 2)}${alias} {`,
@@ -1064,8 +1093,6 @@ export function renderDetailView(entity: M.UiEntity, indent: number): string {
       `${pad(indent + 2)}}`,
     ].join("\n");
   });
-
-  return [`${pad(indent)}entityView {`, ...columns, `${pad(indent)}}`].join("\n");
 }
 
 // -- whole-file emission -----------------------------------------------------
@@ -1256,6 +1283,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
     fragments.push(
       [`  fragment ${low}BulkOperations on ${onType} {`, renderBulkOperationOptions(entity.bulkOperations, 4), "  }"].join("\n"),
     );
+  if (entity.preview) fragments.push(renderPreviewFragment(entity));
   fragments.push(...renderSharedFragments(entity));
   // a file of shared fragments alone
   if (entity.fragmentsOnly) fragments.splice(0, fragments.length, ...renderSharedFragments(entity));
@@ -1339,6 +1367,8 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   for (const form of entity.createForms) documents.push(renderCreateForm(form));
 
   for (const document of entity.sortDocuments) documents.push(renderSortDocument(document));
+
+  for (const layout of [entity.preview?.layout, entity.preview?.metadataLayout]) if (layout?.emit) documents.push(renderPreviewDocument(entity, layout));
 
   for (const custom of entity.customBulkOperations)
     documents.push(
