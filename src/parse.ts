@@ -245,9 +245,13 @@ class Parse {
    * read-only property (dash:readOnly) none. Only those: a widget is also a
    * generated custom input field the client registers.
    */
-  private withEditWidgets(detail: M.UiDetail | undefined, parsed: { node: string; property: M.UiProperty }[], fragments: M.UiElementsFragment[] = []): M.UiDetail | undefined {
-    // the panels of the detail columns and of the elements fragments the file holds
-    const elements = [...(detail?.columns.flatMap((column) => column.elements) ?? []), ...fragments.flatMap((fragment) => fragment.elements)];
+  private withEditWidgets(detail: M.UiDetail | undefined, parsed: { node: string; property: M.UiProperty }[], fragments: M.UiElementsFragment[] = [], windows: M.UiWindowFragment[] = []): M.UiDetail | undefined {
+    // the panels of the detail columns, of the elements fragments and of the window fragments the file holds (the last as windows of their own)
+    const elements: M.UiElement[] = [
+      ...(detail?.columns.flatMap((column) => column.elements) ?? []),
+      ...fragments.flatMap((fragment) => fragment.elements),
+      ...windows.map((fragment) => ({ kind: "window", order: 0, panels: fragment.panels }) as unknown as M.UiElement),
+    ];
     if (!elements.length) {
       for (const { node, property } of parsed) if ((property.cardEditable || property.panelWidget) && !property.editInputType) property.editInputType = this.editWidget(node);
       return detail;
@@ -776,6 +780,12 @@ class Parse {
       .map((node) => ({ node, name: String(r.value(node, elody("fragmentName")) ?? "") }))
       .filter(({ name }) => this.emitsOnce(`fragment:${name}`))
       .map(({ node, name }) => ({ name, elements: r.byOrder(r.nodes(node, elody("element"))).map((element) => this.element(element, pathToKey)) }));
+    // the window fragments the file holds: panels several types spread into a window
+    const windowFragments: M.UiWindowFragment[] = r
+      .nodes(subject, elody("windowFragment"))
+      .map((node) => ({ node, name: String(r.value(node, elody("fragmentName")) ?? "") }))
+      .filter(({ name }) => this.emitsOnce(`fragment:${name}`))
+      .map(({ node, name }) => ({ name, panels: r.byOrder(r.nodes(node, elody("panel"))).map((panel) => this.panel(panel, pathToKey)) }));
     // the list queries the type names without a list element (the delete flow's documents)
     for (const node of r.nodes(subject, elody("listQuery")))
       if (!this.emittedListQueries.has(node)) {
@@ -816,8 +826,9 @@ class Parse {
         .nodes(subject, elody("fieldsFragment"))
         .map((node) => ({ node, name: String(r.value(node, elody("fragmentName")) ?? "") }))
         .filter(({ name }) => this.emitsOnce(`fragment:${name}`))
-        .map(({ node, name }) => ({ name, fields: this.formFields(r.nodes(r.node(node, elody("shape")) ?? "", sh("property"))) })),
+        .map(({ node, name }) => ({ name, fields: this.formFields(r.nodes(r.node(node, elody("shape")) ?? "", sh("property"))), spreads: r.literals(node, elody("fieldsSpread")).length ? r.literals(node, elody("fieldsSpread")) : undefined, spreadsAfter: r.literals(node, elody("fieldsSpreadAfter")).length ? r.literals(node, elody("fieldsSpreadAfter")) : undefined })),
       elementsFragments,
+      windowFragments,
       fragmentsOnly: r.literal(subject, elody("fragmentsOnly")) === true || undefined,
       filePath: r.value(subject, elody("filePath")) || undefined,
       cardName: r.value(subject, elody("cardName")) || undefined,
@@ -891,7 +902,7 @@ class Parse {
       filters: r.byOrder(r.nodes(subject, elody("filter"))).map((node) => this.filter(node)),
       contextMenu: this.contextMenu(r.node(subject, elody("contextMenu"))),
       detailCard: this.detailCard(r.node(subject, elody("detailCard")), pathToKey),
-      detail: this.withEditWidgets(this.detail(r.node(subject, elody("detail")), pathToKey), parsed, elementsFragments),
+      detail: this.withEditWidgets(this.detail(r.node(subject, elody("detail")), pathToKey), parsed, elementsFragments, windowFragments),
       preview: this.preview(r.node(subject, elody("preview")), pathToKey),
       formSources: r.nodes(subject, elody("formSource")).map((node) => this.formSource(node)),
       bulkOperations: r.byOrder(r.nodes(subject, elody("bulkOperation"))).map((node) => this.bulkOperation(node)),

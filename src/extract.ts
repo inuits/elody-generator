@@ -324,7 +324,8 @@ type Flow = { queryName: string; label?: string; repeatable?: boolean; refetchOn
 /** an id-addressed document a modal loads by name (ProcessorConfigForm(id: $id)) */
 type FormSource = { queryName: string; field: string; withParent: boolean };
 
-type FieldsFragment = { name: string; fields: FormField[] };
+type FieldsFragment = { name: string; fields: FormField[]; spreads?: string[]; spreadsAfter?: string[] };
+type WindowFragment = { name: string; panels: Panel[] };
 type ElementsFragment = { name: string; elements: Element[] };
 type ValuesFragment = { name: string; cardName?: string; fields: string[]; aliases: string[]; valuesFields: string[]; cardShows?: string[]; contextMenu?: Entity["contextMenu"] };
 
@@ -379,6 +380,7 @@ type Entity = {
   /** the fragments the file holds for the subtypes to spread */
   fieldsFragments: FieldsFragment[];
   elementsFragments: ElementsFragment[];
+  windowFragments: WindowFragment[];
   valuesFragments: ValuesFragment[];
   panelFragments: { name: string; fields: string[] }[];
   filtersFragments: { name: string; filters: Filter[] }[];
@@ -675,6 +677,7 @@ export class Extractor {
       entityListQueries: [],
       fieldsFragments: [],
       elementsFragments: [],
+      windowFragments: [],
       valuesFragments: [],
       panelFragments: [],
       filtersFragments: [],
@@ -2339,7 +2342,20 @@ export class Extractor {
       if (on === "FormFields") {
         const sharedFields = fields(fragment.selectionSet).filter((f) => f.name.value === "metaData").map((f) => this.formField(f, `${where} fragment ${definition.name}`));
         for (const f of fields(fragment.selectionSet)) if (f.name.value !== "metaData") this.note(`${where}: fragment ${definition.name} field ${f.name.value} has no term; left out`);
-        entity.fieldsFragments.push({ name: definition.name, fields: sharedFields });
+        // fields fragments spread before its first field and after its last (a fragment composed of others)
+        const before: string[] = [];
+        const after: string[] = [];
+        let seenField = false;
+        for (const s of fragment.selectionSet.selections) {
+          if (s.kind === Kind.FRAGMENT_SPREAD) (seenField ? after : before).push(s.name.value);
+          else if (s.kind === Kind.FIELD) seenField = true;
+        }
+        entity.fieldsFragments.push({ name: definition.name, fields: sharedFields, spreads: before.length ? before : undefined, spreadsAfter: after.length ? after : undefined });
+      } else if (on === "WindowElement") {
+        // panels several types spread into a window: read as a window of its own, declared as a window fragment
+        const asWindow: FieldNode = { kind: Kind.FIELD, name: { kind: Kind.NAME, value: "windowElement" }, selectionSet: fragment.selectionSet };
+        const window = this.window(asWindow, `${where} ${definition.name}`, entity, byAlias);
+        if (window.kind === "window" && window.panels.length) entity.windowFragments.push({ name: definition.name, panels: window.panels });
       } else if (on === "EntityViewElements") {
         const elements = this.elementsOf(fragment.selectionSet, `${where} ${definition.name}`, entity, byAlias);
         if (elements.length) entity.elementsFragments.push({ name: definition.name, elements });
@@ -2767,6 +2783,7 @@ export class Extractor {
       entityListQueries: [],
       fieldsFragments: [],
       elementsFragments: [],
+      windowFragments: [],
       valuesFragments: [],
       panelFragments: [],
       filtersFragments: [],
@@ -2928,9 +2945,9 @@ export class Extractor {
   }
 
   /** The node of one detail element (a window with its panels, a list, ...), numbered in its column or fragment. */
-  private elementNode(element: Element, e: number, name: string, panelNodes: string[], panelIds: Set<string>, forms: Set<string>): string {
-          if (element.kind === "window") {
-      const panels = element.panels.map((panel) => {
+  /** The panel nodes of a window (or a window fragment), written under ids of the type, and the ids to reference them by. */
+  private panelIdsOf(panelList: Panel[], name: string, panelNodes: string[], panelIds: Set<string>, forms: Set<string>): string[] {
+    return panelList.map((panel) => {
         let id = `ui:${name}Ui-${panel.alias}`;
         // two windows may both hold an unaliased panel: the second gets a numbered id
         for (let n = 2; panelIds.has(id); n++) id = `ui:${name}Ui-${panel.alias}-${n}`;
@@ -2957,7 +2974,12 @@ export class Extractor {
         p[p.length - 1] = p[p.length - 1].replace(/ ;$/, " .");
         panelNodes.push(p.join("\n"));
         return id;
-      });
+    });
+  }
+
+  private elementNode(element: Element, e: number, name: string, panelNodes: string[], panelIds: Set<string>, forms: Set<string>): string {
+          if (element.kind === "window") {
+      const panels = this.panelIdsOf(element.panels, name, panelNodes, panelIds, forms);
       const w = [`      [ a elody:WindowElement ;`, ...(element.label !== undefined ? [`      rdfs:label ${q(element.label)} ;`] : []), `      sh:order ${e + 1} ;`];
       if (element.alias) w.push(`      elody:alias ${q(element.alias)} ;`);
       if (element.expandButton !== undefined) w.push(`      elody:expandButton ${element.expandButton} ;`);
@@ -3190,11 +3212,16 @@ export class Extractor {
     // the fragments the file holds for other types
     for (const fragment of entity.fieldsFragments) {
       const shapes = fragment.fields.map((field, i) => this.formFieldNode(field, i));
-      out.push(`  elody:fieldsFragment`, `    [ elody:fragmentName ${q(fragment.name)} ;`, `    elody:shape`, ...(shapes.length ? [`      [ sh:property`, shapes.join(" ,\n").replace(/^/gm, "  ") + " ] ] ;"] : ["      [ ] ] ;"]));
+      const spreadLines = [...(fragment.spreads ?? []).map((n) => `    elody:fieldsSpread ${q(n)} ;`), ...(fragment.spreadsAfter ?? []).map((n) => `    elody:fieldsSpreadAfter ${q(n)} ;`)];
+      out.push(`  elody:fieldsFragment`, `    [ elody:fragmentName ${q(fragment.name)} ;`, ...spreadLines, `    elody:shape`, ...(shapes.length ? [`      [ sh:property`, shapes.join(" ,\n").replace(/^/gm, "  ") + " ] ] ;"] : ["      [ ] ] ;"]));
     }
     for (const fragment of entity.elementsFragments) {
       const nodes = fragment.elements.map((element, e) => this.elementNode(element, e, name, panelNodes, panelIds, formNodes));
       out.push(`  elody:elementsFragment`, `    [ elody:fragmentName ${q(fragment.name)} ;`, `    elody:element`, nodes.join(" ,\n") + " ] ;");
+    }
+    for (const fragment of entity.windowFragments) {
+      const ids = this.panelIdsOf(fragment.panels, name, panelNodes, panelIds, formNodes);
+      out.push(`  elody:windowFragment`, `    [ elody:fragmentName ${q(fragment.name)} ;`, `    elody:panel ${ids.join(" , ")} ] ;`);
     }
     for (const fragment of entity.valuesFragments) {
       const refs = [

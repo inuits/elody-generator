@@ -638,11 +638,15 @@ export function renderFormField(field: M.UiCreateFormField, indent: number): str
 /** The fragments a type's file holds for its subtypes: on FormFields, on EntityViewElements, on IntialValues (and teaserMetadata). */
 export function renderSharedFragments(entity: M.UiEntity): string[] {
   const fragments: string[] = [];
+  // a fields fragment: fields fragments spread before and after its own fields (elody:fieldsSpread, elody:fieldsSpreadAfter)
   for (const fragment of entity.fieldsFragments)
-    fragments.push([`  fragment ${fragment.name} on FormFields {`, ...fragment.fields.map((field) => renderFormField(field, 4)), "  }"].join("\n"));
+    fragments.push([`  fragment ${fragment.name} on FormFields {`, ...(fragment.spreads ?? []).map((name) => `    ...${name}`), ...fragment.fields.map((field) => renderFormField(field, 4)), ...(fragment.spreadsAfter ?? []).map((name) => `    ...${name}`), "  }"].join("\n"));
   const renderElement = elementRenderer(entity);
   for (const fragment of entity.elementsFragments)
     fragments.push([`  fragment ${fragment.name} on EntityViewElements {`, ...fragment.elements.map((element) => renderElement(element, 4)), "  }"].join("\n"));
+  // a window fragment: panels several types spread into a window (elody:panelSpread)
+  for (const fragment of entity.windowFragments)
+    fragments.push([`  fragment ${fragment.name} on WindowElement {`, ...fragment.panels.map((panel) => renderElement.panel(panel, 4)), "  }"].join("\n"));
   for (const fragment of entity.valuesFragments) {
     const subset = [
       ...fragment.fields.map((key) => entity.properties.find((property) => property.key === key && !property.alias) ?? entity.properties.find((property) => property.key === key)),
@@ -973,7 +977,10 @@ function panelFieldLines(property: M.UiProperty, panel: Pick<M.UiPanel, "editabl
 }
 
 /** The renderer of one detail element of the type (a window with its panels, a list, ...), at a depth. */
-export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, depth: number) => string {
+/** The renderer of a type's elements, with its panel renderer alongside (a window fragment holds panels alone). */
+export type ElementRenderer = ((element: M.UiElement, depth: number) => string) & { panel: (panel: M.UiPanel, depth: number) => string };
+
+export function elementRenderer(entity: M.UiEntity): ElementRenderer {
   // a panel shows a field once, under its key: the shape without an alias describes it, an aliased twin only reads it
   const propertyByKey = new Map<string, M.UiProperty>();
   for (const property of [...entity.properties.filter((p) => !p.alias), ...entity.properties.filter((p) => p.alias)])
@@ -1167,7 +1174,7 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
     return lines.join("\n");
   };
 
-  return renderElement;
+  return Object.assign(renderElement, { panel: renderPanel });
 }
 
 export function renderDetailView(entity: M.UiEntity, indent: number): string {

@@ -586,7 +586,9 @@ export type UiDeleteOptions = {
 };
 
 /** elody:FieldsFragment: a named fragment on FormFields */
-export type UiFieldsFragment = { name: string; fields: UiCreateFormField[] };
+export type UiFieldsFragment = { name: string; fields: UiCreateFormField[]; /** elody:fieldsSpread / elody:fieldsSpreadAfter: fields fragments spread before and after its own fields */ spreads?: string[]; spreadsAfter?: string[] };
+/** elody:WindowFragment: a named fragment on WindowElement holding panels */
+export type UiWindowFragment = { name: string; panels: UiPanel[] };
 /** elody:ElementsFragment: a named fragment on EntityViewElements */
 export type UiElementsFragment = { name: string; elements: UiElement[] };
 /** elody:ValuesFragment: a named fragment on IntialValues over some of the type's properties, with an optional card twin */
@@ -647,6 +649,7 @@ export type UiEntity = {
   /** the fragments the type's file holds for its subtypes to spread */
   fieldsFragments: UiFieldsFragment[];
   elementsFragments: UiElementsFragment[];
+  windowFragments: UiWindowFragment[];
   valuesFragments: UiValuesFragment[];
   panelFragments: UiPanelFragment[];
   filtersFragments: UiFiltersFragment[];
