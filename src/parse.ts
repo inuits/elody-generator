@@ -1120,6 +1120,7 @@ class Parse {
       forceShow: r.literal(node, elody("forceShow")) === true,
       includeBasicActions: r.literal(node, elody("includeBasicActions")) === true,
       inButtons: r.literal(node, elody("menuInButtons")) === true,
+      afterFields: r.literal(node, elody("menuAfterFields")) === true || undefined,
       spreads: r.literals(node, elody("menuSpread")).length ? r.literals(node, elody("menuSpread")) : undefined,
       actions: r.byOrder(r.nodes(node, elody("action"))).map((action): M.UiAction => {
         const source = r.node(action, elody("formSourceRef"));

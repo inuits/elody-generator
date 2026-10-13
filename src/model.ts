@@ -216,7 +216,7 @@ export type UiAction = {
 };
 
 /** elody:menuInButtons renders the menu as buttons { contextMenu { ... } } (the newer form) */
-export type UiContextMenu = { forceShow: boolean; includeBasicActions: boolean; inButtons?: boolean; actions: UiAction[]; /** elody:menuSpread: hand-written action fragments spread in the menu */ spreads?: string[] };
+export type UiContextMenu = { forceShow: boolean; includeBasicActions: boolean; inButtons?: boolean; /** elody:menuAfterFields: the older form placed after the card's fields */ afterFields?: boolean; actions: UiAction[]; /** elody:menuSpread: hand-written action fragments spread in the menu */ spreads?: string[] };
 
 export type UiLookup = { from: string; localField: string; foreignField: string; as: string; /** elody:lookupResolveToSourceIds */ resolveToSourceIds?: boolean };
 /** elody:valueMapping: values the default is mapped from (defaultValueMapping) */

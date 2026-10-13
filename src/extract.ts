@@ -399,7 +399,7 @@ type Entity = {
   operations?: Operation[];
   customOperations: { name: string; operations: Operation[] }[];
   listQueries: ListQuery[];
-  contextMenu?: { forceShow: boolean; basic: boolean; inButtons?: boolean; spreads?: string[]; actions: { alias: string; form?: string; kind?: string; label?: string; icon?: string; formQuery?: string; formFlow?: string; formTitle?: string; can?: string[]; showAsButton?: boolean; endpointUrl?: string; endpointMethod?: string }[] };
+  contextMenu?: { forceShow: boolean; basic: boolean; inButtons?: boolean; afterFields?: boolean; spreads?: string[]; actions: { alias: string; form?: string; kind?: string; label?: string; icon?: string; formQuery?: string; formFlow?: string; formTitle?: string; can?: string[]; showAsButton?: boolean; endpointUrl?: string; endpointMethod?: string }[] };
 };
 
 // -- the input field types a client uses --------------------------------------
@@ -801,7 +801,10 @@ export class Extractor {
     // the card
     const teaser = child(listing, "teaserMetadata");
     const cardIndex = new Map<Property, number>();
+    // the card's entries before its menu: the older menu form after them is declared (elody:menuAfterFields)
+    let entriesBeforeMenu = 0;
     for (const field of fields(teaser?.selectionSet)) {
+      if (["metaData", "relationRootData", "relationMetaData", "thumbnail"].includes(field.name.value)) entriesBeforeMenu++;
       if (["metaData", "relationRootData", "relationMetaData"].includes(field.name.value)) {
         const key = input(child(field, "key")) ?? alias(field);
         // the value read under the card field's alias, when there is one (title: metaData { key(input: "key") } shows the title alias of key)
@@ -835,7 +838,7 @@ export class Extractor {
         const filename = child(field, "filename");
         const before = fields(teaser?.selectionSet).slice(0, fields(teaser?.selectionSet).indexOf(field)).filter((f) => f.name.value === "metaData").length;
         entity.thumbnail = { ...(filename && scalar(argument(filename, "fromMediafile")) === "true" ? { fromMediafile: true } : { key: input(child(field, "key")) ?? "thumbnail" }), order: before };
-      } else if (field.name.value === "contextMenuActions") entity.contextMenu = { ...this.contextMenu(field, where)!, forceShow: entity.contextMenu?.forceShow ?? false };
+      } else if (field.name.value === "contextMenuActions") entity.contextMenu = { ...this.contextMenu(field, where)!, forceShow: entity.contextMenu?.forceShow ?? false, afterFields: entriesBeforeMenu > 0 || undefined };
       else if (field.name.value === "buttons" && child(field, "contextMenu"))
         // the newer form of the card's menu: buttons { contextMenu { ... } }
         entity.contextMenu = { ...this.contextMenu(child(field, "contextMenu")!, where)!, inButtons: true, forceShow: entity.contextMenu?.forceShow ?? false };
@@ -2799,6 +2802,7 @@ export class Extractor {
     if (contextMenu.forceShow) menu.push(`    elody:forceShow true ;`);
     if (contextMenu.basic) menu.push(`    elody:includeBasicActions true ;`);
     if (contextMenu.inButtons) menu.push(`    elody:menuInButtons true ;`);
+    if (contextMenu.afterFields) menu.push(`    elody:menuAfterFields true ;`);
     for (const spread of contextMenu.spreads ?? []) menu.push(`    elody:menuSpread ${q(spread)} ;`);
     const actions = contextMenu.actions.map((action, i) => {
       const a = [`      [ sh:order ${i + 1} ;`, `      elody:alias ${q(action.alias)} ;`];

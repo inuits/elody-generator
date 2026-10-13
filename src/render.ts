@@ -326,7 +326,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
     const aliased = filter.alias ? `${filter.alias}: ` : "";
     if (filter.kind === "type")
       return [
-        `${pad(indent + 2)}${aliased}advancedFilter(type: type) {`,
+        `${pad(indent + 2)}${aliased}advancedFilter(type: type${filter.operator ? `, operator: ${filter.operator}` : ""}) {`,
         `${pad(indent + 4)}type`,
         `${pad(indent + 4)}defaultValue(value: ${filterDefaultLiteral(filter)})`,
         `${pad(indent + 4)}hidden(value: ${filter.hidden})`,
@@ -1327,10 +1327,11 @@ export function listingParts(entity: M.UiEntity, indent: number): { head: string
     card.push(`${pad(indent)}teaserMetadata {`);
     if (entity.typePills) card.push(`${pad(indent + 2)}...typePillsTeaserMetadata`);
     for (const spread of entity.spreads.card) card.push(`${pad(indent + 2)}...${spread}`);
-    // the older menu form comes before the fields, the buttons form after them
-    if (contextMenu && !entity.contextMenu?.inButtons) card.push(contextMenu);
+    // the older menu form comes before the fields (or after them, elody:menuAfterFields), the buttons form after them
+    const menuAfter = entity.contextMenu?.inButtons || entity.contextMenu?.afterFields;
+    if (contextMenu && !menuAfter) card.push(contextMenu);
     if (teaserFields) card.push(teaserFields);
-    if (contextMenu && entity.contextMenu?.inButtons) card.push(contextMenu);
+    if (contextMenu && menuAfter) card.push(contextMenu);
     card.push(`${pad(indent)}}`);
   }
   // the map view's popup fields, after the card
