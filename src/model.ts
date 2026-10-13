@@ -217,6 +217,9 @@ export type UiAction = {
   endpointMethod?: string;
 };
 
+/** elody:detailCard: the card (teaserMetadata) read on the detail page: the keys of the fields it shows, and its menu */
+export type UiDetailCard = { fields: string[]; contextMenu?: UiContextMenu };
+
 /** elody:menuInButtons renders the menu as buttons { contextMenu { ... } } (the newer form) */
 export type UiContextMenu = { forceShow: boolean; includeBasicActions: boolean; inButtons?: boolean; /** elody:menuAfterFields: the older form placed after the card's fields */ afterFields?: boolean; actions: UiAction[]; /** elody:menuSpread: hand-written action fragments spread in the menu */ spreads?: string[] };
 
@@ -682,6 +685,8 @@ export type UiEntity = {
   properties: UiProperty[];
   filters: UiFilter[];
   contextMenu?: UiContextMenu;
+  /** elody:detailCard: the card the detail fragment carries as well */
+  detailCard?: UiDetailCard;
   detail?: UiDetail;
   formSources: UiFormSource[];
   bulkOperations: UiBulkOperation[];

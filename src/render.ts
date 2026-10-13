@@ -1386,6 +1386,22 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string, all: M
       if (detailValues) full.push(detailValues);
       full.push("    }");
     }
+    // the card the detail fragment carries as well (elody:detailCard): its fields, its menu before or after them as on the listing's card
+    if (entity.detailCard) {
+      const card = entity.detailCard;
+      const lines = ["    teaserMetadata {"];
+      const menu = renderContextMenuOf(card.contextMenu, 6);
+      const menuAfter = card.contextMenu?.inButtons || card.contextMenu?.afterFields;
+      if (menu && !menuAfter) lines.push(menu);
+      for (const key of card.fields) {
+        const property = entity.properties.find((p) => p.key === key && !p.alias) ?? entity.properties.find((p) => p.key === key);
+        if (!property) throw new Error(`elody:detailCard references undeclared property "${key}"`);
+        lines.push(`      ${property.cardAlias ?? property.alias ?? key}: ${property.cardField ?? "metaData"} {`, `        label(input: "${property.label ?? key}")`, `        key(input: "${property.cardKey ?? property.alias ?? key}")`, "      }");
+      }
+      if (menu && menuAfter) lines.push(menu);
+      lines.push("    }");
+      full.push(...lines);
+    }
     if (entity.deleteOptions) full.push(renderDeleteOptions(entity.deleteOptions, 4));
     if (entity.viewModesOnDetail) full.push(...modes);
     if (readsRelationValues(entity, "detail")) full.push("    relationValues");

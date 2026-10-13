@@ -406,6 +406,8 @@ type Entity = {
   operations?: Operation[];
   customOperations: { name: string; operations: Operation[] }[];
   listQueries: ListQuery[];
+  /** elody:detailCard: the card the detail fragment carries as well */
+  detailCard?: { fields: string[]; contextMenu?: Entity["contextMenu"] };
   contextMenu?: { forceShow: boolean; basic: boolean; inButtons?: boolean; afterFields?: boolean; spreads?: string[]; actions: { alias: string; form?: string; kind?: string; label?: string; icon?: string; formQuery?: string; formFlow?: string; formTitle?: string; can?: string[]; showAsButton?: boolean; endpointUrl?: string; endpointMethod?: string }[] };
 };
 
@@ -898,6 +900,23 @@ export class Extractor {
     // the detail layout
     const view = full ? child(full, "entityView") : undefined;
     entity.columns.push(...this.columnsOf(view, where, entity, byAlias));
+    // a card inside the detail fragment (teaserMetadata next to the detail's values): its fields and menu, declared as the detail card
+    const detailTeaser = full ? child(full, "teaserMetadata") : undefined;
+    if (detailTeaser) {
+      const cardFields: string[] = [];
+      let menu: Entity["contextMenu"];
+      for (const field of fields(detailTeaser.selectionSet)) {
+        if (["metaData", "relationRootData", "relationMetaData"].includes(field.name.value)) {
+          const key = input(child(field, "key")) ?? alias(field);
+          const property = byAlias.get(alias(field)) ?? byAlias.get(key) ?? entity.properties.find((p) => p.key === key);
+          if (property) cardFields.push(property.key);
+          else this.note(`${where}: detail card field ${alias(field)} reads no value; left out`);
+        } else if (field.name.value === "contextMenuActions") menu = { ...this.contextMenu(field, where)!, forceShow: false, afterFields: cardFields.length > 0 || undefined };
+        else if (field.name.value === "buttons" && child(field, "contextMenu")) menu = { ...this.contextMenu(child(field, "contextMenu")!, where)!, inButtons: true, forceShow: false };
+        else this.note(`${where}: detail card field ${alias(field)} (${field.name.value}) has no term; left out`);
+      }
+      entity.detailCard = { fields: cardFields, contextMenu: menu };
+    }
     // the preview: the previewFor<X> fragment and the layouts it names
     // its fragment is previewFor<X>, else a previewFor* fragment on the GraphQL type no other type claimed
     const previewFragment =
@@ -938,7 +957,8 @@ export class Extractor {
     }
     if (full)
       for (const field of fields(full.selectionSet)) {
-        if (["intialValues", "relationValues", "entityView"].includes(field.name.value)) continue;
+        // the detail's card is read as the detail card, not as a bare field
+        if (["intialValues", "relationValues", "entityView", "teaserMetadata"].includes(field.name.value)) continue;
         if (field.name.value === "allowedViewModes") {
           entity.viewModesOnDetail = true;
           continue;
@@ -3192,6 +3212,15 @@ export class Extractor {
     for (const fragment of entity.filtersFragments) {
       fragment.filters.forEach((f, index) => (f.order = index + 1));
       out.push(`  elody:filtersFragment`, `    [ elody:fragmentName ${q(fragment.name)} ;`, `    elody:filter`, fragment.filters.map((f) => this.filter(f).replace(/^/gm, "  ")).join(" ,\n") + " ] ;");
+    }
+    if (entity.detailCard) {
+      const menuLines = entity.detailCard.contextMenu ? this.contextMenuNode(entity.detailCard.contextMenu) : [];
+      out.push(`  elody:detailCard`, `    [ elody:field ${entity.detailCard.fields.map((f) => `em:${f}`).join(" , ")}${menuLines.length ? " ;" : " ] ;"}`);
+      if (menuLines.length) {
+        const nested = menuLines.map((l) => `  ${l}`);
+        nested[nested.length - 1] = nested[nested.length - 1].replace(/ \] ;$/, " ] ] ;");
+        out.push(`    elody:contextMenu`, ...nested);
+      }
     }
     const extra: string[] = [];
     const columnNodes = (columnList: Column[]) =>

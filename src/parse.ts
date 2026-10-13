@@ -890,6 +890,7 @@ class Parse {
       properties,
       filters: r.byOrder(r.nodes(subject, elody("filter"))).map((node) => this.filter(node)),
       contextMenu: this.contextMenu(r.node(subject, elody("contextMenu"))),
+      detailCard: this.detailCard(r.node(subject, elody("detailCard")), pathToKey),
       detail: this.withEditWidgets(this.detail(r.node(subject, elody("detail")), pathToKey), parsed, elementsFragments),
       preview: this.preview(r.node(subject, elody("preview")), pathToKey),
       formSources: r.nodes(subject, elody("formSource")).map((node) => this.formSource(node)),
@@ -1113,6 +1114,21 @@ class Parse {
       displayedByDefault: r.literal(node, elody("displayedByDefault")) === true,
       tooltip,
     };
+  }
+
+  /** elody:detailCard: the card the detail fragment carries, its fields referenced by sh:path IRI */
+  private detailCard(node: string | undefined, pathToKey: Map<string, string>): M.UiDetailCard | undefined {
+    if (!node) return undefined;
+    const r = this.r;
+    const fields = r
+      .quadsOf(node)
+      .filter((quad) => quad.predicate.value === elody("field"))
+      .map((quad): string => {
+        const key = pathToKey.get(quad.object.value);
+        if (!key) throw new Error(`elody:detailCard references ${compact(quad.object.value)}, which no property shape declares as sh:path`);
+        return key;
+      });
+    return { fields, contextMenu: this.contextMenu(r.node(node, elody("contextMenu"))) };
   }
 
   private contextMenu(node: string | undefined): M.UiContextMenu | undefined {
