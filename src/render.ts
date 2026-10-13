@@ -595,7 +595,10 @@ export function renderFormField(field: M.UiCreateFormField, indent: number): str
     `${pad(indent + 2)}key(input: "${field.key}")`,
     ...(field.multilingual ? [`${pad(indent + 2)}isMultilingual(input: true)`] : []),
     ...(field.languageIn.length ? [`${pad(indent + 2)}languageIn(input: ${stringList(field.languageIn)})`] : []),
+    ...(field.showOnlyInEditMode !== undefined ? [`${pad(indent + 2)}showOnlyInEditMode(input: ${field.showOnlyInEditMode})`] : []),
     ...(field.tooltipKey ? [`${pad(indent + 2)}tooltip(input: "${field.tooltipKey}")`] : []),
+    ...(field.valueTranslationKey ? [`${pad(indent + 2)}valueTranslationKey(input: "${field.valueTranslationKey}")`] : []),
+    ...(field.onlyForEntityTypes?.length ? [`${pad(indent + 2)}onlyForEntityTypes(input: [${field.onlyForEntityTypes.join(", ")}])`] : []),
     ...(field.defaultValue !== undefined ? [`${pad(indent + 2)}defaultValue(input: "${field.defaultValue}")`] : []),
   ];
   if (!field.noWidget) {
@@ -653,60 +656,104 @@ export function renderSharedFragments(entity: M.UiEntity): string[] {
   return fragments;
 }
 
-export function renderCreateForm(form: M.UiCreateForm): string {
-  const fieldBlocks = form.fields.map((field) => renderFormField(field, 10));
+/** The upload container of a tab, at the form's field indentation. */
+function renderUpload(upload: M.UiUpload): string {
+  const lines = ["          uploadContainer {", `            uploadFlow(input: ${upload.flow})`];
+  for (const field of upload.fields) {
+    lines.push(`            ${field.alias}: uploadField {`, `              label(input: "${field.label ?? ""}")`);
+    if (field.size) lines.push(`              uploadFieldSize(input: ${field.size})`);
+    if (field.dryRun !== undefined) lines.push(`              dryRunUpload(input: ${field.dryRun})`);
+    if (field.addTypeToEndpoint !== undefined) lines.push(`              addTypeToEndpoint(input: ${field.addTypeToEndpoint})`);
+    if (field.extractTypeFromKey) lines.push(`              extractTypeFromKey(input: "${field.extractTypeFromKey}")`);
+    lines.push(`              uploadFieldType(input: ${field.kind})`);
+    if (field.templateCsvs?.length) lines.push(`              templateCsvs(input: [${field.templateCsvs.map((t) => `"${t}"`).join(", ")}])`);
+    if (field.infoLabelUrl) lines.push(`              infoLabelUrl(input: "${field.infoLabelUrl}")`);
+    if (field.extraMediafileType) lines.push(`              extraMediafileType(input: "${field.extraMediafileType}")`);
+    lines.push(`              inputField(type: ${field.inputType}) {`);
+    if (field.required) lines.push("                validation(input: { value: required }) {", "                  ...validation", "                }");
+    lines.push("                ...inputfield", "              }", "            }");
+  }
+  lines.push("          }");
+  return lines.join("\n");
+}
 
+/** An action button of a tab: the submit, an upload with its progress, a call to an endpoint. */
+function renderFormAction(action: M.UiFormAction): string {
+  const lines = [`          ${action.alias}: action {`, `            label(input: "${action.label ?? ""}")`];
+  if (action.icon !== undefined) lines.push(`            icon(input: ${action.icon})`);
+  lines.push(`            actionType(input: ${action.kind ?? "submit"})`);
+  if (action.actionQuery !== undefined) lines.push(`            actionQuery(input: "${action.actionQuery}")`);
+  if (action.endpoint) {
+    const e = action.endpoint;
+    const parts = [...(e.name ? [`endpointName: "${e.name}"`] : []), ...(e.method ? [`method: "${e.method}"`] : []), ...(e.variables.length ? [`variables: [${e.variables.map((v) => `"${v}"`).join(", ")}]`] : []), ...(e.responseAction ? [`responseAction: ${e.responseAction}`] : [])];
+    lines.push(`            endpointInformation(input: { ${parts.join(", ")} }) {`, "              endpointName", "              method", "              variables", "              responseAction", "            }");
+  }
+  if (action.creationType) lines.push(`            creationType(input: ${action.creationType})`);
+  if (action.showsFormErrors !== undefined) lines.push(`            showsFormErrors(input: ${action.showsFormErrors})`);
+  if (action.progress) {
+    lines.push("            actionProgressIndicator {", `              type(input: ${action.progress.kind})`);
+    for (const step of action.progress.steps) lines.push(`              ${step.alias}: step {`, `                label(input: "${step.label ?? ""}")`, `                stepType(input: ${step.kind})`, "                status", "              }");
+    lines.push("            }");
+  }
+  lines.push("          }");
+  return lines.join("\n");
+}
+
+/** The items of one tab (fields in their sections, the upload container, the actions) in order, then the submit. */
+function renderTabItems(tab: { fields: M.UiCreateFormField[]; fieldsSpreads?: string[]; upload?: M.UiUpload; actions?: M.UiFormAction[]; submit?: M.UiCreateForm["submit"] }): string[] {
+  const fieldBlocks = tab.fields.map((field) => renderFormField(field, 10));
+  const blocks: { order: number; rank: number; text: string }[] = [];
   // consecutive fields of one sh:PropertyGroup are wrapped in a form section; shared fragments come first
-  const fields: string[] = (form.fieldsSpreads ?? []).map((spread) => `          ...${spread}`);
-  for (let index = 0; index < form.fields.length; index++) {
-    const section = form.fields[index].section;
+  for (let index = 0; index < tab.fields.length; index++) {
+    const section = tab.fields[index].section;
+    const order = tab.fields[index].order ?? index + 1;
     if (!section) {
-      fields.push(fieldBlocks[index]);
+      blocks.push({ order, rank: 0, text: fieldBlocks[index] });
       continue;
     }
     const inside: string[] = [];
-    while (index < form.fields.length && form.fields[index].section?.alias === section.alias) {
+    while (index < tab.fields.length && tab.fields[index].section?.alias === section.alias) {
       inside.push(fieldBlocks[index].split("\n").map((line) => `    ${line}`).join("\n"));
       index++;
     }
     index--;
-    fields.push(
-      [
-        `          ${section.alias}Section: formSection {`,
-        `            label(input: "${section.label ?? ""}")`,
-        "            formFields {",
-        ...inside,
-        "            }",
-        "          }",
-      ].join("\n"),
-    );
+    blocks.push({ order, rank: 0, text: [`          ${section.alias}Section: formSection {`, `            label(input: "${section.label ?? ""}")`, "            formFields {", ...inside, "            }", "          }"].join("\n") });
   }
-
-  const submit = form.submit
+  if (tab.upload) blocks.push({ order: tab.upload.order ?? tab.fields.length + 1, rank: 1, text: renderUpload(tab.upload) });
+  for (const action of tab.actions ?? []) blocks.push({ order: action.order ?? Number.MAX_SAFE_INTEGER - 1, rank: 2, text: renderFormAction(action) });
+  blocks.sort((a, b) => a.order - b.order || a.rank - b.rank);
+  const submit = tab.submit
     ? [
-        `          ${form.submit.alias ?? "createAction"}: action {`,
-        `            label(input: "${form.submit.label ?? ""}")`,
-        ...(form.submit.icon !== undefined ? [`            icon(input: ${form.submit.icon})`] : []),
-        `            actionType(input: ${form.submit.submitAction ?? "submit"})`,
-        ...(form.submit.actionQuery !== undefined ? [`            actionQuery(input: "${form.submit.actionQuery}")`] : []),
-        ...(form.submit.creationType ? [`            creationType(input: ${form.submit.creationType})`] : []),
-        ...(form.submit.showsFormErrors ? ["            showsFormErrors(input: true)"] : []),
+        `          ${tab.submit.alias ?? "createAction"}: action {`,
+        `            label(input: "${tab.submit.label ?? ""}")`,
+        ...(tab.submit.icon !== undefined ? [`            icon(input: ${tab.submit.icon})`] : []),
+        `            actionType(input: ${tab.submit.submitAction ?? "submit"})`,
+        ...(tab.submit.actionQuery !== undefined ? [`            actionQuery(input: "${tab.submit.actionQuery}")`] : []),
+        ...(tab.submit.creationType ? [`            creationType(input: ${tab.submit.creationType})`] : []),
+        ...(tab.submit.showsFormErrors ? ["            showsFormErrors(input: true)"] : []),
         "          }",
       ].join("\n")
-    : "";
+    : undefined;
+  return [...(tab.fieldsSpreads ?? []).map((spread) => `          ...${spread}`), ...blocks.map((b) => b.text), ...(submit ? [submit] : [])];
+}
 
+export function renderCreateForm(form: M.UiCreateForm): string {
+  const tabHead = (alias: string | undefined) => `      ${(alias ?? "name") === "formTab" ? "formTab" : `${alias ?? "name"}: formTab`} {`;
+  const tabs = (form.tabs ?? []).flatMap((tab) => [tabHead(tab.alias), ...renderCopyFromParent(tab.copyFromParent), "        formFields {", renderTabItems(tab).join("\n"), "        }", "      }"]);
   return [
     `  query ${form.queryName} {`,
     "    GetDynamicForm {",
     // a form without a label has none; a tab aliased "formTab" is the plain field
     ...(form.label !== undefined ? [`      label(input: "${form.label}")`] : []),
-    `      ${(form.tabAlias ?? "name") === "formTab" ? "formTab" : `${form.tabAlias ?? "name"}: formTab`} {`,
+    ...(form.infoLabel !== undefined ? [`      infoLabel(input: "${form.infoLabel}")`] : []),
+    ...(form.modalStyle ? [`      modalStyle(input: ${form.modalStyle})`] : []),
+    tabHead(form.tabAlias),
     ...renderCopyFromParent(form.copyFromParent),
     "        formFields {",
-    fields.join("\n"),
-    ...(submit ? [submit] : []),
+    renderTabItems(form).join("\n"),
     "        }",
     "      }",
+    ...tabs,
     "    }",
     "  }",
   ].join("\n");

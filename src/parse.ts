@@ -1291,6 +1291,18 @@ class Parse {
           copyFromParent: this.copyFromParent(r.node(node, elody("copyFromParent"))),
           fields: this.formFields(r.nodes(shape, sh("property"))),
           submit: this.submit(r.node(node, elody("submit"))),
+          infoLabel: r.value(node, elody("infoLabel")) || undefined,
+          modalStyle: this.enumValue(node, elody("modalStyle"), elody("ModalStyle")),
+          upload: this.upload(r.node(node, elody("upload"))),
+          actions: r.byOrder(r.nodes(node, elody("formAction"))).map((action) => this.formAction(action)),
+          tabs: r.byOrder(r.nodes(node, elody("tab"))).map((tab) => ({
+            alias: r.value(tab, elody("alias")) || undefined,
+            fields: this.formFields(r.nodes(r.node(tab, elody("shape")) ?? "", sh("property"))),
+            fieldsSpreads: r.literals(tab, elody("fieldsSpread")),
+            copyFromParent: this.copyFromParent(r.node(tab, elody("copyFromParent"))),
+            upload: this.upload(r.node(tab, elody("upload"))),
+            actions: r.byOrder(r.nodes(tab, elody("formAction"))).map((action) => this.formAction(action)),
+          })),
         };
       });
     const legacy = r.nodes(subject, elody("createForm")).map((node): M.UiCreateForm => {
@@ -1337,6 +1349,60 @@ class Parse {
 
   private groupAlias(group: string): string {
     return String(this.r.value(group, elody("alias")) ?? lowerFirst(localName(group)));
+  }
+
+  /** elody:upload: the upload container of a tab, its flow and file inputs. */
+  private upload(node: string | undefined): M.UiUpload | undefined {
+    if (!node) return undefined;
+    const r = this.r;
+    const order = r.order(node);
+    return {
+      flow: this.enumValue(node, elody("uploadFlow"), elody("UploadFlow")) ?? "mediafilesOnly",
+      order: Number.isFinite(order) && order > 0 ? order : undefined,
+      fields: r.byOrder(r.nodes(node, elody("uploadField"))).map((field) => {
+        const templates = r.term(field, elody("templateCsvs"));
+        return {
+          alias: String(r.value(field, elody("alias")) ?? "fileUpload"),
+          label: r.value(field, rdfs("label")),
+          size: this.enumValue(field, elody("uploadSize"), elody("UploadSize")),
+          kind: this.enumValue(field, elody("uploadKind"), elody("UploadKind")) ?? "batch",
+          inputType: r.value(field, elody("uploadInputField")) || "baseFileUploadField",
+          required: this.optionalFlag(field, elody("uploadRequired")),
+          dryRun: this.optionalFlag(field, elody("dryRun")),
+          addTypeToEndpoint: this.optionalFlag(field, elody("addTypeToEndpoint")),
+          extractTypeFromKey: r.value(field, elody("extractTypeFromKey")) || undefined,
+          templateCsvs: templates ? r.list(templates.value) : undefined,
+          infoLabelUrl: r.value(field, elody("infoLabelUrl")) || undefined,
+          extraMediafileType: r.value(field, elody("extraMediafileType")) || undefined,
+          order: r.order(field),
+        };
+      }),
+    };
+  }
+
+  /** elody:formAction: an action button of a tab, with its endpoint or progress indicator. */
+  private formAction(node: string): M.UiFormAction {
+    const r = this.r;
+    const endpoint = r.node(node, elody("callsEndpoint"));
+    const progress = r.node(node, elody("progress"));
+    const variables = endpoint ? r.term(endpoint, elody("variables")) : undefined;
+    const order = r.order(node);
+    return {
+      alias: String(r.value(node, elody("alias")) ?? "action"),
+      label: r.value(node, rdfs("label")),
+      icon: r.value(node, elody("icon")) || undefined,
+      kind: r.value(node, elody("submitAction")) || undefined,
+      actionQuery: r.value(node, elody("actionQuery")) || undefined,
+      creationType: r.value(node, elody("creationType")) || undefined,
+      showsFormErrors: this.optionalFlag(node, elody("showsFormErrors")),
+      endpoint: endpoint
+        ? { name: r.value(endpoint, elody("endpointName")) || undefined, method: r.value(endpoint, elody("endpointMethod")) || undefined, variables: variables ? r.list(variables.value) : [], responseAction: r.value(endpoint, elody("responseAction")) || undefined }
+        : undefined,
+      progress: progress
+        ? { kind: String(r.value(progress, elody("progressKind")) ?? "progressSteps"), steps: r.byOrder(r.nodes(progress, elody("progressStep"))).map((step) => ({ alias: String(r.value(step, elody("alias")) ?? "step"), label: r.value(step, rdfs("label")), kind: String(r.value(step, elody("stepKind")) ?? "prepare"), order: r.order(step) })) }
+        : undefined,
+      order: Number.isFinite(order) && order > 0 ? order : undefined,
+    };
   }
 
   private submit(node: string | undefined): M.UiCreateForm["submit"] {
@@ -1397,6 +1463,9 @@ class Parse {
       validationAmount: typeof r.literal(node, elody("validationAmount")) === "number" ? (r.literal(node, elody("validationAmount")) as number) : undefined,
       validationExact: this.optionalFlag(node, elody("validationExact")),
       tooltipKey: r.value(node, elody("tooltipKey")) || undefined,
+      showOnlyInEditMode: this.optionalFlag(node, elody("showOnlyInEditMode")),
+      valueTranslationKey: r.value(node, elody("valueTranslationKey")) || undefined,
+      onlyForEntityTypes: r.term(node, elody("onlyForEntityTypes")) ? r.list(r.term(node, elody("onlyForEntityTypes"))!.value) : undefined,
       defaultValue: r.value(node, sh("defaultValue")) || undefined,
       noWidget: this.optionalFlag(node, elody("noWidget")),
       validationMessage: r.value(node, elody("validationMessage")) || undefined,

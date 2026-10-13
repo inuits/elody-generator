@@ -274,6 +274,10 @@ export type UiBulkOperation = {
 export type UiCustomBulkOperations = { queryName: string; operations: UiBulkOperation[] };
 
 export type UiCreateFormField = {
+  /** elody:showOnlyInEditMode, elody:valueTranslationKey, elody:onlyForEntityTypes on a form field */
+  showOnlyInEditMode?: boolean;
+  valueTranslationKey?: string;
+  onlyForEntityTypes?: string[];
   key: string;
   /** elody:alias: the GraphQL alias of the form field, when not the key */
   alias?: string;
@@ -303,9 +307,25 @@ export type UiCreateFormField = {
   pickerSearch?: { mode: string; keys: string[]; acceptedTypes: string[]; staticFilters?: UiOptionsInput[] };
 };
 
+/** elody:UploadField: a file input of an upload container */
+export type UiUploadField = { alias: string; label?: string; size?: string; kind: string; inputType: string; required?: boolean; dryRun?: boolean; addTypeToEndpoint?: boolean; extractTypeFromKey?: string; templateCsvs?: string[]; infoLabelUrl?: string; extraMediafileType?: string; order: number };
+/** elody:Upload: the upload container of a form tab, at its position among the tab's items */
+export type UiUpload = { flow: string; fields: UiUploadField[]; order?: number };
+/** elody:formAction: an action button of a tab beyond the submit */
+export type UiFormAction = { alias: string; label?: string; icon?: string; kind?: string; actionQuery?: string; creationType?: string; showsFormErrors?: boolean; endpoint?: { name?: string; method?: string; variables: string[]; responseAction?: string }; progress?: { kind: string; steps: { alias: string; label?: string; kind: string; order: number }[] }; order?: number };
+/** elody:tab: a further tab of a form */
+export type UiFormTab = { alias?: string; fields: UiCreateFormField[]; fieldsSpreads?: string[]; copyFromParent?: UiCreateForm["copyFromParent"]; upload?: UiUpload; actions: UiFormAction[] };
+
 export type UiCreateForm = {
   queryName: string;
   label?: string;
+  /** elody:infoLabel, elody:modalStyle: the information above the form, the modal it opens in */
+  infoLabel?: string;
+  modalStyle?: string;
+  /** elody:upload: the first tab's upload container; elody:formAction: its actions; elody:tab: further tabs */
+  upload?: UiUpload;
+  actions?: UiFormAction[];
+  tabs?: UiFormTab[];
   fields: UiCreateFormField[];
   /** elody:fieldsSpread: shared fields fragments spread before the fields */
   fieldsSpreads?: string[];

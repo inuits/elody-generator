@@ -256,8 +256,12 @@ type Filter = {
   lookup?: Lookup;
 };
 
-type FormField = { key: string; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; hidden?: boolean; clientField?: string; validationMessage?: string; tooltipKey?: string; defaultValue?: string; noWidget?: boolean; virtualKeyboardLayouts?: string[]; pickerSearch?: { mode: string; keys: string[]; acceptedTypes: string[]; staticFilters?: { kind?: string; key?: string; value: string | string[]; matchExact?: boolean; operator?: string }[] } };
-type Form = { queryName: string; label?: string; tabAlias?: string; fields: FormField[]; fieldsSpreads: string[]; copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string }[] }; submit?: { alias?: string; label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors: boolean; submitAction?: string } };
+type FormField = { key: string; order?: number; showOnlyInEditMode?: boolean; valueTranslationKey?: string; onlyForEntityTypes?: string[]; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; hidden?: boolean; clientField?: string; validationMessage?: string; tooltipKey?: string; defaultValue?: string; noWidget?: boolean; virtualKeyboardLayouts?: string[]; pickerSearch?: { mode: string; keys: string[]; acceptedTypes: string[]; staticFilters?: { kind?: string; key?: string; value: string | string[]; matchExact?: boolean; operator?: string }[] } };
+type UploadField = { alias: string; label?: string; size?: string; kind: string; inputType: string; required?: boolean; dryRun?: boolean; addTypeToEndpoint?: boolean; extractTypeFromKey?: string; templateCsvs?: string[]; infoLabelUrl?: string; extraMediafileType?: string };
+type Upload = { flow: string; fields: UploadField[]; order: number };
+type FormAction = { alias: string; label?: string; icon?: string; kind?: string; actionQuery?: string; creationType?: string; showsFormErrors?: boolean; endpoint?: { name?: string; method?: string; variables: string[]; responseAction?: string }; progress?: { kind: string; steps: { alias: string; label?: string; kind: string }[] }; order: number };
+type FormTab = { alias?: string; fields: FormField[]; fieldsSpreads: string[]; copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string }[] }; upload?: Upload; actions: FormAction[]; submit?: Form["submit"] };
+type Form = { queryName: string; label?: string; infoLabel?: string; modalStyle?: string; upload?: Upload; actions: FormAction[]; tabs: FormTab[]; tabAlias?: string; fields: FormField[]; fieldsSpreads: string[]; copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string }[] }; submit?: { alias?: string; label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors: boolean; submitAction?: string } };
 
 type Operation = {
   order?: number;
@@ -1687,7 +1691,7 @@ export class Extractor {
 
   /** A form without a field the vocabulary knows (an upload container only) cannot be declared: it stays hand-written. */
   private formWithFields(form: Form, where: string): Form | undefined {
-    if (form.fields.length || form.fieldsSpreads.length) return form;
+    if (form.fields.length || form.fieldsSpreads.length || form.upload || form.tabs.length) return form;
     this.note(`${where}: form ${form.queryName} has no field the vocabulary can declare; it stays hand-written`);
     this.stubs.add(form.queryName);
     return undefined;
@@ -1695,15 +1699,30 @@ export class Extractor {
 
   private form(query: OperationDefinitionNode, queryName: string, where: string): Form {
     const dynamic = fields(query.selectionSet).find((f) => f.name.value === "GetDynamicForm");
-    const tab = fields(dynamic?.selectionSet).find((f) => f.name.value === "formTab");
+    for (const field of fields(dynamic?.selectionSet))
+      if (!["label", "infoLabel", "modalStyle", "formTab"].includes(field.name.value)) this.note(`${where}: form ${queryName} field ${field.name.value} has no term; left out`);
+    const tabs = fields(dynamic?.selectionSet).filter((f) => f.name.value === "formTab");
+    const first = tabs[0];
     // a tab without an alias is the plain formTab field; said as the alias "formTab"
-    const form: Form = { queryName, label: input(child(dynamic, "label")), tabAlias: tab?.alias?.value ?? (tab ? "formTab" : undefined), fields: [], fieldsSpreads: spreads(child(tab, "formFields")?.selectionSet) };
+    const form: Form = { queryName, label: input(child(dynamic, "label")), infoLabel: input(child(dynamic, "infoLabel")), modalStyle: this.instance("ModalStyle", input(child(dynamic, "modalStyle")), `${where} form ${queryName}`), tabAlias: first?.alias?.value ?? (first ? "formTab" : undefined), fields: [], fieldsSpreads: [], actions: [], tabs: [] };
+    if (first) this.readTab(first, form, queryName, where);
+    for (const tab of tabs.slice(1)) {
+      const extra: FormTab = { alias: tab.alias?.value ?? "formTab", fields: [], fieldsSpreads: [], actions: [] };
+      this.readTab(tab, extra, queryName, where);
+      form.tabs.push(extra);
+    }
+    return form;
+  }
+
+  /** One tab of a form: its fields, upload container and actions in order, with copyFromParent and the shared fields spread. */
+  private readTab(tab: FieldNode, target: Form | FormTab, queryName: string, where: string): void {
+    target.fieldsSpreads = spreads(child(tab, "formFields")?.selectionSet);
     // copyFromParent: prefilled from the entity the form is opened on
     const copy = child(tab, "copyFromParent");
     const copyInput = copy ? argument(copy, "input") : undefined;
     if (copyInput?.kind === Kind.OBJECT) {
       const auto = scalar(objectField(copyInput, "autoCopy"));
-      form.copyFromParent = {
+      target.copyFromParent = {
         autoCopy: auto === undefined ? undefined : auto === "true",
         keyMap: list(objectField(copyInput, "keyMap"))
           .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
@@ -1712,22 +1731,89 @@ export class Extractor {
     }
     for (const field of fields(tab?.selectionSet))
       if (!["formFields", "copyFromParent"].includes(field.name.value)) this.note(`${where}: form ${queryName} tab field ${field.name.value} has no term; left out`);
+    let position = 0;
     for (const field of fields(child(tab, "formFields")?.selectionSet)) {
-      if (field.name.value === "metaData") form.fields.push(this.formField(field, `${where} form ${queryName}`));
-      else if (field.name.value === "action") {
-        form.submit = {
-          alias: alias(field) !== "createAction" ? alias(field) : undefined,
-          label: input(child(field, "label")),
-          icon: input(child(field, "icon")),
-          actionQuery: input(child(field, "actionQuery")),
-          creationType: input(child(field, "creationType")),
-          showsFormErrors: input(child(field, "showsFormErrors")) === "true",
-        };
-        const kind = input(child(field, "actionType"));
-        if (kind && kind !== "submit") form.submit.submitAction = kind;
+      position++;
+      if (field.name.value === "metaData") {
+        const formField = this.formField(field, `${where} form ${queryName}`);
+        formField.order = position;
+        target.fields.push(formField);
+      } else if (field.name.value === "uploadContainer") {
+        target.upload = this.uploadContainer(field, position, `${where} form ${queryName}`);
+      } else if (field.name.value === "action") {
+        const action = this.formActionOf(field, position, `${where} form ${queryName}`);
+        // the plain submit of the tab (no endpoint, no progress) is its elody:submit, rendered last; the others are form actions in place
+        if (!action.endpoint && !action.progress && !target.submit && position === fields(child(tab, "formFields")?.selectionSet).length) {
+          target.submit = { alias: action.alias !== "createAction" ? action.alias : undefined, label: action.label, icon: action.icon, actionQuery: action.actionQuery, creationType: action.creationType, showsFormErrors: action.showsFormErrors === true };
+          if (action.kind && action.kind !== "submit") target.submit.submitAction = action.kind;
+        } else target.actions.push(action);
+      } else if (field.name.value === "formSection") {
+        // fields inside a section: read as the form's fields with the section noted (as before)
+        for (const inner of fields(child(field, "formFields")?.selectionSet)) {
+          if (inner.name.value !== "metaData") continue;
+          const formField = this.formField(inner, `${where} form ${queryName}`);
+          formField.order = position;
+          target.fields.push(formField);
+        }
+        this.note(`${where}: form ${queryName} section ${alias(field)} is read as its fields; the section itself has no term here`);
       } else this.note(`${where}: form ${queryName} field ${alias(field)} (${field.name.value}) has no term; left out`);
     }
-    return form;
+  }
+
+  /** The upload container of a tab: its flow and file inputs. */
+  private uploadContainer(container: FieldNode, position: number, where: string): Upload {
+    for (const f of fields(container.selectionSet)) if (!["uploadFlow", "uploadField"].includes(f.name.value)) this.note(`${where}: upload container field ${f.name.value} has no term; left out`);
+    const known = ["label", "uploadFieldSize", "uploadFieldType", "inputField", "dryRunUpload", "addTypeToEndpoint", "extractTypeFromKey", "templateCsvs", "infoLabelUrl", "extraMediafileType"];
+    return {
+      flow: this.instance("UploadFlow", input(child(container, "uploadFlow")), `${where} upload`) ?? "elody:MediafilesOnlyFlow",
+      order: position,
+      fields: fields(container.selectionSet)
+        .filter((f) => f.name.value === "uploadField")
+        .map((f) => {
+          for (const x of fields(f.selectionSet)) if (!known.includes(x.name.value)) this.note(`${where}: upload field ${alias(f)} field ${x.name.value} has no term; left out`);
+          const widget = child(f, "inputField");
+          const templates = child(f, "templateCsvs");
+          return {
+            alias: alias(f),
+            label: input(child(f, "label")),
+            size: this.instance("UploadSize", input(child(f, "uploadFieldSize")), `${where} upload field ${alias(f)}`),
+            kind: this.instance("UploadKind", input(child(f, "uploadFieldType")), `${where} upload field ${alias(f)}`) ?? "elody:BatchUpload",
+            inputType: (widget ? str(widget, "type") : undefined) ?? "baseFileUploadField",
+            required: widget && child(widget, "validation") ? true : undefined,
+            dryRun: child(f, "dryRunUpload") ? input(child(f, "dryRunUpload")) === "true" : undefined,
+            addTypeToEndpoint: child(f, "addTypeToEndpoint") ? input(child(f, "addTypeToEndpoint")) === "true" : undefined,
+            extractTypeFromKey: input(child(f, "extractTypeFromKey")),
+            templateCsvs: templates ? list(argument(templates, "input")).map((v) => scalar(v) ?? "") : undefined,
+            infoLabelUrl: input(child(f, "infoLabelUrl")),
+            extraMediafileType: input(child(f, "extraMediafileType")),
+          };
+        }),
+    };
+  }
+
+  /** An action of a tab, with its endpoint or progress indicator. */
+  private formActionOf(field: FieldNode, position: number, where: string): FormAction {
+    for (const x of fields(field.selectionSet)) if (!["label", "icon", "actionType", "actionQuery", "creationType", "showsFormErrors", "endpointInformation", "actionProgressIndicator"].includes(x.name.value)) this.note(`${where}: action ${alias(field)} field ${x.name.value} has no term; left out`);
+    const endpoint = child(field, "endpointInformation");
+    const endpointInput = endpoint ? argument(endpoint, "input") : undefined;
+    const progress = child(field, "actionProgressIndicator");
+    return {
+      alias: alias(field),
+      label: input(child(field, "label")),
+      icon: input(child(field, "icon")),
+      kind: input(child(field, "actionType")),
+      actionQuery: input(child(field, "actionQuery")),
+      creationType: input(child(field, "creationType")),
+      showsFormErrors: child(field, "showsFormErrors") ? input(child(field, "showsFormErrors")) === "true" : undefined,
+      endpoint:
+        endpointInput?.kind === Kind.OBJECT
+          ? { name: scalar(objectField(endpointInput, "endpointName")), method: scalar(objectField(endpointInput, "method")), variables: list(objectField(endpointInput, "variables")).map((v) => scalar(v) ?? ""), responseAction: scalar(objectField(endpointInput, "responseAction")) }
+          : undefined,
+      progress: progress
+        ? { kind: input(child(progress, "type")) ?? "progressSteps", steps: fields(progress.selectionSet).filter((x) => x.name.value === "step").map((step) => ({ alias: alias(step), label: input(child(step, "label")), kind: input(child(step, "stepType")) ?? "prepare" })) }
+        : undefined,
+      order: position,
+    };
   }
 
   /** One form field: its widget, validation and hidden flag. */
@@ -1759,6 +1845,9 @@ export class Extractor {
       clientField: base ? undefined : type,
       validationMessage: validation.message,
       tooltipKey: input(child(field, "tooltip")),
+      showOnlyInEditMode: child(field, "showOnlyInEditMode") ? input(child(field, "showOnlyInEditMode")) === "true" : undefined,
+      valueTranslationKey: input(child(field, "valueTranslationKey")),
+      onlyForEntityTypes: child(field, "onlyForEntityTypes") ? list(argument(child(field, "onlyForEntityTypes")!, "input")).map((v) => scalar(v) ?? "") : undefined,
       defaultValue: input(child(field, "defaultValue")),
       noWidget: widget ? undefined : true,
       virtualKeyboardLayouts: keyboard?.kind === Kind.OBJECT ? list(objectField(keyboard, "layouts")).map((v) => scalar(v) ?? "") : undefined,
@@ -2772,7 +2861,7 @@ export class Extractor {
   private formFieldNode(field: FormField, i: number): string {
         const s = [`      [ sh:path em:${field.key} ;`];
     if (field.label) s.push(`      sh:name ${q(field.label.split(".").pop() ?? field.key)}@en ;`);
-    s.push(`      sh:order ${i + 1} ;`);
+    s.push(`      sh:order ${field.order ?? i + 1} ;`);
     if (field.alias) s.push(`      elody:alias ${q(field.alias)} ;`);
     if (field.datatype) s.push(`      sh:datatype ${field.datatype} ;`);
     s.push(`      sh:maxCount 1 ;`);
@@ -2784,6 +2873,9 @@ export class Extractor {
     if (field.validationExact !== undefined) s.push(`      elody:validationExact ${field.validationExact} ;`);
     if (field.hidden) s.push(`      dash:hidden true ;`);
     if (field.tooltipKey) s.push(`      elody:tooltipKey ${q(field.tooltipKey)} ;`);
+    if (field.showOnlyInEditMode !== undefined) s.push(`      elody:showOnlyInEditMode ${field.showOnlyInEditMode} ;`);
+    if (field.valueTranslationKey) s.push(`      elody:valueTranslationKey ${q(field.valueTranslationKey)} ;`);
+    if (field.onlyForEntityTypes?.length) s.push(`      elody:onlyForEntityTypes ( ${field.onlyForEntityTypes.map(q).join(" ")} ) ;`);
     if (field.validationMessage) s.push(`      elody:validationMessage ${q(field.validationMessage)} ;`);
     if (field.defaultValue !== undefined) s.push(`      sh:defaultValue ${q(field.defaultValue)} ;`);
     if (field.noWidget) s.push(`      elody:noWidget true ;`);
@@ -3036,8 +3128,31 @@ export class Extractor {
         ];
         lines.push(`  elody:copyFromParent [ ${parts.join(" ; ")} ] ;`);
       }
+      if (f.infoLabel !== undefined) lines.push(`  elody:infoLabel ${q(f.infoLabel)} ;`);
+      if (f.modalStyle) lines.push(`  elody:modalStyle ${f.modalStyle} ;`);
       const shapeFields = f.fields.map((field, i) => this.formFieldNode(field, i));
       lines.push(`  elody:shape`, ...(shapeFields.length ? [`    [ sh:property`, shapeFields.join(" ,\n") + " ] ;"] : ["    [ ] ;"]));
+      const uploadNode = (u: Upload, pad: string) =>
+        [`${pad}elody:upload [ sh:order ${u.order} ; elody:uploadFlow ${u.flow} ;`, ...u.fields.map((x, k) => `${pad}  ${k === 0 ? "elody:uploadField " : "  "}[ sh:order ${k + 1} ; elody:alias ${q(x.alias)}${x.label !== undefined ? ` ; rdfs:label ${q(x.label)}` : ""}${x.size ? ` ; elody:uploadSize ${x.size}` : ""} ; elody:uploadKind ${x.kind} ; elody:uploadInputField ${q(x.inputType)}${x.required ? " ; elody:uploadRequired true" : ""}${x.dryRun !== undefined ? ` ; elody:dryRun ${x.dryRun}` : ""}${x.addTypeToEndpoint !== undefined ? ` ; elody:addTypeToEndpoint ${x.addTypeToEndpoint}` : ""}${x.extractTypeFromKey ? ` ; elody:extractTypeFromKey ${q(x.extractTypeFromKey)}` : ""}${x.templateCsvs ? ` ; elody:templateCsvs ( ${x.templateCsvs.map(q).join(" ")} )` : ""}${x.infoLabelUrl ? ` ; elody:infoLabelUrl ${q(x.infoLabelUrl)}` : ""}${x.extraMediafileType ? ` ; elody:extraMediafileType ${q(x.extraMediafileType)}` : ""} ]${k < u.fields.length - 1 ? " ," : " ] ;"}`)].join("\n");
+      const actionNode = (a: FormAction, pad: string) => {
+        const parts = [`sh:order ${a.order}`, `elody:alias ${q(a.alias)}`, ...(a.label !== undefined ? [`rdfs:label ${q(a.label)}`] : []), ...(a.icon ? [`elody:icon ${q(a.icon)}`] : []), ...(a.kind ? [`elody:submitAction ${q(a.kind)}`] : []), ...(a.actionQuery ? [`elody:actionQuery ${q(a.actionQuery)}`] : []), ...(a.creationType ? [`elody:creationType ${q(a.creationType)}`] : []), ...(a.showsFormErrors !== undefined ? [`elody:showsFormErrors ${a.showsFormErrors}`] : [])];
+        if (a.endpoint) parts.push(`elody:callsEndpoint [ ${[...(a.endpoint.name ? [`elody:endpointName ${q(a.endpoint.name)}`] : []), ...(a.endpoint.method ? [`elody:endpointMethod ${q(a.endpoint.method)}`] : []), ...(a.endpoint.variables.length ? [`elody:variables ( ${a.endpoint.variables.map(q).join(" ")} )`] : []), ...(a.endpoint.responseAction ? [`elody:responseAction ${q(a.endpoint.responseAction)}`] : [])].join(" ; ")} ]`);
+        if (a.progress) parts.push(`elody:progress [ elody:progressKind ${q(a.progress.kind)}${a.progress.steps.length ? ` ; elody:progressStep ${a.progress.steps.map((st, k) => `[ sh:order ${k + 1} ; elody:alias ${q(st.alias)}${st.label !== undefined ? ` ; rdfs:label ${q(st.label)}` : ""} ; elody:stepKind ${q(st.kind)} ]`).join(" , ")}` : ""} ]`);
+        return `${pad}elody:formAction [ ${parts.join(" ; ")} ] ;`;
+      };
+      if (f.upload) lines.push(uploadNode(f.upload, "  "));
+      for (const a of f.actions) lines.push(actionNode(a, "  "));
+      for (const [t, tab] of f.tabs.entries()) {
+        const tabLines = [`  elody:tab [ sh:order ${t + 1} ; elody:alias ${q(tab.alias ?? "formTab")} ;`];
+        for (const spread of tab.fieldsSpreads) tabLines.push(`    elody:fieldsSpread ${q(spread)} ;`);
+        const tabFields = tab.fields.map((field, i) => this.formFieldNode(field, i));
+        if (tabFields.length) tabLines.push(`    elody:shape [ sh:property`, tabFields.join(" ,\n").replace(/^/gm, "  ") + " ] ;");
+        if (tab.upload) tabLines.push(uploadNode(tab.upload, "    "));
+        for (const a of tab.actions) tabLines.push(actionNode(a, "    "));
+        if (tab.submit) tabLines.push(`    elody:formAction [ sh:order 99 ; elody:alias ${q(tab.submit.alias ?? "createAction")} ; rdfs:label ${q(tab.submit.label ?? "")}${tab.submit.icon ? ` ; elody:icon ${q(tab.submit.icon)}` : ""}${tab.submit.submitAction ? ` ; elody:submitAction ${q(tab.submit.submitAction)}` : ""}${tab.submit.actionQuery ? ` ; elody:actionQuery ${q(tab.submit.actionQuery)}` : ""}${tab.submit.creationType ? ` ; elody:creationType ${q(tab.submit.creationType)}` : ""}${tab.submit.showsFormErrors ? " ; elody:showsFormErrors true" : ""} ] ;`);
+        tabLines[tabLines.length - 1] = tabLines[tabLines.length - 1].replace(/ ;$/, " ] ;");
+        lines.push(...tabLines);
+      }
       if (f.submit) {
         const s = [`    [ rdfs:label ${q(f.submit.label ?? "")} ;`];
         if (f.submit.alias) s.push(`    elody:alias ${q(f.submit.alias)} ;`);
