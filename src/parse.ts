@@ -823,6 +823,7 @@ class Parse {
       cardName: r.value(subject, elody("cardName")) || undefined,
       detailName: r.value(subject, elody("detailName")) || undefined,
       bulkFragmentName: r.value(subject, elody("bulkFragmentName")) || undefined,
+      sortFragmentName: r.value(subject, elody("sortFragmentName")) || undefined,
       bulkDocuments: r
         .nodes(subject, elody("bulkDocument"))
         .filter((node) => this.emitsOnce(`bulk:${this.queryNameOf(node, "bulk operations document")}`))

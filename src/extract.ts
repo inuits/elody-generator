@@ -386,6 +386,8 @@ type Entity = {
   detailName?: string;
   /** elody:bulkFragmentName: the bulk operations fragment's own name, the client's casing of <x>BulkOperations */
   bulkFragmentName?: string;
+  /** elody:sortFragmentName: the sort options fragment's own name, the client's casing of <x>SortOptions */
+  sortFragmentName?: string;
   /** elody:sortDocument: sort options documents of the type's own */
   sortDocuments: { queryName: string; options: { labelKey: string; value: string; primary?: boolean; icon?: string }[] }[];
   /** elody:bulkDocument: bulk operations documents of the type's or the app's own */
@@ -505,7 +507,7 @@ export class Extractor {
 
   /** the name of the type's detail fragment: full<X>, or the client's own casing of it (declared as elody:detailName) */
   private detailFragmentName(name: string): string | undefined {
-    return this.fragmentNamed(`full${name}`);
+    return this.fragmentOfKind(name, `full${name}`, /^full[A-Z]/);
   }
 
   /** a fragment under this name, or under the client's own casing of it */
@@ -593,8 +595,43 @@ export class Extractor {
 
   /** The fragment a type's file is known by: its listing, or for an interface its filters, bulk operations or sort options. */
   private anchorOf(name: string): FragmentDefinitionNode | undefined {
+    const anchor = this.anchorName(name);
+    return anchor ? this.fragment(anchor) : undefined;
+  }
+
+  private anchorName(name: string): string | undefined {
     const low = name.charAt(0).toLowerCase() + name.slice(1);
-    return this.fragment(`minimal${name}`) ?? this.fragment(`filtersFor${name}`) ?? this.fragment(`${low}BulkOperations`) ?? this.fragment(`${low}SortOptions`);
+    return [`minimal${name}`, `filtersFor${name}`, `${low}BulkOperations`, `${low}SortOptions`].find((n) => this.fragment(n));
+  }
+
+  /** the canonical fragment names of every type: what a fragment of one type is never mistaken for */
+  private canonicalNames?: Set<string>;
+
+  /**
+   * The fragment of a kind (the detail, the filters, the sort options, the bulk operations) for a type: under its
+   * canonical name, under the client's own casing of it, or else the one fragment of that kind on the type in the
+   * type's own file (fullArchiveCollection on ArchivalCollection, mediafileEntitySortOptions on Mediafile); declared
+   * under the kind's naming term when it is not the canonical name.
+   */
+  private fragmentOfKind(name: string, canonical: string, kind: RegExp): string | undefined {
+    const exact = this.fragmentNamed(canonical);
+    if (exact) return exact;
+    // another card of a type (elody:cardName) or an inline listing shares the type's file: the type's fragments are not its own
+    if (this.cardVariants.has(name) || /^Linked[A-Z]/.test(name) || this.inlineSet.has(name)) return undefined;
+    const anchor = this.anchorName(name);
+    const file = anchor ? this.definitions.get(anchor)?.file : undefined;
+    const type = anchor ? this.fragment(anchor)?.typeCondition.name.value : undefined;
+    if (!file || !type) return undefined;
+    this.canonicalNames ??= new Set(
+      this.types().flatMap((t) => {
+        const low = t.charAt(0).toLowerCase() + t.slice(1);
+        return [`minimal${t}`, `full${t}`, `filtersFor${t}`, `${low}Filters`, `${low}SortOptions`, `${low}BulkOperations`];
+      }),
+    );
+    const candidates = [...this.definitions.values()].filter(
+      (d) => d.kind === "fragment" && d.file === file && (d.node as FragmentDefinitionNode).typeCondition.name.value === type && kind.test(d.name) && !this.canonicalNames!.has(d.name),
+    );
+    return candidates.length === 1 ? candidates[0].name : undefined;
   }
 
   entity(name: string): Entity {
@@ -902,8 +939,10 @@ export class Extractor {
       if (full && !detailHas) this.note(`${where}: the listing reads relationValues but the detail page does not; both will read them`);
     } else if (full && !detailHas) entity.relationValues = false;
 
-    // sort options
-    const sort = this.fragment(`${name.charAt(0).toLowerCase() + name.slice(1)}SortOptions`);
+    // sort options: <x>SortOptions, or the client's own name for them (declared as elody:sortFragmentName)
+    const sortName = this.fragmentOfKind(name, `${name.charAt(0).toLowerCase() + name.slice(1)}SortOptions`, /SortOptions$/);
+    const sort = sortName ? this.fragment(sortName) : undefined;
+    if (sortName && sortName !== `${name.charAt(0).toLowerCase() + name.slice(1)}SortOptions`) entity.sortFragmentName = sortName;
     const options = child(child(sort, "sortOptions"), "options");
     let position = 0;
     const sortedAliases: string[] = [];
@@ -947,7 +986,8 @@ export class Extractor {
     if (title) title.labelRole = true;
 
     // filters, form, bulk operations
-    const filters = this.fragment(`filtersFor${name}`) ?? this.fragment(`${name.charAt(0).toLowerCase() + name.slice(1)}Filters`);
+    const filtersName = this.fragmentNamed(`filtersFor${name}`) ?? this.fragmentNamed(`${name.charAt(0).toLowerCase() + name.slice(1)}Filters`) ?? this.fragmentOfKind(name, `filtersFor${name}`, /^filtersFor[A-Z]|Filters$/);
+    const filters = filtersName ? this.fragment(filtersName) : undefined;
     if (filters && filters.name.value !== `filtersFor${name}`) entity.filtersFragmentName = filters.name.value;
     if (filters) {
       const block = child(filters, "advancedFilters");
@@ -957,7 +997,7 @@ export class Extractor {
     const form = this.operation(`Get${name}CreateForm`);
     if (form) entity.form = this.formWithFields(this.form(form, `Get${name}CreateForm`, where), where);
     // the bulk operations fragment: <x>BulkOperations, or the client's own casing of it (declared as elody:bulkFragmentName)
-    const bulkName = this.fragmentNamed(`${name.charAt(0).toLowerCase() + name.slice(1)}BulkOperations`);
+    const bulkName = this.fragmentOfKind(name, `${name.charAt(0).toLowerCase() + name.slice(1)}BulkOperations`, /BulkOperations$/);
     const bulk = bulkName ? this.fragment(bulkName) : undefined;
     if (bulk) entity.operations = this.operations(child(child(bulk, "bulkOperationOptions"), "options"), where, entity);
     if (bulkName && bulkName !== `${name.charAt(0).toLowerCase() + name.slice(1)}BulkOperations`) entity.bulkFragmentName = bulkName;
@@ -2614,7 +2654,7 @@ export class Extractor {
       fullEntity: main.filter((e) => !e.interface && has(detailOf(e))).map((e) => ({ graphqlType: e.graphqlType, spread: detailOf(e) })),
       getEntities: main.filter((e) => !e.interface).map((e) => ({ graphqlType: e.graphqlType, spread: `minimal${e.documentName}` })),
       getAdvancedFilters: main.filter((e) => e.filters.length > 0).map((e) => ({ graphqlType: e.graphqlType, spread: e.filtersFragmentName ?? `filtersFor${e.documentName}` })),
-      GetSortOptions: main.filter((e) => e.properties.some((p) => p.sortable) || e.excludeBaseSortOptions).map((e) => ({ graphqlType: e.graphqlType, spread: `${low(e.documentName)}SortOptions` })),
+      GetSortOptions: main.filter((e) => e.properties.some((p) => p.sortable) || e.excludeBaseSortOptions).map((e) => ({ graphqlType: e.graphqlType, spread: e.sortFragmentName ?? `${low(e.documentName)}SortOptions` })),
       GetBulkOperations: main.filter((e) => e.operations !== undefined).map((e) => ({ graphqlType: e.graphqlType, spread: e.bulkFragmentName ?? `${low(e.documentName)}BulkOperations` })),
       getPreviewComponents: main.filter((e) => e.preview).map((e) => ({ graphqlType: e.graphqlType, spread: e.preview!.fragmentName ?? `previewFor${e.documentName}` })),
       FetchMediafilesOfEntity: main.filter((e) => e.graphqlType === "MediaFileEntity").map((e) => ({ graphqlType: e.graphqlType, spread: `minimal${e.documentName}` })),
@@ -3030,6 +3070,7 @@ export class Extractor {
     if (entity.cardName) out.push(`  elody:cardName ${q(entity.cardName)} ;`);
     if (entity.detailName) out.push(`  elody:detailName ${q(entity.detailName)} ;`);
     if (entity.bulkFragmentName) out.push(`  elody:bulkFragmentName ${q(entity.bulkFragmentName)} ;`);
+    if (entity.sortFragmentName) out.push(`  elody:sortFragmentName ${q(entity.sortFragmentName)} ;`);
     if (entity.documents.length) out.push(`  elody:documents ${entity.documents.map(q).join(" , ")} ;`);
     if (entity.typePills) out.push(`  elody:typePills true ;`);
     if (entity.relationValues !== undefined) out.push(`  elody:relationValues ${entity.relationValues} ;`);

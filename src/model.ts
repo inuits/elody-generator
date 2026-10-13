@@ -648,6 +648,8 @@ export type UiEntity = {
   detailName?: string;
   /** elody:bulkFragmentName: the bulk operations fragment's own name when the client does not call it <x>BulkOperations */
   bulkFragmentName?: string;
+  /** elody:sortFragmentName: the sort options fragment's own name when the client does not call it <x>SortOptions */
+  sortFragmentName?: string;
   /** elody:sortDocument: sort options documents of the type's own, options inline */
   sortDocuments: UiSortDocument[];
   /** elody:bulkDocument: bulk operations documents of the type's or the app's own */

@@ -5,7 +5,7 @@
  * derived from the declared types.
  */
 import type * as M from "./model.js";
-import { renderBulkOperationOptions, renderSortOptionsBlock, carriesBulkOperations, renderSortOptions, lowerFirst, bulkFragmentOf } from "./render.js";
+import { renderBulkOperationOptions, renderSortOptionsBlock, carriesBulkOperations, renderSortOptions, lowerFirst, bulkFragmentOf, sortFragmentOf } from "./render.js";
 
 const LIST_VARIABLES = ["    $type: Entitytyping!", "    $limit: Int", "    $skip: Int", "    $searchValue: SearchFilter!", "    $advancedSearchValue: [FilterInput]", "    $advancedFilterInputs: [AdvancedFilterInput!]!", "    $searchInputType: SearchInputType"];
 const LIST_ARGUMENTS = ["      type: $type", "      limit: $limit", "      skip: $skip", "      searchValue: $searchValue", "      advancedSearchValue: $advancedSearchValue", "      advancedFilterInputs: $advancedFilterInputs", "      searchInputType: $searchInputType"];
@@ -122,7 +122,7 @@ function derived(name: string, app: M.UiApp, all: M.UiEntity[]): string | undefi
       return [`  query getAdvancedFilters($entityType: String!) {`, "    EntityTypeFilters(type: $entityType) {", ...inline(pairs(name, app, main.filter((e) => e.filters.length > 0).map((e) => ({ graphqlType: e.graphqlType, spread: e.filtersFragmentName ?? `filtersFor${nameOf(e)}` }))), 6), "    }", "  }"].join("\n");
     case "GetSortOptions": {
       const base = app.sortOptions.length ? ["      ... on BaseEntity {", renderSortOptionsBlock(app.sortOptions.map((o) => ({ icon: o.icon, labelKey: o.labelKey, value: o.value, primary: o.primary })), 8, false), "      }"] : [];
-      return [`  query GetSortOptions($entityType: String!) {`, "    EntityTypeSortOptions(entityType: $entityType) {", ...base, ...inline(pairs(name, app, main.filter((e) => renderSortOptions(e, 4) !== "").map((e) => ({ graphqlType: e.graphqlType, spread: `${lowerFirst(nameOf(e))}SortOptions` }))), 6), "    }", "  }"].join("\n");
+      return [`  query GetSortOptions($entityType: String!) {`, "    EntityTypeSortOptions(entityType: $entityType) {", ...base, ...inline(pairs(name, app, main.filter((e) => renderSortOptions(e, 4) !== "").map((e) => ({ graphqlType: e.graphqlType, spread: sortFragmentOf(e) }))), 6), "    }", "  }"].join("\n");
     }
     case "GetBulkOperations": {
       const base = ["      ... on BaseEntity {", renderBulkOperationOptions(app.bulkOperationsBase ?? [], 8, app.bulkModalFormQueryLegacy), "      }"];

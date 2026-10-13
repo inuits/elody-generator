@@ -579,6 +579,11 @@ export function renderBulkOperationOptions(operations: M.UiBulkOperation[], inde
   return [`${pad(indent)}bulkOperationOptions {`, renderOptionsBlock(operations, indent + 2, false, legacyFormQuery), `${pad(indent)}}`].join("\n");
 }
 
+/** The sort options fragment's name: <x>SortOptions, or the client's own (elody:sortFragmentName). */
+export function sortFragmentOf(entity: M.UiEntity): string {
+  return entity.sortFragmentName ?? `${lowerFirst(entity.documentName ?? entity.graphqlType)}SortOptions`;
+}
+
 /** The bulk operations fragment's name: <x>BulkOperations, or the client's own (elody:bulkFragmentName). */
 export function bulkFragmentOf(entity: M.UiEntity): string {
   return entity.bulkFragmentName ?? `${lowerFirst(entity.documentName ?? entity.graphqlType)}BulkOperations`;
@@ -1387,7 +1392,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string, all: M
   }
 
   const sort = renderSortOptions(entity, 4);
-  if (sort) fragments.push([`  fragment ${low}SortOptions on ${onType} {`, sort, "  }"].join("\n"));
+  if (sort) fragments.push([`  fragment ${sortFragmentOf(entity)} on ${onType} {`, sort, "  }"].join("\n"));
 
   if (entity.filters.length > 0)
     fragments.push([`  fragment ${entity.filtersFragmentName ?? `filtersFor${type}`} on ${onType} {`, renderFilters(entity, 4), "  }"].join("\n"));
@@ -1459,7 +1464,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string, all: M
         `  query Get${type}SortOptions($entityType: String!) {`,
         "    EntityTypeSortOptions(entityType: $entityType) {",
         `      ... on ${onType} {`,
-        `        ...${low}SortOptions`,
+        `        ...${sortFragmentOf(entity)}`,
         "      }",
         "    }",
         "  }",
