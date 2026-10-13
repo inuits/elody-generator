@@ -181,6 +181,7 @@ type MenuItem = { alias: string; labelKey: string; entityType?: string; icon?: s
 type AppSettings = {
   menu: MenuItem[];
   panelHeaderLegacy?: boolean;
+  bulkModalFormQueryLegacy?: boolean;
   documents: string[];
   paginationLimits?: number[];
   dropzoneOptions: { icon?: string; labelKey: string; value: string }[];
@@ -383,6 +384,8 @@ type Entity = {
   cardName?: string;
   /** elody:detailName: the detail fragment's own name, the client's casing of full<X> */
   detailName?: string;
+  /** elody:bulkFragmentName: the bulk operations fragment's own name, the client's casing of <x>BulkOperations */
+  bulkFragmentName?: string;
   /** elody:sortDocument: sort options documents of the type's own */
   sortDocuments: { queryName: string; options: { labelKey: string; value: string; primary?: boolean; icon?: string }[] }[];
   /** elody:bulkDocument: bulk operations documents of the type's or the app's own */
@@ -428,6 +431,8 @@ export class Extractor {
   private readonly writtenLayouts = new Set<string>();
   /** a panel headed with label(input:) was read: the client runs the older baseGraphql */
   private legacyPanelHeaders = false;
+  /** a bulk modal with formQuery (singular) was read: the client runs the older baseGraphql */
+  private legacyBulkModalForms = false;
 
   /**
    * The results of a list document: per type its fragment spreads and, for fields selected inline,
@@ -500,7 +505,11 @@ export class Extractor {
 
   /** the name of the type's detail fragment: full<X>, or the client's own casing of it (declared as elody:detailName) */
   private detailFragmentName(name: string): string | undefined {
-    const want = `full${name}`;
+    return this.fragmentNamed(`full${name}`);
+  }
+
+  /** a fragment under this name, or under the client's own casing of it */
+  private fragmentNamed(want: string): string | undefined {
     if (this.fragment(want)) return want;
     return [...this.definitions.keys()].find((n) => n.toLowerCase() === want.toLowerCase() && this.fragment(n));
   }
@@ -947,8 +956,11 @@ export class Extractor {
     }
     const form = this.operation(`Get${name}CreateForm`);
     if (form) entity.form = this.formWithFields(this.form(form, `Get${name}CreateForm`, where), where);
-    const bulk = this.fragment(`${name.charAt(0).toLowerCase() + name.slice(1)}BulkOperations`);
+    // the bulk operations fragment: <x>BulkOperations, or the client's own casing of it (declared as elody:bulkFragmentName)
+    const bulkName = this.fragmentNamed(`${name.charAt(0).toLowerCase() + name.slice(1)}BulkOperations`);
+    const bulk = bulkName ? this.fragment(bulkName) : undefined;
     if (bulk) entity.operations = this.operations(child(child(bulk, "bulkOperationOptions"), "options"), where, entity);
+    if (bulkName && bulkName !== `${name.charAt(0).toLowerCase() + name.slice(1)}BulkOperations`) entity.bulkFragmentName = bulkName;
     // the forms the operations open: declared when these files hold them as dynamic forms
     const opened = Extractor.flattenOperations([...(entity.operations ?? []), ...entity.customOperations.flatMap((c) => c.operations), ...(entity.resultOperations ?? [])])
       .flatMap((op) => op.modal?.forms ?? (op.modal?.form ? [op.modal.form] : []))
@@ -1927,7 +1939,10 @@ export class Extractor {
       const modal = objectField(entry, "bulkOperationModal");
       if (modal?.kind === Kind.OBJECT) {
         const forms = objectField(modal, "formQueries") ?? objectField(modal, "formQuery");
-        if (objectField(modal, "formQuery")) this.note(`${where}: a bulk operation modal uses formQuery (singular), the old form; declared as a form reference`);
+        if (objectField(modal, "formQuery")) {
+          this.note(`${where}: a bulk operation modal uses formQuery (singular), the old form; the app declares elody:bulkModalFormQueryLegacy`);
+          this.legacyBulkModalForms = true;
+        }
         const close = scalar(objectField(modal, "askForCloseConfirmation"));
         const pickerList = scalar(objectField(modal, "customQueryEntityPickerList"));
         const formNames = list(forms).map((f) => scalar(f)).filter((f): f is string => f !== undefined);
@@ -2600,7 +2615,7 @@ export class Extractor {
       getEntities: main.filter((e) => !e.interface).map((e) => ({ graphqlType: e.graphqlType, spread: `minimal${e.documentName}` })),
       getAdvancedFilters: main.filter((e) => e.filters.length > 0).map((e) => ({ graphqlType: e.graphqlType, spread: e.filtersFragmentName ?? `filtersFor${e.documentName}` })),
       GetSortOptions: main.filter((e) => e.properties.some((p) => p.sortable) || e.excludeBaseSortOptions).map((e) => ({ graphqlType: e.graphqlType, spread: `${low(e.documentName)}SortOptions` })),
-      GetBulkOperations: main.filter((e) => e.operations !== undefined).map((e) => ({ graphqlType: e.graphqlType, spread: `${low(e.documentName)}BulkOperations` })),
+      GetBulkOperations: main.filter((e) => e.operations !== undefined).map((e) => ({ graphqlType: e.graphqlType, spread: e.bulkFragmentName ?? `${low(e.documentName)}BulkOperations` })),
       getPreviewComponents: main.filter((e) => e.preview).map((e) => ({ graphqlType: e.graphqlType, spread: e.preview!.fragmentName ?? `previewFor${e.documentName}` })),
       FetchMediafilesOfEntity: main.filter((e) => e.graphqlType === "MediaFileEntity").map((e) => ({ graphqlType: e.graphqlType, spread: `minimal${e.documentName}` })),
       SetPrimaryThumbnail: main.filter((e) => ["Media", "Asset"].includes(e.graphqlType) && has(detailOf(e))).map((e) => ({ graphqlType: e.graphqlType, spread: detailOf(e) })),
@@ -2984,6 +2999,7 @@ export class Extractor {
       if (a.filterMatcherKeys) out.push(`  elody:filterMatcherKeys ( ${a.filterMatcherKeys.map(q).join(" ")} ) ;`);
       if (a.filterMatcherLegacy) out.push(`  elody:filterMatcherLegacy true ;`);
       if (a.panelHeaderLegacy || this.legacyPanelHeaders) out.push(`  elody:panelHeaderLegacy true ;`);
+      if (a.bulkModalFormQueryLegacy || this.legacyBulkModalForms) out.push(`  elody:bulkModalFormQueryLegacy true ;`);
       const menuNode = (item: MenuItem, i: number, pad: string): string => {
         const parts = [`sh:order ${i + 1}`, `elody:alias ${q(item.alias)}`, `elody:labelKey ${q(item.labelKey)}`, ...(item.entityType ? [`elody:entityType ${q(item.entityType)}`] : []), ...(item.icon ? [`elody:icon ${q(item.icon)}`] : []), ...(item.isLoggedIn !== undefined ? [`elody:isLoggedIn ${item.isLoggedIn}`] : []), ...(item.requiresAuth !== undefined ? [`elody:requiresAuth ${item.requiresAuth}`] : []), ...(item.can ?? []).map((c) => `elody:can ${q(c)}`)];
         if (item.route !== undefined) parts.push(`elody:route ${q(item.route)}`);
@@ -3013,6 +3029,7 @@ export class Extractor {
     if (entity.filePath && !entity.app) out.push(`  elody:filePath ${q(entity.filePath)} ;`);
     if (entity.cardName) out.push(`  elody:cardName ${q(entity.cardName)} ;`);
     if (entity.detailName) out.push(`  elody:detailName ${q(entity.detailName)} ;`);
+    if (entity.bulkFragmentName) out.push(`  elody:bulkFragmentName ${q(entity.bulkFragmentName)} ;`);
     if (entity.documents.length) out.push(`  elody:documents ${entity.documents.map(q).join(" , ")} ;`);
     if (entity.typePills) out.push(`  elody:typePills true ;`);
     if (entity.relationValues !== undefined) out.push(`  elody:relationValues ${entity.relationValues} ;`);

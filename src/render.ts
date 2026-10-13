@@ -488,7 +488,7 @@ export function renderContextMenuOf(menu: M.UiContextMenu | undefined, indent: n
 }
 
 /** One bulk operation as an input object at an indentation, with its sub-operations nested. */
-function renderOperationEntry(operation: M.UiBulkOperation, indent: number): string {
+function renderOperationEntry(operation: M.UiBulkOperation, indent: number, legacyFormQuery = false): string {
   const lines = [`${pad(indent)}{`];
   if (operation.icon) lines.push(`${pad(indent + 2)}icon: ${operation.icon}`);
   if (operation.label) lines.push(`${pad(indent + 2)}label: "${operation.label}"`);
@@ -510,8 +510,10 @@ function renderOperationEntry(operation: M.UiBulkOperation, indent: number): str
   if (operation.modal) {
     lines.push(`${pad(indent + 2)}bulkOperationModal: {`);
     lines.push(`${pad(indent + 4)}typeModal: ${operation.modal.typeModal}`);
-    if (operation.modal.formQueries?.length) lines.push(`${pad(indent + 4)}formQueries: [${operation.modal.formQueries.map((f) => `"${f}"`).join(", ")}]`);
-    else if (operation.modal.formQuery) lines.push(`${pad(indent + 4)}formQueries: ["${operation.modal.formQuery}"]`);
+    const forms = operation.modal.formQueries?.length ? operation.modal.formQueries : operation.modal.formQuery ? [operation.modal.formQuery] : [];
+    // the client on the older baseGraphql names one form as formQuery (elody:bulkModalFormQueryLegacy)
+    if (forms.length === 1 && legacyFormQuery) lines.push(`${pad(indent + 4)}formQuery: "${forms[0]}"`);
+    else if (forms.length) lines.push(`${pad(indent + 4)}formQueries: [${forms.map((f) => `"${f}"`).join(", ")}]`);
     if (operation.modal.formRelationType) lines.push(`${pad(indent + 4)}formRelationType: "${operation.modal.formRelationType}"`);
     if (operation.modal.closeConfirmation !== undefined) lines.push(`${pad(indent + 4)}askForCloseConfirmation: ${operation.modal.closeConfirmation}`);
     if (operation.modal.permission) lines.push(`${pad(indent + 4)}neededPermission: ${operation.modal.permission}`);
@@ -535,7 +537,7 @@ function renderOperationEntry(operation: M.UiBulkOperation, indent: number): str
   }
   if (operation.subOptions?.length) {
     lines.push(`${pad(indent + 2)}subOptions: [`);
-    for (const sub of operation.subOptions) lines.push(renderOperationEntry(sub, indent + 4));
+    for (const sub of operation.subOptions) lines.push(renderOperationEntry(sub, indent + 4, legacyFormQuery));
     lines.push(`${pad(indent + 2)}]`);
   }
   lines.push(`${pad(indent)}}`);
@@ -543,8 +545,8 @@ function renderOperationEntry(operation: M.UiBulkOperation, indent: number): str
 }
 
 /** options(input: [...]) { ...the fields asked back } at an indentation: a bulk operations set or a list's actions on its result. */
-function renderOptionsBlock(operations: M.UiBulkOperation[], indent: number, contextAsFields = false): string {
-  const entries = operations.map((operation) => renderOperationEntry(operation, indent + 4));
+function renderOptionsBlock(operations: M.UiBulkOperation[], indent: number, contextAsFields = false, legacyFormQuery = false): string {
+  const entries = operations.map((operation) => renderOperationEntry(operation, indent + 4, legacyFormQuery));
   const input =
     operations.length === 0
       ? `${pad(indent)}options(input: []) {`
@@ -573,8 +575,13 @@ function renderOptionsBlock(operations: M.UiBulkOperation[], indent: number, con
   ].join("\n");
 }
 
-export function renderBulkOperationOptions(operations: M.UiBulkOperation[], indent: number): string {
-  return [`${pad(indent)}bulkOperationOptions {`, renderOptionsBlock(operations, indent + 2), `${pad(indent)}}`].join("\n");
+export function renderBulkOperationOptions(operations: M.UiBulkOperation[], indent: number, legacyFormQuery = false): string {
+  return [`${pad(indent)}bulkOperationOptions {`, renderOptionsBlock(operations, indent + 2, false, legacyFormQuery), `${pad(indent)}}`].join("\n");
+}
+
+/** The bulk operations fragment's name: <x>BulkOperations, or the client's own (elody:bulkFragmentName). */
+export function bulkFragmentOf(entity: M.UiEntity): string {
+  return entity.bulkFragmentName ?? `${lowerFirst(entity.documentName ?? entity.graphqlType)}BulkOperations`;
 }
 
 /** The copyFromParent block of a form tab: prefilled from the entity the form is opened on. */
@@ -1028,7 +1035,7 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
       if (element.addEntitiesToForms !== undefined) lines.push(`${pad(depth + 2)}addEntitiesToForms(input: ${element.addEntitiesToForms})`);
       if (element.actionsOnResult) {
         lines.push(`${pad(depth + 2)}actionsOnResult {`, `${pad(depth + 4)}type(input: ${element.actionsOnResult.resultKind})`);
-        lines.push(renderOptionsBlock(element.actionsOnResult.operations, depth + 4, true));
+        lines.push(renderOptionsBlock(element.actionsOnResult.operations, depth + 4, true, entity.bulkModalFormQueryLegacy));
         lines.push(`${pad(depth + 2)}}`);
       }
       lines.push(`${pad(depth)}}`);
@@ -1388,7 +1395,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string, all: M
   const bulkOperations = carriesBulkOperations(entity);
   if (bulkOperations)
     fragments.push(
-      [`  fragment ${low}BulkOperations on ${onType} {`, renderBulkOperationOptions(entity.bulkOperations, 4), "  }"].join("\n"),
+      [`  fragment ${bulkFragmentOf(entity)} on ${onType} {`, renderBulkOperationOptions(entity.bulkOperations, 4, entity.bulkModalFormQueryLegacy), "  }"].join("\n"),
     );
   if (entity.preview) fragments.push(renderPreviewFragment(entity));
   fragments.push(...renderSharedFragments(entity));
@@ -1464,7 +1471,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string, all: M
         `  query Get${type}BulkOperations($entityType: String!) {`,
         "    BulkOperations(entityType: $entityType) {",
         `      ... on ${onType} {`,
-        `        ...${low}BulkOperations`,
+        `        ...${bulkFragmentOf(entity)}`,
         "      }",
         "    }",
         "  }",
@@ -1479,13 +1486,13 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string, all: M
   for (const document of entity.sortDocuments) documents.push(renderSortDocument(document));
 
   for (const document of entity.bulkDocuments)
-    documents.push([`  query ${document.queryName}($entityType: String!) {`, "    BulkOperations(entityType: $entityType) {", renderBulkOperationOptions(document.operations, 6), "    }", "  }"].join("\n"));
+    documents.push([`  query ${document.queryName}($entityType: String!) {`, "    BulkOperations(entityType: $entityType) {", renderBulkOperationOptions(document.operations, 6, entity.bulkModalFormQueryLegacy), "    }", "  }"].join("\n"));
 
   for (const layout of [entity.preview?.layout, entity.preview?.metadataLayout]) if (layout?.emit) documents.push(renderPreviewDocument(entity, layout));
 
   for (const custom of entity.customBulkOperations)
     documents.push(
-      [`  query ${custom.queryName} {`, "    CustomBulkOperations {", renderBulkOperationOptions(custom.operations, 6), "    }", "  }"].join("\n"),
+      [`  query ${custom.queryName} {`, "    CustomBulkOperations {", renderBulkOperationOptions(custom.operations, 6, entity.bulkModalFormQueryLegacy), "    }", "  }"].join("\n"),
     );
 
   for (const form of entity.repetitiveForms) documents.push(renderRepetitiveForm(form));

@@ -5,7 +5,7 @@
  * derived from the declared types.
  */
 import type * as M from "./model.js";
-import { renderBulkOperationOptions, renderSortOptionsBlock, carriesBulkOperations, renderSortOptions, lowerFirst } from "./render.js";
+import { renderBulkOperationOptions, renderSortOptionsBlock, carriesBulkOperations, renderSortOptions, lowerFirst, bulkFragmentOf } from "./render.js";
 
 const LIST_VARIABLES = ["    $type: Entitytyping!", "    $limit: Int", "    $skip: Int", "    $searchValue: SearchFilter!", "    $advancedSearchValue: [FilterInput]", "    $advancedFilterInputs: [AdvancedFilterInput!]!", "    $searchInputType: SearchInputType"];
 const LIST_ARGUMENTS = ["      type: $type", "      limit: $limit", "      skip: $skip", "      searchValue: $searchValue", "      advancedSearchValue: $advancedSearchValue", "      advancedFilterInputs: $advancedFilterInputs", "      searchInputType: $searchInputType"];
@@ -93,10 +93,10 @@ function pairs(document: string, app: M.UiApp, derivedPairs: { graphqlType: stri
   }
   return result;
 }
-const inline = (list: { graphqlType: string; spread?: string; operations?: M.UiBulkOperation[] }[], indent: number) =>
+const inline = (list: { graphqlType: string; spread?: string; operations?: M.UiBulkOperation[] }[], indent: number, legacyFormQuery = false) =>
   list.map((p) =>
     p.operations
-      ? [`${" ".repeat(indent)}... on ${p.graphqlType} {`, renderBulkOperationOptions(p.operations, indent + 2), `${" ".repeat(indent)}}`].join("\n")
+      ? [`${" ".repeat(indent)}... on ${p.graphqlType} {`, renderBulkOperationOptions(p.operations, indent + 2, legacyFormQuery), `${" ".repeat(indent)}}`].join("\n")
       : `${" ".repeat(indent)}... on ${p.graphqlType} {\n${" ".repeat(indent + 2)}...${p.spread}\n${" ".repeat(indent)}}`,
   );
 
@@ -125,8 +125,8 @@ function derived(name: string, app: M.UiApp, all: M.UiEntity[]): string | undefi
       return [`  query GetSortOptions($entityType: String!) {`, "    EntityTypeSortOptions(entityType: $entityType) {", ...base, ...inline(pairs(name, app, main.filter((e) => renderSortOptions(e, 4) !== "").map((e) => ({ graphqlType: e.graphqlType, spread: `${lowerFirst(nameOf(e))}SortOptions` }))), 6), "    }", "  }"].join("\n");
     }
     case "GetBulkOperations": {
-      const base = ["      ... on BaseEntity {", renderBulkOperationOptions(app.bulkOperationsBase ?? [], 8), "      }"];
-      return [`  query GetBulkOperations($entityType: String!) {`, "    BulkOperations(entityType: $entityType) {", ...base, ...inline(pairs(name, app, main.filter((e) => carriesBulkOperations(e)).map((e) => ({ graphqlType: e.graphqlType, spread: `${lowerFirst(nameOf(e))}BulkOperations` }))), 6), "    }", "  }"].join("\n");
+      const base = ["      ... on BaseEntity {", renderBulkOperationOptions(app.bulkOperationsBase ?? [], 8, app.bulkModalFormQueryLegacy), "      }"];
+      return [`  query GetBulkOperations($entityType: String!) {`, "    BulkOperations(entityType: $entityType) {", ...base, ...inline(pairs(name, app, main.filter((e) => carriesBulkOperations(e)).map((e) => ({ graphqlType: e.graphqlType, spread: bulkFragmentOf(e) }))), 6, app.bulkModalFormQueryLegacy), "    }", "  }"].join("\n");
     }
     case "getPreviewComponents": {
       const previews = pairs(name, app, main.filter((e) => e.preview).map((e) => ({ graphqlType: e.graphqlType, spread: e.preview!.fragmentName ?? `previewFor${nameOf(e)}` })));

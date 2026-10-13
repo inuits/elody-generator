@@ -408,6 +408,8 @@ export type UiApp = {
   menu: UiMenuItem[];
   /** elody:panelHeaderLegacy: the client heads panels with label(input:), the older baseGraphql form */
   panelHeaderLegacy?: boolean;
+  /** elody:bulkModalFormQueryLegacy: the client opens bulk modals with formQuery (singular), the older baseGraphql form */
+  bulkModalFormQueryLegacy?: boolean;
   documents: string[];
   paginationLimits?: number[];
   dropzoneOptions: { icon?: string; labelKey: string; value: string; order: number }[];
@@ -644,6 +646,8 @@ export type UiEntity = {
   cardName?: string;
   /** elody:detailName: the detail fragment's own name when the client does not call it full<X> */
   detailName?: string;
+  /** elody:bulkFragmentName: the bulk operations fragment's own name when the client does not call it <x>BulkOperations */
+  bulkFragmentName?: string;
   /** elody:sortDocument: sort options documents of the type's own, options inline */
   sortDocuments: UiSortDocument[];
   /** elody:bulkDocument: bulk operations documents of the type's or the app's own */
@@ -654,6 +658,8 @@ export type UiEntity = {
   app?: UiApp;
   /** the app's dialect, copied onto every declaration: panels headed with label(input:) */
   panelHeaderLegacy?: boolean;
+  /** the app's dialect, copied onto every declaration: bulk modals opened with formQuery (singular) */
+  bulkModalFormQueryLegacy?: boolean;
   /** elody:thumbnail: the card's picture, from an initial value or the primary media file; sh:order places it among the card's fields */
   thumbnail?: { key?: string; fromMediafile?: boolean; order?: number };
   /** hand-written shared fragments spread into a block (elody:listingValuesSpread & co) */
