@@ -1001,6 +1001,41 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
       lines.push(`${pad(depth)}}`);
       return lines.join("\n");
     }
+    if (element.kind === "comments") {
+      const lines = [`${pad(depth)}${element.alias ? `${element.alias}: ` : ""}commentsElement {`, `${pad(depth + 2)}label(input: "${element.label ?? ""}")`];
+      if (element.parentFilterKey) lines.push(`${pad(depth + 2)}parentEntityFilterKey(input: "${element.parentFilterKey}")`);
+      if (element.readOnly) lines.push(`${pad(depth + 2)}readOnly`);
+      if (element.createFields?.length) {
+        lines.push(`${pad(depth + 2)}createFields {`);
+        for (const field of element.createFields) {
+          lines.push(`${pad(depth + 4)}${field.key}: metaData {`, `${pad(depth + 6)}label(input: "${field.labelKey ?? field.key}")`, `${pad(depth + 6)}key(input: "${field.key}")`);
+          if (field.inputType) lines.push(`${pad(depth + 6)}inputField(type: ${field.inputType}) {`, `${pad(depth + 8)}...inputfield`, `${pad(depth + 6)}}`);
+          lines.push(`${pad(depth + 4)}}`);
+        }
+        lines.push(`${pad(depth + 2)}}`);
+      }
+      const composer = element.composer;
+      if (composer) {
+        lines.push(`${pad(depth + 2)}composer {`, `${pad(depth + 4)}label(input: "${composer.label ?? ""}")`, `${pad(depth + 4)}metadataKey(input: "${composer.metadataKey}")`);
+        lines.push(`${pad(depth + 4)}extensions(input: [${composer.extensions.join(", ")}])`);
+        if (composer.multilingual) lines.push(`${pad(depth + 4)}isMultilingual(input: true)`);
+        if (composer.taggables.length) {
+          const entries = composer.taggables.map((t) => {
+            const parts = [...(t.tag ? [`tag: "${t.tag}"`] : []), `taggableEntityType: ${t.entityType}`, `relationType: "${t.relationType}"`];
+            if (t.filterKey) parts.push(`metadataFilterForTagContent: "${t.filterKey}"`);
+            if (t.triggerCharacter) parts.push(`inlineTrigger: { character: "${t.triggerCharacter}"${t.triggerMinCharacters !== undefined ? `, minCharacters: ${t.triggerMinCharacters}` : ""} }`);
+            if (t.flowQuery) parts.push(`guidedFlowQuery: "${t.flowQuery}"`);
+            if (t.flowButtonLabel) parts.push(`guidedFlowButtonLabel: "${t.flowButtonLabel}"`);
+            return `${pad(depth + 10)}{ ${parts.join(", ")} }`;
+          });
+          lines.push(`${pad(depth + 4)}taggingConfiguration {`, `${pad(depth + 6)}taggableEntityConfiguration(`, `${pad(depth + 8)}configuration: [`, ...entries, `${pad(depth + 8)}]`, `${pad(depth + 6)}) {`, `${pad(depth + 8)}...taggableEntityConfiguration`, `${pad(depth + 6)}}`, `${pad(depth + 4)}}`);
+        }
+        if (composer.editorStyles) lines.push(`${pad(depth + 4)}wysiwygElementConfiguration {`, `${pad(depth + 6)}customEditorStyles(input: "${composer.editorStyles}")`, `${pad(depth + 4)}}`);
+        lines.push(`${pad(depth + 2)}}`);
+      }
+      lines.push(`${pad(depth)}}`);
+      return lines.join("\n");
+    }
     if (element.kind === "markdown")
       return [
         `${pad(depth)}markdownViewerElement {`,

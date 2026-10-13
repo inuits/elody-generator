@@ -421,7 +421,12 @@ export type UiPanel = {
   elements: UiElement[];
 };
 
-export type UiElementKind = "shaclShape" | "window" | "list" | "markdown" | "singleMedia" | "map" | "entityViewer";
+export type UiElementKind = "shaclShape" | "window" | "list" | "markdown" | "singleMedia" | "map" | "entityViewer" | "comments";
+
+/** elody:Taggable: what a rich-text editor can tag */
+export type UiTaggable = { tag?: string; entityType: string; relationType: string; filterKey?: string; triggerCharacter?: string; triggerMinCharacters?: number; flowQuery?: string; flowButtonLabel?: string; order: number };
+/** elody:composer: the rich-text editor of a comments element */
+export type UiComposer = { label?: string; metadataKey: string; extensions: string[]; editorStyles?: string; multilingual?: boolean; taggables: UiTaggable[] };
 
 /** elody:windowStatus: the status edited in a window's header (windowElementStatus) */
 export type UiWindowStatus = { labelKey?: string; statusKey: string; statusInputField: string };
@@ -472,6 +477,11 @@ export type UiElement = {
   addEntitiesToForms?: boolean;
   /** elody:cropCoordinatesKey on a media list (cropMediafileCoordinatesKey) */
   cropCoordinatesKey?: string;
+  /** a comments element: elody:parentFilterKey, dash:readOnly, elody:createField, elody:composer */
+  parentFilterKey?: string;
+  readOnly?: boolean;
+  createFields?: { key: string; labelKey?: string; inputType?: string; order: number }[];
+  composer?: UiComposer;
   /** a map element: elody:mapType, elody:center, elody:wktKey, elody:config */
   mapType?: string;
   center?: string;

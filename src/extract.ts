@@ -144,6 +144,7 @@ type Element =
   | { kind: "singleMedia"; label?: string; collapsed: boolean }
   | { kind: "entityViewer"; label?: string; relationType?: string; metadataKey?: string }
   | { kind: "map"; label?: string; collapsed: boolean; mapType?: string; center?: string; wktKey?: string; config: { key: string; value: ValueNode | undefined }[] }
+  | { kind: "comments"; alias?: string; label?: string; parentFilterKey?: string; readOnly?: boolean; createFields: { key: string; labelKey?: string; inputType?: string }[]; composer?: { label?: string; metadataKey: string; extensions: string[]; editorStyles?: string; multilingual?: boolean; taggables: { tag?: string; entityType: string; relationType: string; filterKey?: string; triggerCharacter?: string; triggerMinCharacters?: number; flowQuery?: string; flowButtonLabel?: string }[] } }
   | {
       kind: "list";
       /** inside a panel: the position among the panel's items (fields and elements), from 1 */
@@ -1098,9 +1099,64 @@ export class Extractor {
             .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
             .map((entry) => ({ key: scalar(objectField(entry, "key")) ?? "", value: objectField(entry, "value") })),
         });
-      } else this.note(`${where}: detail element ${element.name.value} is not rendered by the generator; left out`);
+      } else if (element.name.value === "commentsElement") elements.push(this.comments(element, where));
+      else this.note(`${where}: detail element ${element.name.value} is not rendered by the generator; left out`);
     }
     return elements;
+  }
+
+  /** A comments element: its composer (extensions, taggables, editor styles) and the fields a comment is created with. */
+  private comments(element: FieldNode, where: string): Element {
+    const w = `${where} comments element ${alias(element)}`;
+    for (const f of fields(element.selectionSet)) if (!["label", "parentEntityFilterKey", "readOnly", "createFields", "composer"].includes(f.name.value)) this.note(`${w}: field ${f.name.value} has no term; left out`);
+    const createFields = fields(child(element, "createFields")?.selectionSet).map((field) => {
+      const widget = child(field, "inputField");
+      return { key: input(child(field, "key")) ?? alias(field), labelKey: input(child(field, "label")), inputType: widget ? str(widget, "type") : undefined };
+    });
+    const composerField = child(element, "composer");
+    let composer: Extract<Element, { kind: "comments" }>["composer"];
+    if (composerField) {
+      for (const f of fields(composerField.selectionSet)) if (!["label", "metadataKey", "extensions", "isMultilingual", "taggingConfiguration", "wysiwygElementConfiguration"].includes(f.name.value)) this.note(`${w}: composer field ${f.name.value} has no term; left out`);
+      const extensionsField = child(composerField, "extensions");
+      const extensions = list(extensionsField ? argument(extensionsField, "input") : undefined).map((v) => this.instance("WysiwygExtension", scalar(v), `${w} extension`) ?? "");
+      const tagging = child(child(composerField, "taggingConfiguration"), "taggableEntityConfiguration");
+      const configuration = child(composerField, "wysiwygElementConfiguration");
+      for (const f of fields(configuration?.selectionSet)) if (f.name.value !== "customEditorStyles") this.note(`${w}: composer configuration field ${f.name.value} has no term; left out`);
+      const taggables = list(tagging ? argument(tagging, "configuration") : undefined)
+        .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
+        .map((entry) => {
+          for (const f of entry.fields) if (!["tag", "taggableEntityType", "relationType", "metadataFilterForTagContent", "inlineTrigger", "guidedFlowQuery", "guidedFlowButtonLabel"].includes(f.name.value)) this.note(`${w}: taggable field ${f.name.value} has no term; left out`);
+          const trigger = objectField(entry, "inlineTrigger");
+          const min = trigger?.kind === Kind.OBJECT ? scalar(objectField(trigger, "minCharacters")) : undefined;
+          return {
+            tag: scalar(objectField(entry, "tag")),
+            entityType: scalar(objectField(entry, "taggableEntityType")) ?? "",
+            relationType: scalar(objectField(entry, "relationType")) ?? "",
+            filterKey: scalar(objectField(entry, "metadataFilterForTagContent")),
+            triggerCharacter: trigger?.kind === Kind.OBJECT ? scalar(objectField(trigger, "character")) : undefined,
+            triggerMinCharacters: min !== undefined ? Number(min) : undefined,
+            flowQuery: scalar(objectField(entry, "guidedFlowQuery")),
+            flowButtonLabel: scalar(objectField(entry, "guidedFlowButtonLabel")),
+          };
+        });
+      composer = {
+        label: input(child(composerField, "label")),
+        metadataKey: input(child(composerField, "metadataKey")) ?? "",
+        extensions: extensions.filter(Boolean),
+        editorStyles: configuration ? input(child(configuration, "customEditorStyles")) : undefined,
+        multilingual: input(child(composerField, "isMultilingual")) === "true" ? true : undefined,
+        taggables,
+      };
+    }
+    return {
+      kind: "comments",
+      alias: element.alias?.value,
+      label: input(child(element, "label")),
+      parentFilterKey: input(child(element, "parentEntityFilterKey")),
+      readOnly: child(element, "readOnly") ? true : undefined,
+      createFields,
+      composer,
+    };
   }
 
   private window(element: FieldNode, where: string, entity: Entity, byAlias: Map<string, Property>): Element {
@@ -2461,6 +2517,34 @@ export class Extractor {
       return [`      [ a elody:EntityViewerElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, element.relationType ? `      elody:relationType ${q(element.relationType)} ]` : `      elody:metadataKey ${q(element.metadataKey ?? "")} ]`].join("\n");
     if (element.kind === "singleMedia")
       return [`      [ a elody:SingleMediaFileElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ]`].join("\n");
+    if (element.kind === "comments") {
+      const s = [`      [ a elody:CommentsElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`];
+      if (element.alias) s.push(`      elody:alias ${q(element.alias)} ;`);
+      if (element.parentFilterKey) s.push(`      elody:parentFilterKey ${q(element.parentFilterKey)} ;`);
+      if (element.readOnly) s.push(`      dash:readOnly true ;`);
+      for (const [i, field] of element.createFields.entries())
+        s.push(`      elody:createField [ sh:order ${i + 1} ; elody:key ${q(field.key)}${field.labelKey ? ` ; elody:labelKey ${q(field.labelKey)}` : ""}${field.inputType ? ` ; elody:clientInputField ${q(field.inputType)}` : ""} ] ;`);
+      const c = element.composer;
+      if (c) {
+        const lines = [`      elody:composer [ a elody:WysiwygElement ;`, ...(c.label ? [`        rdfs:label ${q(c.label)} ;`] : []), `        elody:metadataKey ${q(c.metadataKey)} ;`];
+        if (c.extensions.length) lines.push(`        elody:extensions ( ${c.extensions.join(" ")} ) ;`);
+        if (c.editorStyles) lines.push(`        elody:editorStyles ${q(c.editorStyles)} ;`);
+        if (c.multilingual) lines.push(`        elody:multilingual true ;`);
+        for (const [i, t] of c.taggables.entries()) {
+          const parts = [`sh:order ${i + 1}`, ...(t.tag ? [`elody:tag ${q(t.tag)}`] : []), `elody:entityType ${q(t.entityType)}`, `elody:relationType ${q(t.relationType)}`];
+          if (t.filterKey) parts.push(`elody:tagFilterKey ${q(t.filterKey)}`);
+          if (t.triggerCharacter) parts.push(`elody:triggerCharacter ${q(t.triggerCharacter)}`);
+          if (t.triggerMinCharacters !== undefined) parts.push(`elody:triggerMinCharacters ${t.triggerMinCharacters}`);
+          if (t.flowQuery) parts.push(`elody:flow ui:${t.flowQuery}`);
+          if (t.flowButtonLabel) parts.push(`elody:flowButtonLabel ${q(t.flowButtonLabel)}`);
+          lines.push(`        elody:taggable [ ${parts.join(" ; ")} ] ;`);
+        }
+        lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " ] ;");
+        s.push(...lines);
+      }
+      s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
+      return s.join("\n");
+    }
     if (element.kind === "map") {
       const s = [`      [ a elody:MapElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ;`];
       if (element.mapType) s.push(`      elody:mapType ${element.mapType} ;`);

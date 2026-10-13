@@ -92,7 +92,7 @@ export const pickerFiltersNameFor = (queryName: string): string =>
 /** Element classes the ontology defines but the generator cannot render yet. */
 const UNRENDERED_ELEMENTS = [
   "MediaFileElement", "GraphElement", "HierarchyListElement",
-  "ManifestViewerElement", "ActionElement", "WysiwygElement", "CommentsElement",
+  "ManifestViewerElement", "ActionElement", "WysiwygElement",
 ].map((name) => elody(name));
 
 const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
@@ -1606,7 +1606,9 @@ class Parse {
               ? "map"
               : types.includes(elody("EntityViewerElement"))
                 ? "entityViewer"
-                : "window";
+                : types.includes(elody("CommentsElement"))
+                  ? "comments"
+                  : "window";
 
     let customBulkOperations: string | undefined;
     const customTerm = r.term(element, elody("customBulkOperations"));
@@ -1687,10 +1689,46 @@ class Parse {
         : undefined,
       addEntitiesToForms: this.optionalFlag(element, elody("addEntitiesToForms")),
       cropCoordinatesKey: r.value(element, elody("cropCoordinatesKey")) || undefined,
+      parentFilterKey: r.value(element, elody("parentFilterKey")) || undefined,
+      readOnly: r.literal(element, dash("readOnly")) === true || undefined,
+      createFields: r.nodes(element, elody("createField")).length
+        ? r.byOrder(r.nodes(element, elody("createField"))).map((field) => ({ key: String(r.value(field, elody("key")) ?? ""), labelKey: r.value(field, elody("labelKey")) || undefined, inputType: r.value(field, elody("clientInputField")) || undefined, order: r.order(field) }))
+        : undefined,
+      composer: this.composer(r.node(element, elody("composer"))),
       mapType: this.enumValue(element, elody("mapType"), elody("MapType")),
       center: r.value(element, elody("center")) || undefined,
       wktKey: r.value(element, elody("wktKey")) || undefined,
       config: r.nodes(element, elody("config")).length ? this.configEntries(element) : undefined,
+    };
+  }
+
+  /** elody:composer: the rich-text editor of a comments element, with what it can tag. */
+  private composer(node: string | undefined): M.UiComposer | undefined {
+    if (!node) return undefined;
+    const r = this.r;
+    const listTerm = r.term(node, elody("extensions"));
+    const extensions = listTerm ? r.list(listTerm.value).map((iri) => this.o.enumValue(iri) ?? iri) : r.nodes(node, elody("extension")).map((iri) => this.o.enumValue(iri) ?? iri);
+    return {
+      label: r.value(node, rdfs("label")) || undefined,
+      metadataKey: String(r.value(node, elody("metadataKey")) ?? ""),
+      extensions,
+      editorStyles: r.value(node, elody("editorStyles")) || undefined,
+      multilingual: this.optionalFlag(node, elody("multilingual")),
+      taggables: r.byOrder(r.nodes(node, elody("taggable"))).map((taggable) => {
+        const flow = r.node(taggable, elody("flow"));
+        const min = r.literal(taggable, elody("triggerMinCharacters"));
+        return {
+          tag: r.value(taggable, elody("tag")) || undefined,
+          entityType: String(r.value(taggable, elody("entityType")) ?? ""),
+          relationType: String(r.value(taggable, elody("relationType")) ?? ""),
+          filterKey: r.value(taggable, elody("tagFilterKey")) || undefined,
+          triggerCharacter: r.value(taggable, elody("triggerCharacter")) || undefined,
+          triggerMinCharacters: typeof min === "number" ? min : undefined,
+          flowQuery: flow ? this.queryNameOf(flow, "guided flow") : undefined,
+          flowButtonLabel: r.value(taggable, elody("flowButtonLabel")) || undefined,
+          order: r.order(taggable),
+        };
+      }),
     };
   }
 
