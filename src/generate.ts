@@ -104,7 +104,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
     if (entity.emit === "inline") continue;
     const file = entity.filePath ? `src/${entity.filePath}` : fileTargetFor(entity.documentName ?? entity.graphqlType);
     if (entity.emit === "file") {
-      apply(file, renderEntityFile(entity, declaration));
+      apply(file, renderEntityFile(entity, declaration, entities));
       continue;
     }
     const path = join(root, file);

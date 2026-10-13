@@ -34,7 +34,7 @@ export async function readUiDeclaration(ttl: string, ontology: Ontology = defaul
   const reading = new Reading([...quads, ...expandExternalSources(quads)]);
   const editors = await scoreEditors(reading);
   const parse = new Parse(reading, ontology, editors);
-  const entities = reading.subjectsOfType(elody("EntityUi")).map((subject) => parse.entity(subject));
+  const entities = [...reading.subjectsOfType(elody("EntityUi")), ...reading.subjectsOfType(elody("App"))].map((subject) => parse.entity(subject));
   // a result rendered from an inline listing references that EntityUi: resolved once every type is parsed
   const byIri = new Map(entities.map((entity) => [entity.iri, entity]));
   for (const entity of entities)
@@ -781,10 +781,12 @@ class Parse {
 
     return {
       iri: subject,
-      graphqlType: String(r.value(subject, elody("graphqlType")) ?? ""),
+      graphqlType: String(r.value(subject, elody("graphqlType")) ?? (r.hasType(subject, elody("App")) ? "Entity" : "")),
       documentName: r.value(subject, elody("documentName")) || undefined,
+      app: r.hasType(subject, elody("App")) ? this.app(subject) : undefined,
       targetClass: r.value(subject, sh("targetClass")),
-      emit: r.value(subject, elody("emit")) === "file" ? "file" : r.value(subject, elody("emit")) === "inline" ? "inline" : "regions",
+      // an App renders a whole file unless it says otherwise
+      emit: r.value(subject, elody("emit")) === "file" ? "file" : r.value(subject, elody("emit")) === "inline" ? "inline" : r.hasType(subject, elody("App")) ? "file" : "regions",
       documents: r.literals(subject, elody("documents")),
       typePills: r.literal(subject, elody("typePills")) === true,
       relationValues: this.optionalFlag(subject, elody("relationValues")) ?? (this.legacy ? true : undefined),
@@ -815,6 +817,10 @@ class Parse {
       fragmentsOnly: r.literal(subject, elody("fragmentsOnly")) === true || undefined,
       filePath: r.value(subject, elody("filePath")) || undefined,
       cardName: r.value(subject, elody("cardName")) || undefined,
+      bulkDocuments: r
+        .nodes(subject, elody("bulkDocument"))
+        .filter((node) => this.emitsOnce(`bulk:${this.queryNameOf(node, "bulk operations document")}`))
+        .map((node) => ({ queryName: this.queryNameOf(node, "bulk operations document"), operations: r.byOrder(r.nodes(node, elody("operation"))).map((op) => this.bulkOperation(op)) })),
       sortDocuments: r
         .nodes(subject, elody("sortDocument"))
         .filter((node) => this.emitsOnce(`sort:${this.queryNameOf(node, "sort options document")}`))
@@ -1067,7 +1073,7 @@ class Parse {
       allowedMatchers: r.node(node, elody("allowedMatchers")) ? r.list(r.node(node, elody("allowedMatchers"))) : undefined,
       valueMappings: this.valueMappings(node),
       facets: r.nodes(node, elody("facet")).length ? r.byOrder(r.nodes(node, elody("facet"))).map((facet) => this.facet(facet)) : undefined,
-      defaultValueBare: typeof r.literal(node, sh("defaultValue")) === "boolean" ? true : undefined,
+      defaultValueBare: typeof r.literal(node, sh("defaultValue")) === "boolean" || r.literal(node, elody("defaultValueBare")) === true ? true : undefined,
       options: r.has(node, elody("optionsType")) || r.has(node, elody("optionsKey")) || r.has(node, elody("optionsKeys")) || r.has(node, elody("optionsInput"))
         ? {
             type: r.value(node, elody("optionsType")) || undefined,
@@ -1093,6 +1099,8 @@ class Parse {
       defaultValueAsList: r.literal(node, elody("defaultValueAsList")) === true,
       hidden: this.hidden(node),
       keepDefaultValue: this.optionalFlag(node, elody("keepDefaultValue")),
+      includeDefaultsFrom: r.literals(node, elody("includeDefaultsFrom")).length ? r.literals(node, elody("includeDefaultsFrom")) : undefined,
+      matchExact: this.optionalFlag(node, elody("matchExact")),
       displayedByDefault: r.literal(node, elody("displayedByDefault")) === true,
       tooltip,
     };
@@ -1398,6 +1406,7 @@ class Parse {
             mode: String(r.value(search, elody("pickerSearchMode")) ?? "Search"),
             keys: r.node(search, elody("keys")) ? r.list(r.node(search, elody("keys"))) : [],
             acceptedTypes: r.literals(search, elody("acceptedTypes")),
+            staticFilters: r.nodes(search, elody("staticFilter")).length ? r.byOrder(r.nodes(search, elody("staticFilter"))).map((input) => this.optionsInput(input)) : undefined,
           }))(r.node(node, elody("pickerSearch"))!)
         : undefined,
       hidden: this.hidden(node) || undefined,
@@ -1443,10 +1452,12 @@ class Parse {
         routeToStep: r.value(node, elody("routeToStep")) || undefined,
         routeToRoute: r.value(node, elody("routeToRoute")) || undefined,
         steps: r.byOrder(r.nodes(node, elody("step"))).map((step) => this.step(step)),
+        finalizeStep: r.node(node, elody("finalizeStep")) ? this.step(r.node(node, elody("finalizeStep"))!) : undefined,
         finalize: finalizeNode
           ? {
               fromStep: String(r.value(finalizeNode, elody("fromStep")) ?? ""),
               relationType: String(r.value(finalizeNode, elody("relationType")) ?? ""),
+              replaceExisting: this.optionalFlag(finalizeNode, elody("replaceExisting")),
             }
           : undefined,
       };
@@ -1491,10 +1502,16 @@ class Parse {
         ? { step: String(r.value(scopeNode, elody("fromStep")) ?? ""), relationType: String(r.value(scopeNode, elody("relationType")) ?? ""), filterKey: r.value(scopeNode, elody("filterKey")) || undefined }
         : undefined,
       relations: r.nodes(step, elody("stepRelation")).length
-        ? r.byOrder(r.nodes(step, elody("stepRelation"))).map((relation) => ({ to: String(r.value(relation, elody("to")) ?? ""), relationType: String(r.value(relation, elody("relationType")) ?? ""), createWhen: r.value(relation, elody("createWhen")) || undefined, order: r.order(relation),
+        ? r.byOrder(r.nodes(step, elody("stepRelation"))).map((relation) => ({ to: String(r.value(relation, elody("to")) ?? ""), toAllOf: r.term(relation, elody("toAllOf")) ? r.list(r.term(relation, elody("toAllOf"))!.value) : undefined, relationType: String(r.value(relation, elody("relationType")) ?? ""), createWhen: r.value(relation, elody("createWhen")) || undefined, order: r.order(relation),
             metadataFields: r.nodes(relation, elody("metadataField")).length
               ? r.byOrder(r.nodes(relation, elody("metadataField"))).map((field) => ({ formMetadataKey: String(r.value(field, elody("formMetadataKey")) ?? ""), relationMetadataKey: String(r.value(field, elody("relationMetadataKey")) ?? ""), asArray: this.optionalFlag(field, elody("asArray")), order: r.order(field) }))
               : undefined }))
+        : undefined,
+      prefills: r.nodes(step, elody("prefillMetadata")).length
+        ? r.byOrder(r.nodes(step, elody("prefillMetadata"))).map((entry) => {
+            const literal = r.literal(entry, elody("value"));
+            return { key: String(r.value(entry, elody("key")) ?? ""), value: String(literal ?? ""), bare: typeof literal === "boolean" || typeof literal === "number", order: r.order(entry) };
+          })
         : undefined,
       creatableTypes: r.nodes(step, elody("creatableType")).length
         ? r.byOrder(r.nodes(step, elody("creatableType"))).map((type) => ({ label: r.value(type, elody("labelKey")) || undefined, entityType: String(r.value(type, elody("entityType")) ?? ""), createForm: this.formRef(type, elody("form")) ?? "", order: r.order(type) }))
@@ -1511,6 +1528,8 @@ class Parse {
       relationValues: r.literal(node, elody("relationValues")) === true,
       readsHost: r.literal(node, elody("readsHost")) === true,
       hostOptional: r.literal(node, elody("hostOptional")) === true || undefined,
+      facets: this.optionalFlag(node, elody("facets")),
+      filtersSpreads: r.literals(node, elody("filtersSpread")),
       // the document of a name goes with the first node that renders it: one with results, one with filters
       emitList: r.nodes(node, elody("result")).length ? this.emitsOnce(`document:${names.list}`) : false,
       emitFilters: r.nodes(node, elody("filter")).length ? this.emitsOnce(`document:${names.filters}`) : false,
@@ -1545,6 +1564,28 @@ class Parse {
       queryName: this.queryNameOf(node, "form source"),
       field: field ?? "",
       withParent: r.literal(node, elody("withParent")) === true,
+    };
+  }
+
+  /** elody:App: the platform document's settings. */
+  private app(subject: string): M.UiApp {
+    const r = this.r;
+    const limits = r.term(subject, elody("paginationLimit"));
+    const keys = r.term(subject, elody("filterMatcherKeys"));
+    return {
+      documents: r.literals(subject, elody("platformDocument")),
+      paginationLimits: limits ? r.list(limits.value).map(Number) : undefined,
+      dropzoneOptions: r.byOrder(r.nodes(subject, elody("dropzoneOption"))).map((option) => ({ icon: r.value(option, elody("icon")) || undefined, labelKey: String(r.value(option, elody("labelKey")) ?? ""), value: String(r.value(option, elody("value")) ?? ""), order: r.order(option) })),
+      bulkDeleteSkipsRelated: this.optionalFlag(subject, elody("bulkDeleteSkipsRelated")),
+      csvExportKeysRequired: this.optionalFlag(subject, elody("csvExportKeysRequired")),
+      preferredLanguage: this.optionalFlag(subject, elody("preferredLanguage")),
+      readsPermissions: this.optionalFlag(subject, elody("readsPermissions")),
+      importJobId: this.optionalFlag(subject, elody("importJobId")),
+      filterMatcherQueryName: r.value(subject, elody("filterMatcherQueryName")) || undefined,
+      filterMatcherKeys: keys ? r.list(keys.value) : undefined,
+      filterMatcherLegacy: this.optionalFlag(subject, elody("filterMatcherLegacy")),
+      sortOptions: r.byOrder(r.nodes(subject, elody("sortOption"))).map((option) => ({ labelKey: String(r.value(option, elody("labelKey")) ?? ""), value: String(r.value(option, elody("value")) ?? ""), primary: this.optionalFlag(option, elody("primary")), icon: r.value(option, elody("icon")) || undefined, order: r.order(option) })),
+      typeEntries: r.nodes(subject, elody("typeEntry")).map((entry) => ({ document: String(r.value(entry, elody("platformDocument")) ?? ""), graphqlType: String(r.value(entry, elody("graphqlType")) ?? ""), fragment: r.value(entry, elody("fragmentName")) || undefined, operations: r.nodes(entry, elody("operation")).length ? r.byOrder(r.nodes(entry, elody("operation"))).map((op) => this.bulkOperation(op)) : undefined, excluded: this.optionalFlag(entry, elody("excluded")) })),
     };
   }
 

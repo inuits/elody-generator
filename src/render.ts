@@ -4,6 +4,7 @@
  * (generateUiQueries.ts, mat2elody/dishacled), output byte-identical.
  */
 import type * as M from "./model.js";
+import { renderPlatformDocuments } from "./platform.js";
 
 const pad = (depth: number) => " ".repeat(depth);
 export const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
@@ -189,7 +190,7 @@ export function renderSortOptions(entity: M.UiEntity, indent: number): string {
 type SortOptionLine = { icon?: string; labelKey: string; value: string; primary?: boolean; pages?: { routeName: string; entityType?: string }[] };
 
 /** The sortOptions block: the options as input, what is asked back. */
-function renderSortOptionsBlock(options: SortOptionLine[], indent: number, excludeBase: boolean, direction?: string): string {
+export function renderSortOptionsBlock(options: SortOptionLine[], indent: number, excludeBase: boolean, direction?: string): string {
   const entries = options
     .map((option) =>
       [
@@ -242,7 +243,7 @@ export function renderSortDocument(document: M.UiSortDocument): string {
 }
 
 const filterDefaultLiteral = (filter: M.UiFilter): string => {
-  if (filter.defaultValueAsList) return `[${filter.defaultValues.map((value) => `"${value}"`).join(", ")}]`;
+  if (filter.defaultValueAsList) return `[${filter.defaultValues.map((value) => (filter.defaultValueBare ? value : `"${value}"`)).join(", ")}]`;
   if (filter.defaultValueBare) return filter.defaultValues[0] ?? "";
   return `"${filter.defaultValues[0] ?? ""}"`;
 };
@@ -393,6 +394,8 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(filter.operator ? [`${pad(indent + 4)}operator: ${filter.operator}`] : []),
       ...(filter.defaultMatcher ? [`${pad(indent + 4)}defaultMatcher: ${filter.defaultMatcher}`] : []),
       ...(filter.allowedMatchers?.length ? [`${pad(indent + 4)}allowedMatchers: [${filter.allowedMatchers.join(", ")}]`] : []),
+      ...(filter.includeDefaultsFrom?.length ? [`${pad(indent + 4)}includeDefaultValuesFromIntialValues: [${filter.includeDefaultsFrom.map((v) => `"${v}"`).join(", ")}]`] : []),
+      ...(filter.matchExact !== undefined ? [`${pad(indent + 4)}matchExact: ${filter.matchExact}`] : []),
       ...(filter.label ? [`${pad(indent + 4)}label: "${filter.label}"`] : []),
       ...(filter.selectionOption ? [`${pad(indent + 4)}selectionOption: ${filter.selectionOption}`] : []),
       ...(filter.showTime !== undefined ? [`${pad(indent + 4)}showTimeForDateFilter: ${filter.showTime}`] : []),
@@ -417,6 +420,8 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(filter.operator ? [`${pad(indent + 4)}operator`] : []),
       ...(filter.defaultMatcher ? [`${pad(indent + 4)}defaultMatcher`] : []),
       ...(filter.allowedMatchers?.length ? [`${pad(indent + 4)}allowedMatchers`] : []),
+      ...(filter.includeDefaultsFrom?.length ? [`${pad(indent + 4)}includeDefaultValuesFromIntialValues`] : []),
+      ...(filter.matchExact !== undefined ? [`${pad(indent + 4)}matchExact`] : []),
       ...(filter.label ? [`${pad(indent + 4)}label`] : []),
       // a filter that fetches its options asks the option settings back whether declared or not: what is asked back more is harmless
       ...(filter.selectionOption || fetchesOptions ? [`${pad(indent + 4)}selectionOption`] : []),
@@ -428,7 +433,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(filter.facets?.length ? [`${pad(indent + 4)}facets {`, `${pad(indent + 6)}...facetFields`, `${pad(indent + 4)}}`] : []),
     ];
     const selection = [
-      ...(filter.selectionSpread ? [`${pad(indent + 4)}...${filter.selectionSpread}`] : askedBack),
+      ...(filter.selectionSpread ? [`${pad(indent + 4)}...${filter.selectionSpread}`, ...(filter.matchExact !== undefined ? [`${pad(indent + 4)}matchExact`] : [])] : askedBack),
       ...(filter.tooltip ? [`${pad(indent + 4)}tooltip(value: true)`] : []),
       ...(filter.defaultValues.length > 0 || filter.defaultValueAsList ? [`${pad(indent + 4)}defaultValue(value: ${filterDefaultLiteral(filter)})`] : []),
       ...(filter.hidden ? [`${pad(indent + 4)}hidden(value: true)`] : []),
@@ -600,7 +605,8 @@ export function renderFormField(field: M.UiCreateFormField, indent: number): str
       lines.push(`${pad(indent + 4)}virtualKeyboardConfig(input: { layouts: [${field.virtualKeyboardLayouts.map((l) => `"${l}"`).join(", ")}] }) {`, `${pad(indent + 6)}layouts`, `${pad(indent + 4)}}`);
     if (field.pickerSearch) {
       const search = field.pickerSearch;
-      const parts = [`mode: ${search.mode}`, ...(search.keys.length ? [`metadataKeys: [${search.keys.map((k) => `"${k}"`).join(", ")}]`] : []), ...(search.acceptedTypes.length ? [`acceptedTypes: [${search.acceptedTypes.map((t) => `"${t}"`).join(", ")}]`] : [])];
+      const staticFilters = (search.staticFilters ?? []).map((input) => `{ type: ${input.kind}${input.key ? `, key: ["${input.key}"]` : ""}, value: ${Array.isArray(input.value) ? `[${input.value.map((v) => `"${v}"`).join(", ")}]` : `"${input.value}"`}${input.matchExact !== undefined ? `, match_exact: ${input.matchExact}` : ""}${input.operator ? `, operator: ${input.operator}` : ""} }`);
+      const parts = [`mode: ${search.mode}`, ...(staticFilters.length ? [`staticFilters: [${staticFilters.join(", ")}]`] : []), ...(search.keys.length ? [`metadataKeys: [${search.keys.map((k) => `"${k}"`).join(", ")}]`] : []), ...(search.acceptedTypes.length ? [`acceptedTypes: [${search.acceptedTypes.map((t) => `"${t}"`).join(", ")}]`] : [])];
       lines.push(`${pad(indent + 4)}entityPickerSearchConfig(input: { ${parts.join(", ")} }) {`, `${pad(indent + 6)}mode`, `${pad(indent + 6)}metadataKeys`, `${pad(indent + 6)}acceptedTypes`, `${pad(indent + 6)}staticFilters`, `${pad(indent + 4)}}`);
     }
     lines.push(`${pad(indent + 2)}}`);
@@ -707,8 +713,8 @@ export function renderCreateForm(form: M.UiCreateForm): string {
 }
 
 export function renderRepetitiveForm(form: M.UiRepetitiveForm): string {
-  const steps = form.steps.map((step) => {
-    const lines = [`      ${step.key}: steps {`, `        key(input: "${step.key}")`];
+  const renderStep = (step: M.UiRepetitiveStep, asFinalize = false) => {
+    const lines = asFinalize ? ["      finalize {"] : [`      ${step.key}: steps {`, `        key(input: "${step.key}")`];
     if (step.showBackButton !== undefined) lines.push(`        showBackButton(input: ${step.showBackButton})`);
     lines.push(`        label(input: "${step.label ?? ""}")`);
     if (step.entityType) lines.push(`        entityType(input: "${step.entityType}")`);
@@ -728,7 +734,7 @@ export function renderRepetitiveForm(form: M.UiRepetitiveForm): string {
       lines.push("        }");
     }
     for (const relation of step.relations ?? []) {
-      lines.push("        relations {", `          to(input: "${relation.to}")`, `          relationType(input: "${relation.relationType}")`);
+      lines.push("        relations {", relation.toAllOf ? `          toAllOf(input: [${relation.toAllOf.map((k) => `"${k}"`).join(", ")}])` : `          to(input: "${relation.to}")`, `          relationType(input: "${relation.relationType}")`);
       if (relation.createWhen) lines.push(`          createWhen(input: ${relation.createWhen})`);
       if (relation.metadataFields?.length) {
         const asArray = relation.metadataFields.some((field) => field.asArray !== undefined);
@@ -739,6 +745,7 @@ export function renderRepetitiveForm(form: M.UiRepetitiveForm): string {
       }
       lines.push("        }");
     }
+    for (const prefill of step.prefills ?? []) lines.push("        prefillMetadata {", `          key(input: "${prefill.key}")`, `          value(input: ${prefill.bare ? prefill.value : `"${prefill.value}"`})`, "        }");
     if (step.creatableTypes?.length) {
       lines.push("        creatableTypes(", "          input: [");
       for (const type of step.creatableTypes) lines.push(`            { label: "${type.label ?? ""}", entityType: "${type.entityType}", createForm: "${type.createForm}" }`);
@@ -757,13 +764,16 @@ export function renderRepetitiveForm(form: M.UiRepetitiveForm): string {
     }
     lines.push("      }");
     return lines.join("\n");
-  });
+  };
+  const steps = form.steps.map((step) => renderStep(step));
+  const finalizeStep = form.finalizeStep ? renderStep(form.finalizeStep, true) : undefined;
 
   const finalize = form.finalize
     ? [
         "      finalizeOnHost {",
         `        fromStep(input: "${form.finalize.fromStep}")`,
         `        relationType(input: "${form.finalize.relationType}")`,
+        ...(form.finalize.replaceExisting !== undefined ? [`        replaceExisting(input: ${form.finalize.replaceExisting})`] : []),
         "      }",
       ].join("\n")
     : "";
@@ -780,6 +790,7 @@ export function renderRepetitiveForm(form: M.UiRepetitiveForm): string {
     ...(form.routeToStep ? [`      routeToStep(input: "${form.routeToStep}")`] : []),
     ...(form.routeToRoute ? [`      routeToRoute(input: "${form.routeToRoute}")`] : []),
     steps.join("\n"),
+    ...(finalizeStep ? [finalizeStep] : []),
     ...(finalize ? [finalize] : []),
     "    }",
     "  }",
@@ -840,6 +851,7 @@ export function renderListQuery(picker: M.UiPicker): string {
     "    ) {",
     "      count",
     "      limit",
+    ...(picker.facets ? ["      facets"] : []),
     "      results {",
     "        id",
     "        uuid",
@@ -858,8 +870,8 @@ export function renderListQuery(picker: M.UiPicker): string {
 export function renderListFilters(picker: M.UiPicker): string {
   // the filters narrowed to a type when declared (... on X { advancedFilters })
   const filters = picker.filtersType
-    ? [`      ... on ${picker.filtersType} {`, renderFilterList(picker.filters, 8), "      }"]
-    : [renderFilterList(picker.filters, 6)];
+    ? [`      ... on ${picker.filtersType} {`, renderFilterList(picker.filters, 8, picker.filtersSpreads), "      }"]
+    : [renderFilterList(picker.filters, 6, picker.filtersSpreads)];
   return [`  query ${picker.filtersQueryName}($entityType: String!) {`, "    EntityTypeFilters(type: $entityType) {", ...filters, "    }", "  }"].join("\n");
 }
 
@@ -1281,7 +1293,7 @@ export function renderListingBody(entity: M.UiEntity, indent: number): string[] 
   return [...head, ...values, ...relation, ...modes, ...card];
 }
 
-export function renderEntityFile(entity: M.UiEntity, declaration: string): string {
+export function renderEntityFile(entity: M.UiEntity, declaration: string, all: M.UiEntity[] = []): string {
   const onType = entity.graphqlType;
   // fragment and document names: elody:documentName when several declarations share a GraphQL type
   const type = entity.documentName ?? entity.graphqlType;
@@ -1334,8 +1346,11 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   fragments.push(...renderSharedFragments(entity));
   // a file of shared fragments alone
   if (entity.fragmentsOnly) fragments.splice(0, fragments.length, ...renderSharedFragments(entity));
+  // the app's platform document: the constants and the type-wide documents, then the app's own documents
+  const platform = entity.app ? renderPlatformDocuments({ ...entity.app, bulkOperationsBase: entity.bulkOperations, relationValues: entity.relationValues }, all) : undefined;
+  if (platform) fragments.splice(0, fragments.length, ...platform.fragments);
 
-  const documents: string[] = [];
+  const documents: string[] = platform ? [...platform.documents] : [];
   if (entity.documents.includes("entities"))
     documents.push(
       [
@@ -1414,6 +1429,9 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string): strin
   for (const form of entity.createForms) documents.push(renderCreateForm(form));
 
   for (const document of entity.sortDocuments) documents.push(renderSortDocument(document));
+
+  for (const document of entity.bulkDocuments)
+    documents.push([`  query ${document.queryName}($entityType: String!) {`, "    BulkOperations(entityType: $entityType) {", renderBulkOperationOptions(document.operations, 6), "    }", "  }"].join("\n"));
 
   for (const layout of [entity.preview?.layout, entity.preview?.metadataLayout]) if (layout?.emit) documents.push(renderPreviewDocument(entity, layout));
 

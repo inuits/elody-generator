@@ -11,6 +11,7 @@
  * read and tidied, not committed as it comes.
  */
 import { Kind, parse, print } from "graphql";
+import { PLATFORM_DOCUMENTS } from "./platform.js";
 import type { ArgumentNode, FieldNode, FragmentDefinitionNode, InlineFragmentNode, ObjectValueNode, OperationDefinitionNode, SelectionNode, SelectionSetNode, ValueNode } from "graphql";
 import { readDefinitions, type Definition, type QueryFile } from "./compare.js";
 import { Ontology, defaultOntology } from "./ontology.js";
@@ -176,6 +177,21 @@ type Element =
     };
 type Column = { alias?: string; size?: string; elements: Element[]; elementSpreads: string[] };
 type PreviewLayout = { queryName: string; columns: Column[] };
+type AppSettings = {
+  documents: string[];
+  paginationLimits?: number[];
+  dropzoneOptions: { icon?: string; labelKey: string; value: string }[];
+  bulkDeleteSkipsRelated?: boolean;
+  csvExportKeysRequired?: boolean;
+  preferredLanguage?: boolean;
+  readsPermissions?: boolean;
+  importJobId?: boolean;
+  filterMatcherQueryName?: string;
+  filterMatcherKeys?: string[];
+  filterMatcherLegacy?: boolean;
+  sortOptions: { labelKey: string; value: string; primary?: boolean; icon?: string }[];
+  typeEntries: { document: string; graphqlType: string; fragment?: string; operations?: Operation[]; excluded?: boolean }[];
+};
 type DeleteOptions = {
   deleteEntityLabel?: string;
   deleteRelationsQuery?: string;
@@ -207,6 +223,8 @@ type Filter = {
   defaultAsList: boolean;
   hidden: boolean;
   keepDefaultValue?: boolean;
+  includeDefaultsFrom?: string[];
+  matchExact?: boolean;
   options?: {
     type?: string;
     key?: string;
@@ -238,7 +256,7 @@ type Filter = {
   lookup?: Lookup;
 };
 
-type FormField = { key: string; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; hidden?: boolean; clientField?: string; validationMessage?: string; tooltipKey?: string; defaultValue?: string; noWidget?: boolean; virtualKeyboardLayouts?: string[]; pickerSearch?: { mode: string; keys: string[]; acceptedTypes: string[] } };
+type FormField = { key: string; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; hidden?: boolean; clientField?: string; validationMessage?: string; tooltipKey?: string; defaultValue?: string; noWidget?: boolean; virtualKeyboardLayouts?: string[]; pickerSearch?: { mode: string; keys: string[]; acceptedTypes: string[]; staticFilters?: { kind?: string; key?: string; value: string | string[]; matchExact?: boolean; operator?: string }[] } };
 type Form = { queryName: string; label?: string; tabAlias?: string; fields: FormField[]; fieldsSpreads: string[]; copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string }[] }; submit?: { alias?: string; label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors: boolean; submitAction?: string } };
 
 type Operation = {
@@ -285,10 +303,11 @@ type FlowStep = {
   metadataOnly?: boolean;
   terminalActionLabel?: string;
   scope?: { step: string; relationType: string; filterKey?: string };
-  relations?: { to: string; relationType: string; createWhen?: string; metadataFields?: { formMetadataKey: string; relationMetadataKey: string; asArray?: boolean }[] }[];
+  relations?: { to: string; toAllOf?: string[]; relationType: string; createWhen?: string; metadataFields?: { formMetadataKey: string; relationMetadataKey: string; asArray?: boolean }[] }[];
   creatableTypes?: { label?: string; entityType: string; createForm: string }[];
+  prefills?: { key: string; value: ValueNode | undefined }[];
 };
-type Flow = { queryName: string; label?: string; repeatable?: boolean; refetchOnFinish?: boolean; linear?: boolean; startOnFirstStep?: boolean; returnsSelection?: boolean; routeToStep?: string; routeToRoute?: string; steps: FlowStep[]; finalize?: { fromStep: string; relationType: string } };
+type Flow = { queryName: string; label?: string; repeatable?: boolean; refetchOnFinish?: boolean; linear?: boolean; startOnFirstStep?: boolean; returnsSelection?: boolean; routeToStep?: string; routeToRoute?: string; steps: FlowStep[]; finalizeStep?: FlowStep; finalize?: { fromStep: string; relationType: string; replaceExisting?: boolean } };
 /** an id-addressed document a modal loads by name (ProcessorConfigForm(id: $id)) */
 type FormSource = { queryName: string; field: string; withParent: boolean };
 
@@ -296,7 +315,7 @@ type FieldsFragment = { name: string; fields: FormField[] };
 type ElementsFragment = { name: string; elements: Element[] };
 type ValuesFragment = { name: string; cardName?: string; fields: string[]; aliases: string[]; valuesFields: string[]; cardShows?: string[]; contextMenu?: Entity["contextMenu"] };
 
-type ListQuery = { node?: string; name: string; filtersOnly?: boolean; filtersName?: string; filtersType?: string; relationValues?: boolean; readsHost?: boolean; hostOptional?: boolean; results: { type: string; fragments: string[]; listingNode?: string; cardMenuSpread?: string }[]; filters: Filter[] };
+type ListQuery = { node?: string; name: string; filtersOnly?: boolean; facets?: boolean; filtersSpreads?: string[]; filtersName?: string; filtersType?: string; relationValues?: boolean; readsHost?: boolean; hostOptional?: boolean; results: { type: string; fragments: string[]; listingNode?: string; cardMenuSpread?: string }[]; filters: Filter[] };
 type Picker = ListQuery;
 
 type Entity = {
@@ -357,6 +376,10 @@ type Entity = {
   cardName?: string;
   /** elody:sortDocument: sort options documents of the type's own */
   sortDocuments: { queryName: string; options: { labelKey: string; value: string; primary?: boolean; icon?: string }[] }[];
+  /** elody:bulkDocument: bulk operations documents of the type's or the app's own */
+  bulkDocuments: { queryName: string; operations: Operation[] }[];
+  /** elody:App: the platform document's settings */
+  app?: AppSettings;
   /** elody:preview: the previewFor<X> fragment and the layouts it names */
   preview?: { fragmentName?: string; kind?: string; coverage?: string; labelKey?: string; openByDefault?: boolean; showCurrentPreviewFlow?: boolean; keepLastActiveItemHighlighted?: boolean; displayOpenDetailPageButton?: boolean; layout?: PreviewLayout; metadataLayout?: PreviewLayout };
   operations?: Operation[];
@@ -393,6 +416,7 @@ export class Extractor {
   /** the preview layouts a previewFor<X> fragment names: not orphans */
   private readonly previewLayoutNames = new Set<string>();
   private readonly claimedPreviews = new Set<string>();
+  private readonly writtenLayouts = new Set<string>();
 
   /**
    * The results of a list document: per type its fragment spreads and, for fields selected inline,
@@ -486,7 +510,7 @@ export class Extractor {
   types(): string[] {
     this.registerCardVariants();
     return [...this.definitions.values()]
-      .filter((d) => d.kind === "fragment" && d.name.startsWith("minimal") && d.name !== "minimalBaseEntity" && !d.name.startsWith("minimalLinked"))
+      .filter((d) => d.kind === "fragment" && d.name.startsWith("minimal") && d.name !== "minimalBaseEntity")
       .map((d) => d.name.slice("minimal".length))
       .filter((name) => (this.fragment(`minimal${name}`)?.typeCondition.name.value ?? "").length > 0)
       // a listing core (minimal<X>Core) belongs to the type that spreads it, not a type of its own
@@ -580,11 +604,14 @@ export class Extractor {
       panelFragments: [],
       filtersFragments: [],
       sortDocuments: [],
+      bulkDocuments: [],
     };
     const where = name;
     if (!minimal) entity.interface = true;
     if (this.inlineSet.has(name)) entity.inline = true;
     if (this.cardVariants.has(name)) entity.cardName = this.cardVariants.get(name);
+    // minimalLinked<X>: the card the platform's link mutations show, another card of the type
+    if (/^Linked[A-Z]/.test(name) && graphqlType !== name) entity.cardName = `minimal${name}`;
 
     // initial values: the detail fragment's order, the listing's values first when the detail lacks them
     const minimalValues = child(listing, "intialValues");
@@ -1394,7 +1421,7 @@ export class Extractor {
     const { block, filtersType } = this.advancedFiltersOf(filters);
     const node = this.mint(name, `${name}Picker`);
     this.pickerNodes.set(`${name}|${filtersName ?? ""}`, node);
-    entity.pickers.push({ node, name, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, readsHost: results.length ? this.queryReadsHost(query) || undefined : undefined, hostOptional: results.length && this.queryHostOptional(query) ? true : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
+    entity.pickers.push({ node, name, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, readsHost: results.length ? this.queryReadsHost(query) || undefined : undefined, hostOptional: results.length && this.queryHostOptional(query) ? true : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [], facets: query && child(fields(query.selectionSet)[0], "facets") ? true : undefined, filtersSpreads: block ? spreads(block.selectionSet) : [] });
     return node;
   }
 
@@ -1423,7 +1450,7 @@ export class Extractor {
     }
     const filters = filtersName ? this.operation(filtersName) : undefined;
     const { block, filtersType } = this.advancedFiltersOf(filters);
-    entity.listQueries.push({ node, name, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, readsHost: results.length ? this.queryReadsHost(query) || undefined : undefined, hostOptional: results.length && this.queryHostOptional(query) ? true : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [] });
+    entity.listQueries.push({ node, name, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, readsHost: results.length ? this.queryReadsHost(query) || undefined : undefined, hostOptional: results.length && this.queryHostOptional(query) ? true : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [], facets: query && child(fields(query.selectionSet)[0], "facets") ? true : undefined, filtersSpreads: block ? spreads(block.selectionSet) : [] });
     if (filtersName && !filters) this.note(`${where}: filters document ${filtersName} is not in these files; the list query declares no filters and the name stays`);
     return node;
   }
@@ -1474,7 +1501,7 @@ export class Extractor {
         tooltip: child(field, "tooltip") !== undefined,
         defaults: list(defaultValue).map((v) => scalar(v) ?? ""),
         defaultAsList: defaultValue?.kind === Kind.LIST,
-        defaultBare: defaultValue?.kind === Kind.BOOLEAN ? true : undefined,
+        defaultBare: defaultValue?.kind === Kind.BOOLEAN || defaultValue?.kind === Kind.ENUM || (defaultValue?.kind === Kind.LIST && defaultValue.values.length > 0 && defaultValue.values.every((v) => v.kind === Kind.ENUM)) ? true : undefined,
         itemTypes: argument(field, "itemTypes") ? list(argument(field, "itemTypes")).map((v) => scalar(v) ?? "") : undefined,
         defaultMatcher: str(field, "defaultMatcher"),
         allowedMatchers: argument(field, "allowedMatchers") ? list(argument(field, "allowedMatchers")).map((v) => scalar(v) ?? "") : undefined,
@@ -1482,6 +1509,8 @@ export class Extractor {
         facets: argument(field, "facets") ? this.facets(argument(field, "facets")) : undefined,
         hidden: child(field, "hidden") !== undefined && input(child(field, "hidden")) !== "false",
         keepDefaultValue: child(field, "doNotOverrideDefaultValue") !== undefined && input(child(field, "doNotOverrideDefaultValue")) !== "false" ? true : undefined,
+        includeDefaultsFrom: argument(field, "includeDefaultValuesFromIntialValues") ? list(argument(field, "includeDefaultValuesFromIntialValues")).map((v) => scalar(v) ?? "") : undefined,
+        matchExact: argument(field, "matchExact") ? scalar(argument(field, "matchExact")) === "true" : undefined,
       };
       const mapping = argument(field, "filterOptionsMapping");
       if (mapping?.kind === Kind.OBJECT) {
@@ -1558,11 +1587,9 @@ export class Extractor {
   private flow(query: OperationDefinitionNode, queryName: string, where: string, entity: Entity): Flow {
     const root = fields(query.selectionSet).find((f) => f.name.value === "GetRepetitiveForm")!;
     for (const field of fields(root.selectionSet))
-      if (!["label", "repeatable", "refetchOnFinish", "linear", "startOnFirstStep", "returnsSelection", "routeToStep", "routeToRoute", "steps", "finalizeOnHost"].includes(field.name.value)) this.note(`${where}: guided flow ${queryName} field ${field.name.value} has no term; left out`);
-    const steps = fields(root.selectionSet)
-      .filter((f) => f.name.value === "steps")
-      .map((step): FlowStep => {
-        const known = ["key", "label", "entityType", "createForm", "pickerQuery", "pickerFiltersQuery", "acceptedTypes", "maxSelection", "overviewFields", "showBackButton", "skipSearchIfPriorIsNew", "pickerFiltersCollapsed", "terminalActionLabel", "scopeToRelationOf", "relations", "creatableTypes", "metadataOnly"];
+      if (!["label", "repeatable", "refetchOnFinish", "linear", "startOnFirstStep", "returnsSelection", "routeToStep", "routeToRoute", "steps", "finalize", "finalizeOnHost"].includes(field.name.value)) this.note(`${where}: guided flow ${queryName} field ${field.name.value} has no term; left out`);
+    const readStep = (step: FieldNode): FlowStep => {
+        const known = ["key", "label", "entityType", "createForm", "pickerQuery", "pickerFiltersQuery", "acceptedTypes", "maxSelection", "overviewFields", "showBackButton", "skipSearchIfPriorIsNew", "pickerFiltersCollapsed", "terminalActionLabel", "scopeToRelationOf", "relations", "creatableTypes", "metadataOnly", "prefillMetadata"];
         for (const field of fields(step.selectionSet)) if (!known.includes(field.name.value)) this.note(`${where}: guided flow ${queryName} step ${alias(step)} field ${field.name.value} has no term; left out`);
         const pickerQuery = input(child(step, "pickerQuery"));
         const overview = child(step, "overviewFields");
@@ -1571,7 +1598,9 @@ export class Extractor {
         const scope = child(step, "scopeToRelationOf");
         const relations = fields(step.selectionSet).filter((f) => f.name.value === "relations");
         const creatable = child(step, "creatableTypes");
+        const prefills = fields(step.selectionSet).filter((f) => f.name.value === "prefillMetadata");
         return {
+          prefills: prefills.length ? prefills.map((p) => ({ key: input(child(p, "key")) ?? "", value: child(p, "value") ? argument(child(p, "value")!, "input") : undefined })) : undefined,
           showBackButton: flag("showBackButton"),
           skipSearchIfPriorIsNew: flag("skipSearchIfPriorIsNew"),
           pickerFiltersCollapsed: flag("pickerFiltersCollapsed"),
@@ -1583,6 +1612,7 @@ export class Extractor {
                 const metadata = child(relation, "metadataFields");
                 return {
                   to: input(child(relation, "to")) ?? "",
+                  toAllOf: child(relation, "toAllOf") ? list(argument(child(relation, "toAllOf")!, "input")).map((v) => scalar(v) ?? "") : undefined,
                   relationType: input(child(relation, "relationType")) ?? "",
                   createWhen: input(child(relation, "createWhen")),
                   metadataFields: metadata
@@ -1609,7 +1639,10 @@ export class Extractor {
             .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
             .map((entry) => ({ key: scalar(objectField(entry, "key")) ?? "", label: scalar(objectField(entry, "label")) })),
         };
-      });
+    };
+    const steps = fields(root.selectionSet).filter((f) => f.name.value === "steps").map(readStep);
+    const finalizeField = child(root, "finalize");
+    const finalizeStep = finalizeField ? readStep(finalizeField) : undefined;
     const finalize = child(root, "finalizeOnHost");
     return {
       queryName,
@@ -1622,7 +1655,8 @@ export class Extractor {
       routeToStep: input(child(root, "routeToStep")),
       routeToRoute: input(child(root, "routeToRoute")),
       steps,
-      finalize: finalize ? { fromStep: input(child(finalize, "fromStep")) ?? "", relationType: input(child(finalize, "relationType")) ?? "" } : undefined,
+      finalizeStep,
+      finalize: finalize ? { fromStep: input(child(finalize, "fromStep")) ?? "", relationType: input(child(finalize, "relationType")) ?? "", replaceExisting: child(finalize, "replaceExisting") ? input(child(finalize, "replaceExisting")) === "true" : undefined } : undefined,
     };
   }
 
@@ -1730,7 +1764,16 @@ export class Extractor {
       virtualKeyboardLayouts: keyboard?.kind === Kind.OBJECT ? list(objectField(keyboard, "layouts")).map((v) => scalar(v) ?? "") : undefined,
       pickerSearch:
         search?.kind === Kind.OBJECT
-          ? { mode: scalar(objectField(search, "mode")) ?? "Search", keys: list(objectField(search, "metadataKeys")).map((v) => scalar(v) ?? ""), acceptedTypes: list(objectField(search, "acceptedTypes")).map((v) => scalar(v) ?? "") }
+          ? {
+              mode: scalar(objectField(search, "mode")) ?? "Search",
+              keys: list(objectField(search, "metadataKeys")).map((v) => scalar(v) ?? ""),
+              acceptedTypes: list(objectField(search, "acceptedTypes")).map((v) => scalar(v) ?? ""),
+              staticFilters: objectField(search, "staticFilters")
+                ? list(objectField(search, "staticFilters"))
+                    .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
+                    .map((o) => ({ kind: this.instance("FilterKind", scalar(objectField(o, "type")), `${where} static filter`), key: scalar(list(objectField(o, "key"))[0]), value: objectField(o, "value")?.kind === Kind.LIST ? list(objectField(o, "value")).map((v) => scalar(v) ?? "") : (scalar(objectField(o, "value")) ?? ""), matchExact: objectField(o, "match_exact") ? scalar(objectField(o, "match_exact")) === "true" : undefined, operator: scalar(objectField(o, "operator")) }))
+                : undefined,
+            }
           : undefined,
     };
   }
@@ -1967,7 +2010,10 @@ export class Extractor {
     if (f.aggregation) lines.push(`    elody:filterAggregation ${q(f.aggregation)} ;`);
     if (f.hidden) lines.push(`    dash:hidden true ;`);
     if (f.keepDefaultValue) lines.push(`    elody:keepDefaultValue true ;`);
-    for (const value of f.defaults) lines.push(`    sh:defaultValue ${f.defaultBare ? value : q(value)} ;`);
+    for (const v of f.includeDefaultsFrom ?? []) lines.push(`    elody:includeDefaultsFrom ${q(v)} ;`);
+    if (f.matchExact !== undefined) lines.push(`    elody:matchExact ${f.matchExact} ;`);
+    for (const value of f.defaults) lines.push(`    sh:defaultValue ${f.defaultBare && /^(true|false)$/.test(value) ? value : q(value)} ;`);
+    if (f.defaultBare && !f.defaults.every((value) => /^(true|false)$/.test(value))) lines.push(`    elody:defaultValueBare true ;`);
     for (const t of f.itemTypes ?? []) lines.push(`    elody:itemTypes ${q(t)} ;`);
     if (f.defaultMatcher) lines.push(`    elody:defaultMatcher ${q(f.defaultMatcher)} ;`);
     if (f.allowedMatchers?.length) lines.push(`    elody:allowedMatchers ( ${f.allowedMatchers.map(q).join(" ")} ) ;`);
@@ -2243,8 +2289,11 @@ export class Extractor {
       if (entity.documents.includes("currentUser")) handled.add("getElodyUser");
     }
     for (const name of [...this.declaredCustomOps, ...this.formSourceNames, ...this.previewLayoutNames]) handled.add(name);
+    for (const entity of entities) for (const name of entity.app?.documents ?? []) handled.add(name);
     const added: Entity[] = [];
     const ownerOf = (file: string): Entity => {
+      const app = entities.find((e) => e.app && e.filePath === file);
+      if (app) return app;
       const own = entities.find((e) => e.documentName === e.graphqlType && !e.fragmentsOnly && this.definitions.get(this.anchorOf(e.documentName)?.name.value ?? "")?.file === file);
       if (own) return own;
       const shared = [...entities, ...added].find((e) => e.fragmentsOnly && e.filePath === file);
@@ -2256,13 +2305,16 @@ export class Extractor {
     const taken = new Set<string>();
     for (const d of [...this.definitions.values()]) {
       // the platform document (queries/<client>.queries.ts) is the PWA's, not a type's: its documents are not swept
-      if (d.kind !== "query" || !/(^|\/)queries\/entities\//.test(d.file) || handled.has(d.name) || taken.has(d.name) || referenced(d.name)) continue;
+      const appFile = entities.find((e) => e.app)?.filePath;
+      if (d.kind !== "query" || !(/(^|\/)queries\/entities\//.test(d.file) || d.file === appFile) || handled.has(d.name) || taken.has(d.name)) continue;
       const query = d.node as OperationDefinitionNode;
       const top = fields(query.selectionSet)[0]?.name.value;
+      // in the app's file a referenced form or flow is declared too: no type's file holds it
+      if (referenced(d.name) && !(d.file === appFile && (top === "GetDynamicForm" || top === "GetRepetitiveForm"))) continue;
       const sortField = top === "EntityTypeSortOptions" ? child(fields(query.selectionSet)[0], "sortOptions") : undefined;
       const sortOptionsField = sortField ? child(sortField, "options") : undefined;
       const sortEntries = sortOptionsField ? list(argument(sortOptionsField, "input")).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT) : [];
-      const declarable = top === "Entities" || top === "EntityTypeFilters" || top === "CustomBulkOperations" || sortEntries.length > 0;
+      const declarable = top === "Entities" || top === "EntityTypeFilters" || top === "CustomBulkOperations" || sortEntries.length > 0 || top === "GetDynamicForm" || top === "GetRepetitiveForm" || top === "BulkOperations";
       if (!declarable) {
         this.note(`${d.file.replace(/^.*\//, "")}: nothing references the query ${d.name} and it has no term; it stays hand-written`);
         continue;
@@ -2286,6 +2338,19 @@ export class Extractor {
       } else if (top === "CustomBulkOperations") {
         this.customOperations(d.name, where, owner);
         this.note(`${where}: nothing references the custom bulk operations ${d.name}; declared on the type`);
+      } else if (top === "BulkOperations") {
+        const options = child(child(fields(query.selectionSet)[0], "bulkOperationOptions"), "options");
+        owner.bulkDocuments.push({ queryName: d.name, operations: options ? this.operations(options, `${where} ${d.name}`, owner) : [] });
+        this.note(`${where}: nothing references the bulk operations document ${d.name}; declared on the type as a bulk document`);
+      } else if (top === "GetDynamicForm") {
+        const form = this.formWithFields(this.form(query, d.name, where), where);
+        if (form) {
+          owner.forms.push(form);
+          this.note(`${where}: nothing references the form ${d.name}; declared on the type`);
+        }
+      } else if (top === "GetRepetitiveForm") {
+        owner.flows.push(this.flow(query, d.name, where, owner));
+        this.note(`${where}: nothing references the guided flow ${d.name}; declared on the type`);
       } else if (sortEntries.length) {
         owner.sortDocuments.push({
           queryName: d.name,
@@ -2295,6 +2360,116 @@ export class Extractor {
       }
     }
     return added;
+  }
+
+  /** The platform file: the one outside queries/entities/ holding the app-level documents (getEntities, fullEntity, GetMenu). */
+  platformFile(): string | undefined {
+    const files = new Set([...this.definitions.values()].filter((d) => !/(^|\/)queries\/entities\//.test(d.file) && ["getEntities", "fullEntity", "GetMenu", "getEntityById"].includes(d.name)).map((d) => d.file));
+    return [...files].sort()[0];
+  }
+
+  /** The app's declaration: the platform documents the file carries and the settings they vary by. */
+  platformApp(file: string): Entity {
+    const name = file.replace(/^.*\//, "").replace(/\.queries\.ts$/, "");
+    const entity = this.sharedFile(file);
+    entity.fragmentsOnly = undefined;
+    entity.properties = [];
+    const where = `${name} app`;
+    const here = [...this.definitions.values()].filter((d) => d.file === file);
+    const text = (n: string) => { const d = this.definitions.get(n); return d && d.file === file ? print(d.node) : ""; };
+    const op = (n: string) => { const d = this.definitions.get(n); return d && d.file === file && d.kind !== "fragment" ? (d.node as OperationDefinitionNode) : undefined; };
+    const documents = here.filter((d) => PLATFORM_DOCUMENTS.has(d.name)).map((d) => d.name);
+    const matcherName = documents.find((n) => /^[gG]etFilterMatcherMapping$/.test(n));
+    const matcher = matcherName ? op(matcherName) : undefined;
+    const matcherField = matcher ? fields(matcher.selectionSet)[0] : undefined;
+    const matcherKeys = matcherField ? list(argument(matcherField, "keys")).map((v) => scalar(v) ?? "") : [];
+    const pagination = op("GetPaginationLimitOptions");
+    const paginationOptions = pagination ? child(child(pagination, "PaginationLimitOptions"), "options") : undefined;
+    const dropzone = op("GetDropzoneEntityToCreate");
+    const dropzoneOptions = dropzone ? child(child(dropzone, "DropzoneEntityToCreate"), "options") : undefined;
+    const baseOf = (queryName: string, block: string) => {
+      const query = op(queryName);
+      const root = query ? fields(query.selectionSet)[0] : undefined;
+      const base = root?.selectionSet?.selections.find((s): s is InlineFragmentNode => s.kind === Kind.INLINE_FRAGMENT && s.typeCondition?.name.value === "BaseEntity");
+      return base ? child(child({ selectionSet: base.selectionSet }, block), "options") : undefined;
+    };
+    const sortBase = baseOf("GetSortOptions", "sortOptions");
+    const bulkBase = baseOf("GetBulkOperations", "bulkOperationOptions");
+    entity.app = {
+      documents,
+      paginationLimits: paginationOptions ? list(argument(paginationOptions, "input")).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT).map((o) => Number(scalar(objectField(o, "value")))) : undefined,
+      dropzoneOptions: dropzoneOptions ? list(argument(dropzoneOptions, "input")).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT).map((o) => ({ icon: scalar(objectField(o, "icon")), labelKey: scalar(objectField(o, "label")) ?? "", value: scalar(objectField(o, "value")) ?? "" })) : [],
+      bulkDeleteSkipsRelated: text("bulkDeleteEntities").includes("skipItemsWithRelationDuringBulkDelete") || undefined,
+      csvExportKeysRequired: /\brequired\b/.test(text("GetBulkOperationCsvExportKeys")) || undefined,
+      preferredLanguage: text("getEntityById").includes("preferredLanguage") || text("mutateEntityValues").includes("preferredLanguage") || undefined,
+      readsPermissions: text("getEntityById").includes("canUpdate") || undefined,
+      importJobId: text("postStartImport").includes("job_id") || undefined,
+      filterMatcherQueryName: matcherName,
+      filterMatcherKeys: matcherKeys.length ? matcherKeys : undefined,
+      filterMatcherLegacy: matcher && !matcherKeys.length ? true : undefined,
+      sortOptions: sortBase ? list(argument(sortBase, "input")).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT).map((o) => ({ labelKey: scalar(objectField(o, "label")) ?? "", value: scalar(objectField(o, "value")) ?? "", primary: objectField(o, "primary") ? scalar(objectField(o, "primary")) === "true" : undefined, icon: scalar(objectField(o, "icon")) })) : [],
+      typeEntries: [],
+    };
+    if (bulkBase) entity.operations = this.operations(bulkBase, `${where} base bulk operations`, entity);
+    const entitiesQuery = op("getEntities");
+    if (entitiesQuery && this.resultsRelationValues(entitiesQuery)) entity.relationValues = true;
+    // the fragments the catalogue renders are not the app's shared fragments
+    entity.valuesFragments = entity.valuesFragments.filter((f) => !PLATFORM_DOCUMENTS.has(f.name));
+    entity.panelFragments = entity.panelFragments.filter((f) => !PLATFORM_DOCUMENTS.has(f.name));
+    entity.fieldsFragments = entity.fieldsFragments.filter((f) => !PLATFORM_DOCUMENTS.has(f.name));
+    entity.elementsFragments = entity.elementsFragments.filter((f) => !PLATFORM_DOCUMENTS.has(f.name));
+    const unknown = here.filter((d) => d.kind !== "fragment" && !PLATFORM_DOCUMENTS.has(d.name));
+    this.note(`${where}: ${documents.length} platform documents declared; ${unknown.length} other operations in the file, swept as orphans or left hand-written`);
+    return entity;
+  }
+
+  /** The entries of the type-wide documents: what the file says beyond what the declared types derive. */
+  typeEntries(app: Entity, entities: Entity[]): void {
+    const candidates = entities.filter((e) => !e.app && !e.inline && !e.fragmentsOnly && !e.cardName && e !== app);
+    const seen = new Set<string>();
+    const main: Entity[] = [];
+    for (const entity of candidates) {
+      if (seen.has(entity.graphqlType)) continue;
+      seen.add(entity.graphqlType);
+      main.push(candidates.find((e) => e.graphqlType === entity.graphqlType && e.documentName === e.graphqlType) ?? entity);
+    }
+    const low = (n: string) => n.charAt(0).toLowerCase() + n.slice(1);
+    const has = (n: string) => this.fragment(n) !== undefined;
+    const derived: Record<string, { graphqlType: string; spread: string }[]> = {
+      fullEntity: main.filter((e) => !e.interface && has(`full${e.documentName}`)).map((e) => ({ graphqlType: e.graphqlType, spread: `full${e.documentName}` })),
+      getEntities: main.filter((e) => !e.interface).map((e) => ({ graphqlType: e.graphqlType, spread: `minimal${e.documentName}` })),
+      getAdvancedFilters: main.filter((e) => e.filters.length > 0).map((e) => ({ graphqlType: e.graphqlType, spread: e.filtersFragmentName ?? `filtersFor${e.documentName}` })),
+      GetSortOptions: main.filter((e) => e.properties.some((p) => p.sortable) || e.excludeBaseSortOptions).map((e) => ({ graphqlType: e.graphqlType, spread: `${low(e.documentName)}SortOptions` })),
+      GetBulkOperations: main.filter((e) => e.operations !== undefined).map((e) => ({ graphqlType: e.graphqlType, spread: `${low(e.documentName)}BulkOperations` })),
+      getPreviewComponents: main.filter((e) => e.preview).map((e) => ({ graphqlType: e.graphqlType, spread: e.preview!.fragmentName ?? `previewFor${e.documentName}` })),
+      FetchMediafilesOfEntity: main.filter((e) => e.graphqlType === "MediaFileEntity").map((e) => ({ graphqlType: e.graphqlType, spread: `minimal${e.documentName}` })),
+      SetPrimaryThumbnail: main.filter((e) => ["Media", "Asset"].includes(e.graphqlType) && has(`full${e.documentName}`)).map((e) => ({ graphqlType: e.graphqlType, spread: `full${e.documentName}` })),
+      SetPrimaryMediafile: main.filter((e) => ["Media", "Asset"].includes(e.graphqlType) && has(`full${e.documentName}`)).map((e) => ({ graphqlType: e.graphqlType, spread: `full${e.documentName}` })),
+    };
+    for (const [document, derivedPairs] of Object.entries(derived)) {
+      if (!app.app!.documents.includes(document)) continue;
+      const definition = this.definitions.get(document);
+      if (!definition) continue;
+      const actual: { graphqlType: string; spread?: string; operations?: Operation[] }[] = [];
+      const walk = (set: SelectionSetNode | undefined, depth: number) => {
+        for (const s of set?.selections ?? []) {
+          if (s.kind === Kind.INLINE_FRAGMENT && s.typeCondition && s.typeCondition.name.value !== "BaseEntity") {
+            const spread = spreads(s.selectionSet)[0];
+            const options = child(child({ selectionSet: s.selectionSet }, "bulkOperationOptions"), "options");
+            if (spread) actual.push({ graphqlType: s.typeCondition.name.value, spread });
+            else if (options) actual.push({ graphqlType: s.typeCondition.name.value, operations: this.operations(options, `${app.documentName} app ${document} ${s.typeCondition.name.value}`, app) });
+          } else if (s.kind === Kind.FRAGMENT_SPREAD && document === "FetchMediafilesOfEntity" && depth === 1) actual.push({ graphqlType: "MediaFileEntity", spread: s.name.value });
+          else if (s.kind === Kind.FIELD) walk(s.selectionSet, depth + 1);
+        }
+      };
+      walk(definition.node.selectionSet, 0);
+      for (const pair of actual) {
+        const d = derivedPairs.find((p) => p.graphqlType === pair.graphqlType);
+        if (pair.operations) app.app!.typeEntries.push({ document, graphqlType: pair.graphqlType, operations: pair.operations });
+        else if (!d || d.spread !== pair.spread) app.app!.typeEntries.push({ document, graphqlType: pair.graphqlType, fragment: pair.spread });
+      }
+      for (const d of derivedPairs) if (!actual.some((p) => p.graphqlType === d.graphqlType)) app.app!.typeEntries.push({ document, graphqlType: d.graphqlType, excluded: true });
+    }
   }
 
   sharedFile(file: string): Entity {
@@ -2324,6 +2499,7 @@ export class Extractor {
       panelFragments: [],
       filtersFragments: [],
       sortDocuments: [],
+      bulkDocuments: [],
       fragmentsOnly: true,
       filePath: file,
     };
@@ -2614,7 +2790,7 @@ export class Extractor {
     if (field.virtualKeyboardLayouts?.length) s.push(`      elody:virtualKeyboardLayouts ( ${field.virtualKeyboardLayouts.map(q).join(" ")} ) ;`);
     if (field.pickerSearch) {
       const search = field.pickerSearch;
-      const parts = [`elody:pickerSearchMode ${q(search.mode)}`, ...(search.keys.length ? [`elody:keys ( ${search.keys.map(q).join(" ")} )`] : []), ...search.acceptedTypes.map((t) => `elody:acceptedTypes ${q(t)}`)];
+      const parts = [`elody:pickerSearchMode ${q(search.mode)}`, ...(search.keys.length ? [`elody:keys ( ${search.keys.map(q).join(" ")} )`] : []), ...search.acceptedTypes.map((t) => `elody:acceptedTypes ${q(t)}`), ...(search.staticFilters ?? []).map((f, i) => `elody:staticFilter [ sh:order ${i + 1} ; elody:inputKind ${f.kind ?? "elody:TextFilter"}${f.key ? ` ; elody:key ${q(f.key)}` : ""} ; elody:value ${Array.isArray(f.value) ? `( ${f.value.map(q).join(" ")} )` : q(f.value)}${f.matchExact !== undefined ? ` ; elody:inputMatchExact ${f.matchExact}` : ""}${f.operator ? ` ; elody:inputOperator ${q(f.operator)}` : ""} ]`)];
       s.push(`      elody:pickerSearch [ ${parts.join(" ; ")} ] ;`);
     }
     if (field.editor && !field.noWidget) s.push(`      shui:editor ${field.editor} ;`);
@@ -2627,11 +2803,37 @@ export class Extractor {
   private writeEntity(entity: Entity, formNodes: Set<string>): string {
     const name = entity.documentName;
     const node = `ui:${name}Ui`;
-    const out: string[] = [`${node}`, `  a elody:EntityUi ;`, `  elody:graphqlType ${q(entity.graphqlType)} ;`];
-    if (entity.documentName !== entity.graphqlType) out.push(`  elody:documentName ${q(entity.documentName)} ;`);
-    out.push(`  elody:emit ${entity.inline ? '"inline"' : '"file"'} ;`);
+    const out: string[] = entity.app ? [`ui:${name}App`, `  a elody:App ;`, `  elody:documentName ${q(entity.documentName)} ;`] : [`${node}`, `  a elody:EntityUi ;`, `  elody:graphqlType ${q(entity.graphqlType)} ;`];
+    if (!entity.app && entity.documentName !== entity.graphqlType) out.push(`  elody:documentName ${q(entity.documentName)} ;`);
+    if (!entity.app) out.push(`  elody:emit ${entity.inline ? '"inline"' : '"file"'} ;`);
+    if (entity.app) {
+      const a = entity.app;
+      if (entity.filePath) out.push(`  elody:filePath ${q(entity.filePath)} ;`);
+      if (a.documents.length) out.push(`  elody:platformDocument ${a.documents.map(q).join(" , ")} ;`);
+      if (a.paginationLimits) out.push(`  elody:paginationLimit ( ${a.paginationLimits.join(" ")} ) ;`);
+      for (const [i, o] of a.dropzoneOptions.entries()) out.push(`  elody:dropzoneOption [ sh:order ${i + 1}${o.icon ? ` ; elody:icon ${q(o.icon)}` : ""} ; elody:labelKey ${q(o.labelKey)} ; elody:value ${q(o.value)} ] ;`);
+      if (a.bulkDeleteSkipsRelated) out.push(`  elody:bulkDeleteSkipsRelated true ;`);
+      if (a.csvExportKeysRequired) out.push(`  elody:csvExportKeysRequired true ;`);
+      if (a.preferredLanguage) out.push(`  elody:preferredLanguage true ;`);
+      if (a.readsPermissions) out.push(`  elody:readsPermissions true ;`);
+      if (a.importJobId) out.push(`  elody:importJobId true ;`);
+      if (a.filterMatcherQueryName) out.push(`  elody:filterMatcherQueryName ${q(a.filterMatcherQueryName)} ;`);
+      if (a.filterMatcherKeys) out.push(`  elody:filterMatcherKeys ( ${a.filterMatcherKeys.map(q).join(" ")} ) ;`);
+      if (a.filterMatcherLegacy) out.push(`  elody:filterMatcherLegacy true ;`);
+      if (a.sortOptions.length) out.push(`  elody:sortOption ${a.sortOptions.map((o, i) => `[ sh:order ${i + 1}${o.icon ? ` ; elody:icon ${q(o.icon)}` : ""} ; elody:labelKey ${q(o.labelKey)} ; elody:value ${q(o.value)}${o.primary ? " ; elody:primary true" : ""} ]`).join(" , ")} ;`);
+      if (a.typeEntries.length)
+        out.push(
+          `  elody:typeEntry ${a.typeEntries
+            .map((t) => {
+              const ops = t.operations ?? [];
+              ops.forEach((op, i) => (op.order = i + 1));
+              return `[ elody:platformDocument ${q(t.document)} ; elody:graphqlType ${q(t.graphqlType)}${t.fragment ? ` ; elody:fragmentName ${q(t.fragment)}` : ""}${t.excluded ? " ; elody:excluded true" : ""}${ops.length ? ` ;\n      elody:operation ${ops.map((op) => this.writeOperation(op, this.stubs, formNodes).replace(/^/gm, "    ").trim()).join(" ,\n      ")}` : ""} ]`;
+            })
+            .join(" ,\n    ")} ;`,
+        );
+    }
     if (entity.fragmentsOnly) out.push(`  elody:fragmentsOnly true ;`);
-    if (entity.filePath) out.push(`  elody:filePath ${q(entity.filePath)} ;`);
+    if (entity.filePath && !entity.app) out.push(`  elody:filePath ${q(entity.filePath)} ;`);
     if (entity.cardName) out.push(`  elody:cardName ${q(entity.cardName)} ;`);
     if (entity.documents.length) out.push(`  elody:documents ${entity.documents.map(q).join(" , ")} ;`);
     if (entity.typePills) out.push(`  elody:typePills true ;`);
@@ -2672,11 +2874,11 @@ export class Extractor {
     // properties, numbered in their order
     const properties = entity.properties;
     properties.forEach((p, index) => (p.order = index + 1));
-    if (!properties.length) {
+    if (!properties.length && !entity.app) {
       if (!entity.inline) this.note(`${name}: no initial values; a placeholder property is declared`);
       properties.push({ key: "title", order: 1, inListing: true, inDetail: true, readsValue: !entity.inline, teaser: !entity.inline, sortable: false, single: true, required: false, readOnly: false, labelRole: true });
     }
-    out.push(`  sh:property`, properties.map((p) => this.property(p)).join(" ,\n") + " ;");
+    if (properties.length) out.push(`  sh:property`, properties.map((p) => this.property(p)).join(" ,\n") + " ;");
 
     // the detail layout
     const panelNodes: string[] = [];
@@ -2732,7 +2934,8 @@ export class Extractor {
       if (p.metadataLayout) parts.push(`elody:metadataPreviewLayout ui:${p.metadataLayout.queryName}`);
       out.push(`  elody:preview [ ${parts.join(" ; ")} ] ;`);
       for (const layout of [p.layout, p.metadataLayout]) {
-        if (!layout) continue;
+        if (!layout || this.writtenLayouts.has(layout.queryName)) continue;
+        this.writtenLayouts.add(layout.queryName);
         const lines = [`ui:${layout.queryName}`, `  a elody:PreviewLayout ;`, `  elody:queryName ${q(layout.queryName)} ;`];
         if (layout.columns.length) lines.push(`  elody:column`, columnNodes(layout.columns).join(" ,\n") + " .");
         else lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " .");
@@ -2780,8 +2983,8 @@ export class Extractor {
       if (flow.returnsSelection !== undefined) lines.push(`  elody:returnsSelection ${flow.returnsSelection} ;`);
       if (flow.routeToStep) lines.push(`  elody:routeToStep ${q(flow.routeToStep)} ;`);
       if (flow.routeToRoute) lines.push(`  elody:routeToRoute ${q(flow.routeToRoute)} ;`);
-      if (flow.finalize) lines.push(`  elody:finalize [ elody:fromStep ${q(flow.finalize.fromStep)} ; elody:relationType ${q(flow.finalize.relationType)} ] ;`);
-      const steps = flow.steps.map((step, i) => {
+      if (flow.finalize) lines.push(`  elody:finalize [ elody:fromStep ${q(flow.finalize.fromStep)} ; elody:relationType ${q(flow.finalize.relationType)}${flow.finalize.replaceExisting !== undefined ? ` ; elody:replaceExisting ${flow.finalize.replaceExisting}` : ""} ] ;`);
+      const writeStep = (step: FlowStep, i: number) => {
         const st = [`    [ sh:order ${i + 1} ;`, `    elody:key ${q(step.key)} ;`];
         if (step.label !== undefined) st.push(`    rdfs:label ${q(step.label)} ;`);
         if (step.entityType) st.push(`    elody:entityType ${q(step.entityType)} ;`);
@@ -2802,15 +3005,18 @@ export class Extractor {
         if (step.scope) st.push(`    elody:scopeToRelationOf [ elody:fromStep ${q(step.scope.step)} ; elody:relationType ${q(step.scope.relationType)}${step.scope.filterKey ? ` ; elody:filterKey ${q(step.scope.filterKey)}` : ""} ] ;`);
         for (const [j, relation] of (step.relations ?? []).entries()) {
           const metadata = (relation.metadataFields ?? []).map((field, k) => `[ sh:order ${k + 1} ; elody:formMetadataKey ${q(field.formMetadataKey)} ; elody:relationMetadataKey ${q(field.relationMetadataKey)}${field.asArray !== undefined ? ` ; elody:asArray ${field.asArray}` : ""} ]`);
-          st.push(`    elody:stepRelation [ sh:order ${j + 1} ; elody:to ${q(relation.to)} ; elody:relationType ${q(relation.relationType)}${relation.createWhen ? ` ; elody:createWhen ${q(relation.createWhen)}` : ""}${metadata.length ? ` ;\n      elody:metadataField ${metadata.join(" , ")}` : ""} ] ;`);
+          st.push(`    elody:stepRelation [ sh:order ${j + 1} ; ${relation.toAllOf ? `elody:toAllOf ( ${relation.toAllOf.map(q).join(" ")} )` : `elody:to ${q(relation.to)}`} ; elody:relationType ${q(relation.relationType)}${relation.createWhen ? ` ; elody:createWhen ${q(relation.createWhen)}` : ""}${metadata.length ? ` ;\n      elody:metadataField ${metadata.join(" , ")}` : ""} ] ;`);
         }
+        for (const [j, prefill] of (step.prefills ?? []).entries()) st.push(`    elody:prefillMetadata [ sh:order ${j + 1} ; elody:key ${q(prefill.key)} ; elody:value ${this.configLiteral(prefill.value)} ] ;`);
         for (const [j, type] of (step.creatableTypes ?? []).entries()) {
           st.push(`    elody:creatableType [ sh:order ${j + 1}${type.label !== undefined ? ` ; elody:labelKey ${q(type.label)}` : ""} ; elody:entityType ${q(type.entityType)} ; elody:form ui:${type.createForm} ] ;`);
           if (!formNodes.has(type.createForm)) this.stubs.add(type.createForm);
         }
         st[st.length - 1] = st[st.length - 1].replace(/ ;$/, " ]");
         return st.join("\n");
-      });
+      };
+      const steps = flow.steps.map(writeStep);
+      if (flow.finalizeStep) lines.push(`  elody:finalizeStep ${writeStep(flow.finalizeStep, 0).trim()} ;`);
       lines.push(`  elody:step`, steps.join(" ,\n") + " .");
       extra.push(lines.join("\n"));
     }
@@ -2863,6 +3069,11 @@ export class Extractor {
         extra.push(lines.join("\n"));
       }
     }
+    for (const document of entity.bulkDocuments) {
+      const ops = document.operations;
+      ops.forEach((op, i) => (op.order = i + 1));
+      out.push(`  elody:bulkDocument [ elody:queryName ${q(document.queryName)}${ops.length ? ` ;\n    elody:operation ${ops.map((op) => this.writeOperation(op, this.stubs, formNodes).replace(/^/gm, "  ").trim()).join(" ,\n    ")}` : ""} ] ;`);
+    }
     for (const document of entity.sortDocuments) {
       out.push(
         `  elody:sortDocument [ elody:queryName ${q(document.queryName)} ;`,
@@ -2877,6 +3088,8 @@ export class Extractor {
       if (lq.relationValues) lines.push(`  elody:relationValues true ;`);
       if (lq.readsHost) lines.push(`  elody:readsHost true ;`);
       if (lq.hostOptional) lines.push(`  elody:hostOptional true ;`);
+      if (lq.facets) lines.push(`  elody:facets true ;`);
+      for (const s of lq.filtersSpreads ?? []) lines.push(`  elody:filtersSpread ${q(s)} ;`);
       if (lq.results.length)
         lines.push(
           `  elody:result`,
@@ -2906,6 +3119,13 @@ export function extractDeclaration(files: QueryFile[], options: ExtractOptions =
   const entities = types.map((name) => extractor.entity(name));
   // the files holding shared fragments alone, declared as fragments-only entities
   for (const file of extractor.sharedFiles()) entities.push(extractor.sharedFile(file));
+  // the app: the platform file, its documents rendered from the types and these settings
+  const platformFile = extractor.platformFile();
+  if (platformFile) {
+    const app = extractor.platformApp(platformFile);
+    entities.push(app);
+    extractor.typeEntries(app, entities);
+  }
   // the orphan documents: declared on the type whose file holds them (a file without a type gets a declaration of its own)
   entities.push(...extractor.orphans(entities));
   // the listings synthesised for results selected inline, declared after the types that led to them

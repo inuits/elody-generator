@@ -187,6 +187,10 @@ export type UiFilter = {
   hidden: boolean;
   /** elody:keepDefaultValue: doNotOverrideDefaultValue(value: true) */
   keepDefaultValue?: boolean;
+  /** elody:includeDefaultsFrom: includeDefaultValuesFromIntialValues */
+  includeDefaultsFrom?: string[];
+  /** elody:matchExact: matchExact on the filter itself */
+  matchExact?: boolean;
   displayedByDefault: boolean;
   tooltip: boolean;
 };
@@ -296,7 +300,7 @@ export type UiCreateFormField = {
   noWidget?: boolean;
   validationMessage?: string;
   virtualKeyboardLayouts?: string[];
-  pickerSearch?: { mode: string; keys: string[]; acceptedTypes: string[] };
+  pickerSearch?: { mode: string; keys: string[]; acceptedTypes: string[]; staticFilters?: UiOptionsInput[] };
 };
 
 export type UiCreateForm = {
@@ -333,9 +337,11 @@ export type UiRepetitiveStep = {
   /** elody:scopeToRelationOf: the search scoped to a prior step's relation */
   scope?: { step: string; relationType: string; filterKey?: string };
   /** elody:stepRelation: the relations the flow creates from this step */
-  relations?: { to: string; relationType: string; createWhen?: string; order: number; metadataFields?: { formMetadataKey: string; relationMetadataKey: string; asArray?: boolean; order: number }[] }[];
+  relations?: { to: string; toAllOf?: string[]; relationType: string; createWhen?: string; order: number; metadataFields?: { formMetadataKey: string; relationMetadataKey: string; asArray?: boolean; order: number }[] }[];
   /** elody:creatableType: the types the step may create, with their forms */
   creatableTypes?: { label?: string; entityType: string; createForm: string; order: number }[];
+  /** elody:prefillMetadata: metadata the step's form is prefilled with */
+  prefills?: { key: string; value: string; bare: boolean; order: number }[];
 };
 
 export type UiRepetitiveForm = {
@@ -351,7 +357,9 @@ export type UiRepetitiveForm = {
   routeToStep?: string;
   routeToRoute?: string;
   steps: UiRepetitiveStep[];
-  finalize?: { fromStep: string; relationType: string };
+  /** elody:finalizeStep: the step that ends the flow (finalize), without a key of its own */
+  finalizeStep?: UiRepetitiveStep;
+  finalize?: { fromStep: string; relationType: string; replaceExisting?: boolean };
 };
 
 /** A result type of a list query or picker: fragments spread on it and/or a listing rendered inline (an EntityUi with elody:emit "inline") */
@@ -371,6 +379,27 @@ export type UiPreview = {
   layout?: UiPreviewLayout;
   metadataLayout?: UiPreviewLayout;
 };
+/** elody:App: the platform document's settings */
+export type UiApp = {
+  documents: string[];
+  paginationLimits?: number[];
+  dropzoneOptions: { icon?: string; labelKey: string; value: string; order: number }[];
+  bulkDeleteSkipsRelated?: boolean;
+  csvExportKeysRequired?: boolean;
+  preferredLanguage?: boolean;
+  readsPermissions?: boolean;
+  importJobId?: boolean;
+  filterMatcherQueryName?: string;
+  filterMatcherKeys?: string[];
+  filterMatcherLegacy?: boolean;
+  sortOptions: { labelKey: string; value: string; primary?: boolean; icon?: string; order: number }[];
+  /** elody:typeEntry: a type added to, spread otherwise in, or left out of a type-wide document */
+  typeEntries: { document: string; graphqlType: string; fragment?: string; operations?: UiBulkOperation[]; excluded?: boolean }[];
+  /** relationValues read on every result of getEntities */
+  relationValues?: boolean;
+  /** the base bulk operations (... on BaseEntity), the entity's elody:bulkOperation nodes */
+  bulkOperationsBase?: UiBulkOperation[];
+};
 export type UiSortDocument = { queryName: string; options: { labelKey: string; value: string; primary?: boolean; icon?: string; order: number }[] };
 
 export type UiPicker = {
@@ -389,6 +418,9 @@ export type UiPicker = {
   /** false when an earlier type already emitted the document of that name */
   emitList?: boolean;
   emitFilters?: boolean;
+  /** elody:facets: the entities document reads facets; elody:filtersSpread: fragments spread in the filters document */
+  facets?: boolean;
+  filtersSpreads: string[];
 };
 
 export type UiPanel = {
@@ -585,8 +617,12 @@ export type UiEntity = {
   cardName?: string;
   /** elody:sortDocument: sort options documents of the type's own, options inline */
   sortDocuments: UiSortDocument[];
+  /** elody:bulkDocument: bulk operations documents of the type's or the app's own */
+  bulkDocuments: { queryName: string; operations: UiBulkOperation[] }[];
   /** elody:preview: how the type is previewed from a list, and the layouts the preview loads */
   preview?: UiPreview;
+  /** elody:App: this declaration is the app's, the platform document rendered from the types */
+  app?: UiApp;
   /** elody:thumbnail: the card's picture, from an initial value or the primary media file; sh:order places it among the card's fields */
   thumbnail?: { key?: string; fromMediafile?: boolean; order?: number };
   /** hand-written shared fragments spread into a block (elody:listingValuesSpread & co) */
