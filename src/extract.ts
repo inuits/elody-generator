@@ -2958,7 +2958,7 @@ export class Extractor {
         panelNodes.push(p.join("\n"));
         return id;
       });
-      const w = [`      [ a elody:WindowElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`];
+      const w = [`      [ a elody:WindowElement ;`, ...(element.label !== undefined ? [`      rdfs:label ${q(element.label)} ;`] : []), `      sh:order ${e + 1} ;`];
       if (element.alias) w.push(`      elody:alias ${q(element.alias)} ;`);
       if (element.expandButton !== undefined) w.push(`      elody:expandButton ${element.expandButton} ;`);
       if (element.windowLayout) w.push(`      elody:windowLayout ${element.windowLayout} ;`);

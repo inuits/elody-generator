@@ -113,6 +113,17 @@ export function cookTemplateLiteral(raw: string): string {
   });
 }
 
+/**
+ * A backslash GraphQL does not know as an escape (\\d, \\s, \\[ in a regex string) doubled, so the
+ * string reads as the author wrote it: GraphQL knows \\" \\\\ \\/ \\b \\f \\n \\r \\t \\u only.
+ * Block strings (triple-quoted) take no escapes and are left alone.
+ */
+export function escapeUnknownStringEscapes(source: string): string {
+  return source.replace(/"""[^]*?"""|"(?:[^"\\\n]|\\[^])*"/g, (literal) =>
+    literal.startsWith('"""') ? literal : literal.replace(/\\([^])/g, (escape, next: string) => ('"\\/bfnrtu'.includes(next) ? escape : `\\\\${next}`)),
+  );
+}
+
 /** The `gql` template literals of a TypeScript module, in order, as the tag receives them. */
 export function extractGqlDocuments(source: string): string[] {
   const documents: string[] = [];
@@ -168,8 +179,18 @@ export function readDefinitions(files: QueryFile[]): ReadResult {
       try {
         document = parse(source, { noLocation: true });
       } catch (error) {
-        errors.push({ file: file.path, message: error instanceof Error ? error.message : String(error) });
-        continue;
+        // a regex in a string ("\\d", "\\[") is not a GraphQL escape: read it as the backslash the author means
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/Invalid character escape sequence/.test(message)) {
+          errors.push({ file: file.path, message });
+          continue;
+        }
+        try {
+          document = parse(escapeUnknownStringEscapes(source), { noLocation: true });
+        } catch (again) {
+          errors.push({ file: file.path, message: again instanceof Error ? again.message : String(again) });
+          continue;
+        }
       }
       for (const node of document.definitions) {
         if (node.kind !== Kind.FRAGMENT_DEFINITION && node.kind !== Kind.OPERATION_DEFINITION) continue;

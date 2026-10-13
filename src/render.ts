@@ -15,6 +15,9 @@ const stringList = (values: string[]) => `[${values.map((value) => `"${value}"`)
 
 /** The listing fragment leaves out the detail-only properties; the detail fragment reads them all. */
 /** validation(input: { value: ... }): required (sh:minCount 1) and the declared rule, with its argument. */
+/** A GraphQL string literal of a value: its backslashes and quotes escaped (a regex keeps its backslashes). */
+const gqlString = (value: string): string => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+
 export function renderValidation(field: { required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; validationMessage?: string }, depth: number): string[] {
   const rules = [...(field.required ? ["required"] : []), ...(field.validationRule ? [field.validationRule] : [])];
   if (!rules.length) return [];
@@ -24,7 +27,7 @@ export function renderValidation(field: { required: boolean; validationRule?: st
     field.validationRelationType !== undefined || field.validationAmount !== undefined
       ? `, has_required_relation: { ${[...(field.validationRelationType !== undefined ? [`relationType: "${field.validationRelationType}"`] : []), ...(field.validationAmount !== undefined ? [`amount: ${field.validationAmount}`] : []), ...(field.validationExact !== undefined ? [`exact: ${field.validationExact}`] : [])].join(", ")} }`
       : "";
-  const extra = (field.validationMessage ? `, fastValidationMessage: "${field.validationMessage}"` : "") + (field.validationValue !== undefined ? `, ${field.validationRule === "regex" ? "regex" : "customValue"}: "${field.validationValue}"` : "") + relation;
+  const extra = (field.validationMessage ? `, fastValidationMessage: "${field.validationMessage}"` : "") + (field.validationValue !== undefined ? `, ${field.validationRule === "regex" ? "regex" : "customValue"}: ${gqlString(field.validationValue)}` : "") + relation;
   return [`${pad(depth)}validation(input: { value: ${value}${extra} }) {`, `${pad(depth + 2)}...validation`, `${pad(depth)}}`];
 }
 
@@ -1137,7 +1140,8 @@ export function elementRenderer(entity: M.UiEntity): (element: M.UiElement, dept
         `${pad(depth)}}`,
       ].join("\n");
 
-    const lines = [`${pad(depth)}${element.alias ? `${element.alias}: ` : ""}windowElement {`, `${pad(depth + 2)}label(input: "${element.label ?? ""}")`];
+    // a window without a label (a preview's) carries none
+    const lines = [`${pad(depth)}${element.alias ? `${element.alias}: ` : ""}windowElement {`, ...(element.label !== undefined ? [`${pad(depth + 2)}label(input: "${element.label}")`] : [])];
     if (element.editButton) {
       lines.push(`${pad(depth + 2)}editMetadataButton(input: { hasButton: true }) {`);
       lines.push(`${pad(depth + 4)}...editMetadataButton`);
