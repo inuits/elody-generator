@@ -101,6 +101,15 @@ export type UiProperty = {
   permitted?: string[];
   linkText?: string;
   copyToClipboard?: boolean;
+  /** elody:extensions, elody:showLineNumbers: a rich text panel element's editor extensions and configuration */
+  extensions?: string[];
+  showLineNumbers?: boolean;
+  editorStyles?: string;
+  /** elody:masked, elody:revealQuery: a secret shown masked, revealed by a query */
+  masked?: boolean;
+  revealQuery?: string;
+  /** elody:infoPanel: an explanation next to the field */
+  infoPanel?: { title?: string; content?: string };
   nonEditable?: boolean;
   tooltipKey?: string;
   panelShowsUnit?: boolean;
@@ -126,7 +135,7 @@ export type UiProperty = {
    * An element in the detail panel in place of a metadata field (elody:panelElement):
    * the rich-text editor on the metadata key, or the list of the entities its relation points to.
    */
-  panelElement?: { kind: "wysiwyg" } | { kind: "list"; entityType: string; relationType: string };
+  panelElement?: { kind: "wysiwyg"; /** inferred from the editor (rdf:HTML), not a declared viewer: the spec's defaults apply */ inferred?: boolean } | { kind: "list"; entityType: string; relationType: string };
 };
 
 export type UiFilter = {
@@ -175,6 +184,8 @@ export type UiFilter = {
   optionsValue?: string;
   /** elody:selectionOption: how the options are offered (autocomplete) */
   selectionOption?: string;
+  /** elody:optionsLimit: how many options are fetched at most (limitConfig) */
+  optionsLimit?: number;
   /** elody:filterOperator: how the values combine (or, and) */
   operator?: string;
   /** elody:showTime: a date filter with (true) or without (false) the time of day; undefined leaves it unsaid */
@@ -297,6 +308,12 @@ export type UiCreateFormField = {
   validationExact?: boolean;
   /** dash:hidden: the field is in the form but hidden (hiddenField) */
   hidden?: boolean;
+  /** elody:hiddenValueFrom: the hidden field's value from a related entity */
+  hiddenValueFrom?: { entityType?: string; relationType?: string; key?: string; inherited?: boolean };
+  /** elody:copyValueFromParent: a button copying a related entity's value into the field */
+  copyValueFromParent?: { labelKey?: string; key: string; relationType?: string };
+  /** elody:infoPanel: an explanation next to the field */
+  infoPanel?: { title?: string; content?: string };
   /** the shui editor the input type was derived from (explicit or inferred) */
   editor?: string;
   multilingual: boolean;
@@ -481,7 +498,7 @@ export type UiPanel = {
   /** elody:bulkDataSource: bulkData(bulkDataSource: ...) */
   bulkDataSource?: string;
   /** elody:panelField: a field shown otherwise in this panel */
-  fieldOverrides?: { key: string; labelKey?: string; alias?: string; widget?: boolean }[];
+  fieldOverrides?: { key: string; labelKey?: string; alias?: string; widget?: boolean; /** elody:panelAsField: a panel element shown as a plain field here */ asField?: boolean }[];
   /** elody:multipleColumns: canBeMultipleColumns(input: true|false); undefined leaves it unsaid */
   multipleColumns?: boolean;
   /** elody:can: the permission editing the panel needs (can(input: "update:feedback")) */
@@ -536,6 +553,8 @@ export type UiElement = {
   disableLibraryBar?: boolean;
   enableNavigation?: boolean;
   libraryMode?: string;
+  /** elody:displayConditionKey / elody:displayConditionValue: the element shows when the entity's key holds the value */
+  displayCondition?: { key: string; value?: string };
   searchInputType?: string;
   customBulkOperations?: string;
   pickerList?: string;

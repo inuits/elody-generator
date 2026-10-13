@@ -971,6 +971,12 @@ class Parse {
       permitted: r.literals(node, elody("permitted")).length ? r.literals(node, elody("permitted")) : undefined,
       linkText: r.value(node, elody("linkText")) || undefined,
       copyToClipboard: this.optionalFlag(node, elody("copyToClipboard")),
+      masked: this.optionalFlag(node, elody("masked")),
+      extensions: ((term) => (term ? r.list(term.value).map((iri) => this.o.enumValue(iri) ?? iri) : undefined))(r.term(node, elody("extensions"))),
+      showLineNumbers: this.optionalFlag(node, elody("showLineNumbers")),
+      editorStyles: r.value(node, elody("editorStyles")) || undefined,
+      revealQuery: r.value(node, elody("revealQuery")) || undefined,
+      infoPanel: this.infoPanel(r.node(node, elody("infoPanel"))),
       nonEditable: this.optionalFlag(node, elody("nonEditable")),
       tooltipKey: r.value(node, elody("tooltipKey")) || undefined,
       panelShowsUnit: this.optionalFlag(node, elody("panelShowsUnit")),
@@ -1038,7 +1044,7 @@ class Parse {
   private panelElementOf(node: string, editor: string | undefined): M.UiProperty["panelElement"] {
     const r = this.r;
     const kind = this.o.panelElement(r.node(node, shui("viewer"))) ?? this.o.panelElement(editor);
-    if (kind === "wysiwyg") return { kind };
+    if (kind === "wysiwyg") return { kind, inferred: !r.node(node, shui("viewer")) };
     if (kind !== "list") return undefined;
     const shape = r.node(node, sh("node"));
     const type = r.node(node, sh("class")) ?? (shape ? r.node(shape, sh("targetClass")) : undefined);
@@ -1050,6 +1056,8 @@ class Parse {
   private formatter(node: string): string | undefined {
     const viewer = this.r.node(node, shui("viewer"));
     if (viewer) {
+      // a viewer that is a panel element (a wysiwyg element) formats nothing
+      if (this.o.panelElement(viewer)) return undefined;
       const value = this.o.formatterValue(viewer);
       if (value === undefined) throw new Error(`${compact(viewer)} is not a viewer Elody implements`);
       const argument = this.r.value(node, elody("viewerArgument"));
@@ -1085,6 +1093,7 @@ class Parse {
       optionsLabel: r.value(node, elody("optionsLabel")) || undefined,
       optionsValue: r.value(node, elody("optionsValue")) || undefined,
       selectionOption: r.value(node, elody("selectionOption")) || undefined,
+      optionsLimit: typeof r.literal(node, elody("optionsLimit")) === "number" ? (r.literal(node, elody("optionsLimit")) as number) : undefined,
       operator: r.value(node, elody("filterOperator")) || undefined,
       showTime: this.optionalFlag(node, elody("showTime")),
       matchersType: r.value(node, elody("matchersType")) || undefined,
@@ -1140,6 +1149,12 @@ class Parse {
         return key;
       });
     return { fields, contextMenu: this.contextMenu(r.node(node, elody("contextMenu"))) };
+  }
+
+  /** elody:infoPanel: an explanation next to a field (title key, content). */
+  private infoPanel(node: string | undefined): { title?: string; content?: string } | undefined {
+    if (!node) return undefined;
+    return { title: this.r.value(node, elody("infoTitle")) || undefined, content: this.r.value(node, elody("infoContent")) || undefined };
   }
 
   private contextMenu(node: string | undefined): M.UiContextMenu | undefined {
@@ -1516,6 +1531,9 @@ class Parse {
           }))(r.node(node, elody("pickerSearch"))!)
         : undefined,
       hidden: this.hidden(node) || undefined,
+      hiddenValueFrom: ((from) => (from ? { entityType: r.value(from, elody("entityType")) || undefined, relationType: r.value(from, elody("relationType")) || undefined, key: r.value(from, elody("key")) || undefined, inherited: this.optionalFlag(from, elody("inherited")) } : undefined))(r.node(node, elody("hiddenValueFrom"))),
+      copyValueFromParent: ((copy) => (copy ? { labelKey: r.value(copy, elody("labelKey")) || undefined, key: String(r.value(copy, elody("key")) ?? ""), relationType: r.value(copy, elody("relationType")) || undefined } : undefined))(r.node(node, elody("copyValueFromParent"))),
+      infoPanel: this.infoPanel(r.node(node, elody("infoPanel"))),
       editor,
       multilingual: this.o.multilingual(editor) || this.languageInOf(node).length > 0,
       languageIn: this.languageInOf(node),
@@ -1840,6 +1858,7 @@ class Parse {
       hideInHistory: r.literal(element, elody("hideInHistory")) === true,
       disableLibraryBar: r.literal(element, elody("disableLibraryBar")) === true,
       enableNavigation: this.optionalFlag(element, elody("enableNavigation")),
+      displayCondition: r.value(element, elody("displayConditionKey")) ? { key: String(r.value(element, elody("displayConditionKey"))), value: r.value(element, elody("displayConditionValue")) || undefined } : undefined,
       libraryMode: r.value(element, elody("libraryMode")) || undefined,
       mediaKind: this.enumValue(element, elody("mediaKind"), elody("MediaElementKind")),
       customQueryFilters,
@@ -1944,7 +1963,7 @@ class Parse {
       const path = r.node(node, elody("field"));
       const key = path ? pathToKey.get(path) : undefined;
       if (!key) throw new Error(`panel "${r.value(panel, elody("alias"))}" has an elody:panelField whose elody:field no property shape declares as sh:path`);
-      return { key, labelKey: r.value(node, elody("labelKey")) || undefined, alias: r.value(node, elody("alias")) || undefined, widget: this.optionalFlag(node, elody("panelWidget")) };
+      return { key, labelKey: r.value(node, elody("labelKey")) || undefined, alias: r.value(node, elody("alias")) || undefined, widget: this.optionalFlag(node, elody("panelWidget")), asField: this.optionalFlag(node, elody("panelAsField")) };
     });
   }
 

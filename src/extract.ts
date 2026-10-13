@@ -50,7 +50,7 @@ const input = (field: FieldNode | undefined) => (field ? scalar(argument(field, 
 const list = (value: ValueNode | undefined): ValueNode[] => (value?.kind === Kind.LIST ? [...value.values] : value ? [value] : []);
 const objectField = (object: ObjectValueNode, name: string): ValueNode | undefined => object.fields.find((f) => f.name.value === name)?.value;
 
-const q = (value: string) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+const q = (value: string) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r/g, "\\r").replace(/\n/g, "\\n")}"`;
 const localName = (iri: string) => iri.slice(Math.max(iri.lastIndexOf("#"), iri.lastIndexOf("/")) + 1);
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
@@ -128,6 +128,14 @@ type Property = {
   permitted?: string[];
   linkText?: string;
   copyToClipboard?: boolean;
+  masked?: boolean;
+  revealQuery?: string;
+  infoPanel?: { title?: string; content?: string };
+  /** a wysiwygElement in the panel: declared with shui:viewer shui:HTMLViewer, its extensions and configuration */
+  wysiwygPanelElement?: boolean;
+  extensions?: string[];
+  showLineNumbers?: boolean;
+  editorStyles?: string;
   nonEditable?: boolean;
   tooltipKey?: string;
   panelShowsUnit?: boolean;
@@ -137,7 +145,7 @@ type Property = {
   sortPages?: { routeName: string; entityType?: string }[];
 };
 
-type PanelFieldOverride = { key: string; labelKey?: string; alias?: string; widget?: boolean };
+type PanelFieldOverride = { key: string; labelKey?: string; alias?: string; widget?: boolean; asField?: boolean };
 type Panel = { header?: boolean; alias: string; label?: string; kind?: string; collapsed: boolean; editable: boolean; editableDefault?: boolean; repetitionKey?: string; displayConditionKey?: string; bulkDataSource?: string; overrides: PanelFieldOverride[]; multipleColumns?: boolean; can?: string; fields: string[]; spreads: string[]; elements: Element[] };
 type WindowStatus = { labelKey?: string; statusKey: string; statusInputField: string };
 type Element =
@@ -166,6 +174,7 @@ type Element =
       disableLibraryBar?: boolean;
       enableNavigation?: boolean;
       libraryMode?: string;
+  displayCondition?: { key: string; value?: string };
       collapsed: boolean;
       entityTypes: string[];
       relationType?: string;
@@ -259,13 +268,14 @@ type Filter = {
   optionsLabel?: string;
   optionsValue?: string;
   selectionOption?: string;
+  optionsLimit?: number;
   operator?: string;
   showTime?: boolean;
   matchersType?: string;
   lookup?: Lookup;
 };
 
-type FormField = { key: string; order?: number; showOnlyInEditMode?: boolean; valueTranslationKey?: string; onlyForEntityTypes?: string[]; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; hidden?: boolean; clientField?: string; validationMessage?: string; tooltipKey?: string; defaultValue?: string; noWidget?: boolean; virtualKeyboardLayouts?: string[]; pickerSearch?: { mode: string; keys: string[]; acceptedTypes: string[]; staticFilters?: { kind?: string; key?: string; value: string | string[]; matchExact?: boolean; operator?: string }[] } };
+type FormField = { key: string; order?: number; hiddenValueFrom?: { entityType?: string; relationType?: string; key?: string; inherited?: boolean }; copyValueFromParent?: { labelKey?: string; key: string; relationType?: string }; infoPanel?: { title?: string; content?: string }; showOnlyInEditMode?: boolean; valueTranslationKey?: string; onlyForEntityTypes?: string[]; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; hidden?: boolean; clientField?: string; validationMessage?: string; tooltipKey?: string; defaultValue?: string; noWidget?: boolean; virtualKeyboardLayouts?: string[]; pickerSearch?: { mode: string; keys: string[]; acceptedTypes: string[]; staticFilters?: { kind?: string; key?: string; value: string | string[]; matchExact?: boolean; operator?: string }[] } };
 type UploadField = { alias: string; label?: string; size?: string; kind: string; inputType: string; required?: boolean; dryRun?: boolean; addTypeToEndpoint?: boolean; extractTypeFromKey?: string; templateCsvs?: string[]; infoLabelUrl?: string; extraMediafileType?: string };
 type Upload = { flow: string; fields: UploadField[]; order: number };
 type FormAction = { alias: string; label?: string; icon?: string; kind?: string; actionQuery?: string; creationType?: string; showsFormErrors?: boolean; endpoint?: { name?: string; method?: string; variables: string[]; responseAction?: string }; progress?: { kind: string; steps: { alias: string; label?: string; kind: string }[] }; order: number };
@@ -1363,6 +1373,37 @@ export class Extractor {
           result.elements.push(element);
           continue;
         }
+        if (field.name.value === "wysiwygElement") {
+          // a rich text field in the panel: the property shown by a wysiwyg element, with its info panel
+          const key = input(child(field, "metadataKey")) ?? alias(field);
+          let property = entity.properties.find((p) => p.key === key && !p.alias) ?? entity.properties.find((p) => p.key === key);
+          if (!property) {
+            property = { key, inListing: false, inDetail: true, readsValue: false, teaser: false, sortable: false, single: true, required: false, readOnly: false, labelRole: false };
+            entity.properties.push(property);
+            if (!byAlias.has(alias(field))) byAlias.set(alias(field), property);
+          }
+          property.wysiwygPanelElement = true;
+          if (alias(field) !== key && alias(field) !== (property.alias ?? property.key)) property.panelAlias = alias(field);
+          const extensionsField = child(field, "extensions");
+          if (extensionsField) property.extensions = list(argument(extensionsField, "input")).map((v) => this.instance("WysiwygExtension", scalar(v), `${where} ${alias(field)} extensions`)).filter((v): v is string => Boolean(v));
+          const configuration = child(field, "wysiwygElementConfiguration");
+          const lineNumbers = configuration ? child(configuration, "showLineNumbers") : undefined;
+          if (lineNumbers) property.showLineNumbers = input(lineNumbers) === "true";
+          const styles = configuration ? input(child(configuration, "customEditorStyles")) : undefined;
+          if (styles) property.editorStyles = styles;
+          const layouts = configuration ? child(configuration, "virtualKeyboardLayouts") : undefined;
+          if (layouts) property.virtualKeyboardLayouts = list(argument(layouts, "input")).map((v) => scalar(v) ?? "");
+          for (const f of fields(configuration?.selectionSet)) if (!["showLineNumbers", "customEditorStyles", "virtualKeyboardLayouts"].includes(f.name.value)) this.note(`${where}: panel ${alias(panel)} wysiwyg field ${alias(field)} configuration field ${f.name.value} has no term; left out`);
+          const label = input(child(field, "label"));
+          if (label && !property.labelKey) property.labelKey = label;
+          if (input(child(field, "isMultilingual")) === "true") property.multilingual = true;
+          const info = child(field, "infoPanel");
+          if (info) property.infoPanel = { title: scalar(argument(info, "title")), content: scalar(argument(info, "content")) };
+          for (const f of fields(field.selectionSet)) if (!["label", "metadataKey", "infoPanel", "isMultilingual", "extensions", "wysiwygElementConfiguration"].includes(f.name.value)) this.note(`${where}: panel ${alias(panel)} wysiwyg field ${alias(field)} field ${f.name.value} has no term; left out`);
+          result.fields.push(property.key);
+          this.panelSeen.add(property);
+          continue;
+        }
         if (field.name.value !== "metaData") {
           if (!["panelHeaderContent", "label", "panelType", "isCollapsed", "isEditable", "canBeMultipleColumns", "can", "repetitionConfig", "displayCondition", "bulkData"].includes(field.name.value))
             this.note(`${where}: panel ${alias(panel)} field ${alias(field)} (${field.name.value}) has no term; left out`);
@@ -1390,6 +1431,8 @@ export class Extractor {
           if (!o) result.overrides.push((o = { key }));
           return o;
         };
+        // a rich text element elsewhere, a plain field in this panel
+        if (property.wysiwygPanelElement) override().asField = true;
         const shownAs = property.panelAlias ?? property.alias ?? property.key;
         if (this.panelSeen.has(property)) {
           if (alias(field) !== shownAs) override().alias = alias(field);
@@ -1401,6 +1444,11 @@ export class Extractor {
         const linkText = input(child(field, "linkText"));
         if (linkText) property.linkText = linkText;
         if (child(field, "copyToClipboard")) property.copyToClipboard = input(child(field, "copyToClipboard")) === "true";
+        if (child(field, "masked")) property.masked = input(child(field, "masked")) === "true";
+        const reveal = input(child(field, "revealQuery"));
+        if (reveal) property.revealQuery = reveal;
+        const info = child(field, "infoPanel");
+        if (info) property.infoPanel = { title: scalar(argument(info, "title")), content: scalar(argument(info, "content")) };
         if (child(field, "nonEditableField")) property.nonEditable = input(child(field, "nonEditableField")) === "true";
         const permitted = child(field, "permitted");
         if (permitted) property.permitted = list(argument(permitted, "input")).map((v) => scalar(v) ?? "");
@@ -1472,7 +1520,7 @@ export class Extractor {
   }
 
   private list(element: FieldNode, where: string, entity: Entity): Element {
-    const known = ["label", "isCollapsed", "type", "entityTypes", "relationType", "searchInputType", "customQuery", "customQueryRelationType", "customQueryFilters", "customBulkOperations", "customQueryEntityPickerList", "customQueryEntityPickerListFilters", "viewMode", "can", "hideInHistory", "disableLibraryBar", "enableNavigation", "baseLibraryMode", "addEntitiesToForms", "cropMediafileCoordinatesKey", "actionsOnResult"];
+    const known = ["label", "isCollapsed", "type", "entityTypes", "relationType", "searchInputType", "customQuery", "customQueryRelationType", "customQueryFilters", "customBulkOperations", "customQueryEntityPickerList", "customQueryEntityPickerListFilters", "viewMode", "can", "hideInHistory", "disableLibraryBar", "enableNavigation", "baseLibraryMode", "addEntitiesToForms", "cropMediafileCoordinatesKey", "actionsOnResult", "displayCondition"];
     for (const field of fields(element.selectionSet))
       if (!known.includes(alias(field)) && !known.includes(field.name.value)) this.note(`${where}: list element ${alias(element)} field ${alias(field)} has no term; left out`);
     const types = child(element, "entityTypes");
@@ -1510,6 +1558,7 @@ export class Extractor {
       hideInHistory: input(child(element, "hideInHistory")) === "true",
       disableLibraryBar: input(child(element, "disableLibraryBar")) === "true",
       enableNavigation: input(child(element, "enableNavigation")) === undefined ? undefined : input(child(element, "enableNavigation")) === "true",
+      displayCondition: child(element, "displayCondition") ? { key: input(child(child(element, "displayCondition")!, "key")) ?? "", value: input(child(child(element, "displayCondition")!, "value")) } : undefined,
       libraryMode: input(child(element, "baseLibraryMode")),
       collapsed: input(child(element, "isCollapsed")) === "true",
       entityTypes: list(types ? argument(types, "input") : undefined).map((v) => scalar(v) ?? ""),
@@ -1635,6 +1684,8 @@ export class Extractor {
         filter.optionsValue = scalar(objectField(mapping, "value"));
       }
       filter.selectionOption = str(field, "selectionOption");
+      const limit = argument(field, "limitConfig");
+      if (limit?.kind === Kind.OBJECT && scalar(objectField(limit, "optionsLimit")) !== undefined) filter.optionsLimit = Number(scalar(objectField(limit, "optionsLimit")));
       filter.operator = str(field, "operator");
       filter.showTime = str(field, "showTimeForDateFilter") === undefined ? undefined : str(field, "showTimeForDateFilter") === "true";
       filter.matchersType = str(field, "matchersType");
@@ -1693,7 +1744,7 @@ export class Extractor {
           .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
           .map((option) => ({ label: scalar(objectField(option, "label")) ?? "", value: scalar(objectField(option, "value")) ?? "" }));
       for (const a of field.arguments ?? [])
-        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "aggregation", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator", "showTimeForDateFilter", "matchersType", "lookup", "options", "itemTypes", "defaultMatcher", "allowedMatchers", "facets"].includes(a.name.value))
+        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "aggregation", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator", "showTimeForDateFilter", "matchersType", "lookup", "options", "itemTypes", "defaultMatcher", "allowedMatchers", "facets", "limitConfig"].includes(a.name.value))
           this.note(`${where}: filter ${alias(field)} argument ${a.name.value} has no term; left out`);
       result.push(filter);
     }
@@ -1955,6 +2006,16 @@ export class Extractor {
       validationAmount: validation.amount,
       validationExact: validation.exact,
       hidden: child(field, "hiddenField") ? true : undefined,
+      hiddenValueFrom: ((hiddenInput) => {
+        if (hiddenInput?.kind !== Kind.OBJECT) return undefined;
+        const entityType = scalar(objectField(hiddenInput, "entityType"));
+        const relationType = scalar(objectField(hiddenInput, "relationToExtractKey"));
+        const extractKey = scalar(objectField(hiddenInput, "keyToExtractValue"));
+        const inherited = objectField(hiddenInput, "inherited") ? scalar(objectField(hiddenInput, "inherited")) === "true" : undefined;
+        return entityType || relationType || extractKey || inherited !== undefined ? { entityType, relationType, key: extractKey, inherited } : undefined;
+      })(child(field, "hiddenField") ? argument(child(field, "hiddenField")!, "input") : undefined),
+      copyValueFromParent: ((copyInput) => (copyInput?.kind === Kind.OBJECT ? { labelKey: scalar(objectField(copyInput, "label")), key: scalar(objectField(copyInput, "key")) ?? "", relationType: scalar(objectField(copyInput, "fromRelationType")) } : undefined))(child(field, "copyValueFromParent") ? argument(child(field, "copyValueFromParent")!, "input") : undefined),
+      infoPanel: child(field, "infoPanel") ? { title: scalar(argument(child(field, "infoPanel")!, "title")), content: scalar(argument(child(field, "infoPanel")!, "content")) } : undefined,
       clientField: base ? undefined : type,
       validationMessage: validation.message,
       tooltipKey: input(child(field, "tooltip")),
@@ -2157,6 +2218,13 @@ export class Extractor {
     for (const permitted of p.permitted ?? []) lines.push(`    elody:permitted ${q(permitted)} ;`);
     if (p.linkText) lines.push(`    elody:linkText ${q(p.linkText)} ;`);
     if (p.copyToClipboard !== undefined) lines.push(`    elody:copyToClipboard ${p.copyToClipboard} ;`);
+    if (p.masked !== undefined) lines.push(`    elody:masked ${p.masked} ;`);
+    if (p.revealQuery) lines.push(`    elody:revealQuery ${q(p.revealQuery)} ;`);
+    if (p.infoPanel) lines.push(`    elody:infoPanel [ ${[...(p.infoPanel.title !== undefined ? [`elody:infoTitle ${q(p.infoPanel.title)}`] : []), ...(p.infoPanel.content !== undefined ? [`elody:infoContent ${q(p.infoPanel.content)}`] : [])].join(" ; ")} ] ;`);
+    if (p.wysiwygPanelElement) lines.push(`    shui:viewer shui:HTMLViewer ;`);
+    if (p.extensions?.length) lines.push(`    elody:extensions ( ${p.extensions.join(" ")} ) ;`);
+    if (p.showLineNumbers !== undefined) lines.push(`    elody:showLineNumbers ${p.showLineNumbers} ;`);
+    if (p.editorStyles) lines.push(`    elody:editorStyles ${q(p.editorStyles)} ;`);
     if (p.nonEditable !== undefined) lines.push(`    elody:nonEditable ${p.nonEditable} ;`);
     if (p.tooltipKey) lines.push(`    elody:tooltipKey ${q(p.tooltipKey)} ;`);
     if (p.panelShowsUnit === false) lines.push(`    elody:panelShowsUnit false ;`);
@@ -2230,6 +2298,7 @@ export class Extractor {
     if (f.optionsLabel) lines.push(`    elody:optionsLabel ${q(f.optionsLabel)} ;`);
     if (f.optionsValue) lines.push(`    elody:optionsValue ${q(f.optionsValue)} ;`);
     if (f.selectionOption) lines.push(`    elody:selectionOption ${q(f.selectionOption)} ;`);
+    if (f.optionsLimit !== undefined) lines.push(`    elody:optionsLimit ${f.optionsLimit} ;`);
     if (f.operator) lines.push(`    elody:filterOperator ${q(f.operator)} ;`);
     if (f.showTime !== undefined) lines.push(`    elody:showTime ${f.showTime} ;`);
     if (f.matchersType) lines.push(`    elody:matchersType ${q(f.matchersType)} ;`);
@@ -2922,6 +2991,10 @@ export class Extractor {
     if (element.hideInHistory) l.push(`${pad}elody:hideInHistory true ;`);
     if (element.disableLibraryBar) l.push(`${pad}elody:disableLibraryBar true ;`);
     if (element.enableNavigation !== undefined) l.push(`${pad}elody:enableNavigation ${element.enableNavigation} ;`);
+    if (element.displayCondition) {
+      l.push(`${pad}elody:displayConditionKey ${q(element.displayCondition.key)} ;`);
+      if (element.displayCondition.value !== undefined) l.push(`${pad}elody:displayConditionValue ${q(element.displayCondition.value)} ;`);
+    }
     if (element.libraryMode) l.push(`${pad}elody:libraryMode ${q(element.libraryMode)} ;`);
     if (element.searchInput) l.push(`${pad}elody:searchInput ${element.searchInput} ;`);
     if (element.listQuery) l.push(`${pad}elody:listQuery ui:${element.listQuery} ;`);
@@ -2963,7 +3036,7 @@ export class Extractor {
         if (panel.displayConditionKey) p.push(`  elody:displayConditionKey ${q(panel.displayConditionKey)} ;`);
         if (panel.bulkDataSource) p.push(`  elody:bulkDataSource ${q(panel.bulkDataSource)} ;`);
         for (const o of panel.overrides) {
-          const parts = [`elody:field em:${o.key}`, ...(o.labelKey ? [`elody:labelKey ${q(o.labelKey)}`] : []), ...(o.alias ? [`elody:alias ${q(o.alias)}`] : []), ...(o.widget !== undefined ? [`elody:panelWidget ${o.widget}`] : [])];
+          const parts = [`elody:field em:${o.key}`, ...(o.labelKey ? [`elody:labelKey ${q(o.labelKey)}`] : []), ...(o.alias ? [`elody:alias ${q(o.alias)}`] : []), ...(o.widget !== undefined ? [`elody:panelWidget ${o.widget}`] : []), ...(o.asField ? ["elody:panelAsField true"] : [])];
           p.push(`  elody:panelField [ ${parts.join(" ; ")} ] ;`);
         }
         for (const s of panel.spreads) p.push(`  elody:spread ${q(s)} ;`);
@@ -3084,6 +3157,17 @@ export class Extractor {
     if (field.validationAmount !== undefined) s.push(`      elody:validationAmount ${field.validationAmount} ;`);
     if (field.validationExact !== undefined) s.push(`      elody:validationExact ${field.validationExact} ;`);
     if (field.hidden) s.push(`      dash:hidden true ;`);
+    if (field.hiddenValueFrom) {
+      const from = field.hiddenValueFrom;
+      const parts = [...(from.entityType ? [`elody:entityType ${q(from.entityType)}`] : []), ...(from.relationType ? [`elody:relationType ${q(from.relationType)}`] : []), ...(from.key ? [`elody:key ${q(from.key)}`] : []), ...(from.inherited !== undefined ? [`elody:inherited ${from.inherited}`] : [])];
+      s.push(`      elody:hiddenValueFrom [ ${parts.join(" ; ")} ] ;`);
+    }
+    if (field.copyValueFromParent) {
+      const copy = field.copyValueFromParent;
+      const parts = [...(copy.labelKey ? [`elody:labelKey ${q(copy.labelKey)}`] : []), `elody:key ${q(copy.key)}`, ...(copy.relationType ? [`elody:relationType ${q(copy.relationType)}`] : [])];
+      s.push(`      elody:copyValueFromParent [ ${parts.join(" ; ")} ] ;`);
+    }
+    if (field.infoPanel) s.push(`      elody:infoPanel [ ${[...(field.infoPanel.title !== undefined ? [`elody:infoTitle ${q(field.infoPanel.title)}`] : []), ...(field.infoPanel.content !== undefined ? [`elody:infoContent ${q(field.infoPanel.content)}`] : [])].join(" ; ")} ] ;`);
     if (field.tooltipKey) s.push(`      elody:tooltipKey ${q(field.tooltipKey)} ;`);
     if (field.showOnlyInEditMode !== undefined) s.push(`      elody:showOnlyInEditMode ${field.showOnlyInEditMode} ;`);
     if (field.valueTranslationKey) s.push(`      elody:valueTranslationKey ${q(field.valueTranslationKey)} ;`);

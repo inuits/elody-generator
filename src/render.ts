@@ -1,3 +1,4 @@
+import { Kind, print } from "graphql";
 /**
  * UI model -> GraphQL query documents. Pure string rendering; the model is
  * already resolved. Ported behaviour of the reference generator
@@ -15,8 +16,17 @@ const stringList = (values: string[]) => `[${values.map((value) => `"${value}"`)
 
 /** The listing fragment leaves out the detail-only properties; the detail fragment reads them all. */
 /** validation(input: { value: ... }): required (sh:minCount 1) and the declared rule, with its argument. */
+/** An info panel next to a field (elody:infoPanel): infoPanel(title: ..., content: ...) { title content }. */
+function infoPanelLines(info: { title?: string; content?: string }, depth: number): string[] {
+  const args = [...(info.title !== undefined ? [`title: ${gqlString(info.title)}`] : []), ...(info.content !== undefined ? [`content: ${gqlString(info.content)}`] : [])];
+  return [`${pad(depth)}infoPanel(${args.join(", ")}) {`, `${pad(depth + 2)}title`, `${pad(depth + 2)}content`, `${pad(depth)}}`];
+}
+
 /** A GraphQL string literal of a value: its backslashes and quotes escaped (a regex keeps its backslashes). */
-const gqlString = (value: string): string => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+const gqlString = (value: string): string =>
+  // a block string for a value with newlines (as the client writes HTML content), a quoted one otherwise; the file is a template
+  // literal, so every backslash GraphQL needs is doubled for the template to cook it back
+  print({ kind: Kind.STRING, value, block: value.includes("\n") }).replace(/\\/g, "\\\\");
 
 export function renderValidation(field: { required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; validationMessage?: string }, depth: number): string[] {
   const rules = [...(field.required ? ["required"] : []), ...(field.validationRule ? [field.validationRule] : [])];
@@ -405,6 +415,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(filter.showTime !== undefined ? [`${pad(indent + 4)}showTimeForDateFilter: ${filter.showTime}`] : []),
       ...(filter.displayedByDefault ? [`${pad(indent + 4)}isDisplayedByDefault: true`] : []),
       ...mapping,
+      ...(filter.optionsLimit !== undefined ? [`${pad(indent + 4)}limitConfig: { optionsLimit: ${filter.optionsLimit} }`] : []),
       ...(filter.staticOptions?.length
         ? [`${pad(indent + 4)}options: [`, ...filter.staticOptions.map((option) => `${pad(indent + 6)}{ label: "${option.label}", value: "${option.value}" }`), `${pad(indent + 4)}]`]
         : []),
@@ -427,6 +438,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...(filter.includeDefaultsFrom?.length ? [`${pad(indent + 4)}includeDefaultValuesFromIntialValues`] : []),
       ...(filter.matchExact !== undefined ? [`${pad(indent + 4)}matchExact`] : []),
       ...(filter.label ? [`${pad(indent + 4)}label`] : []),
+      ...(filter.optionsLimit !== undefined ? [`${pad(indent + 4)}limitConfig {`, `${pad(indent + 6)}optionsLimit`, `${pad(indent + 4)}}`] : []),
       // a filter that fetches its options asks the option settings back whether declared or not: what is asked back more is harmless
       ...(filter.selectionOption || fetchesOptions ? [`${pad(indent + 4)}selectionOption`] : []),
       ...(filter.showTime !== undefined ? [`${pad(indent + 4)}showTimeForDateFilter`] : []),
@@ -630,7 +642,18 @@ export function renderFormField(field: M.UiCreateFormField, indent: number): str
     }
     lines.push(`${pad(indent + 2)}}`);
   }
-  if (field.hidden) lines.push(`${pad(indent + 2)}hiddenField(input: { hidden: true }) {`, `${pad(indent + 4)}...hiddenField`, `${pad(indent + 2)}}`);
+  if (field.hidden) {
+    // a hidden field taking its value from a related entity (elody:hiddenValueFrom)
+    const from = field.hiddenValueFrom;
+    const parts = ["hidden: true", ...(from?.inherited !== undefined ? [`inherited: ${from.inherited}`] : []), ...(from?.entityType ? [`entityType: ${from.entityType}`] : []), ...(from?.relationType ? [`relationToExtractKey: "${from.relationType}"`] : []), ...(from?.key ? [`keyToExtractValue: "${from.key}"`] : [])];
+    lines.push(`${pad(indent + 2)}hiddenField(input: { ${parts.join(", ")} }) {`, `${pad(indent + 4)}...hiddenField`, `${pad(indent + 2)}}`);
+  }
+  if (field.copyValueFromParent) {
+    const copy = field.copyValueFromParent;
+    const parts = [...(copy.labelKey ? [`label: "${copy.labelKey}"`] : []), `key: "${copy.key}"`, ...(copy.relationType ? [`fromRelationType: "${copy.relationType}"`] : [])];
+    lines.push(`${pad(indent + 2)}copyValueFromParent(input: { ${parts.join(", ")} }) {`, `${pad(indent + 4)}...copyValueFromParent`, `${pad(indent + 2)}}`);
+  }
+  if (field.infoPanel) lines.push(...infoPanelLines(field.infoPanel, indent + 2));
   lines.push(`${pad(indent)}}`);
   return lines.join("\n");
 }
@@ -956,6 +979,10 @@ function panelFieldLines(property: M.UiProperty, panel: Pick<M.UiPanel, "editabl
     if (property.valueTranslationKey) lines.push(`${pad(depth + 2)}valueTranslationKey(input: "${property.valueTranslationKey}")`);
     if (property.linkText) lines.push(`${pad(depth + 2)}linkText(input: "${property.linkText}")`);
     if (property.copyToClipboard !== undefined) lines.push(`${pad(depth + 2)}copyToClipboard(input: ${property.copyToClipboard})`);
+    if (property.masked !== undefined) lines.push(`${pad(depth + 2)}masked(input: ${property.masked})`);
+    if (property.revealQuery) lines.push(`${pad(depth + 2)}revealQuery(input: "${property.revealQuery}")`);
+    // the info panel belongs to the element shown elsewhere, not to this panel's plain field (elody:panelAsField)
+    if (property.infoPanel && !over?.asField) lines.push(...infoPanelLines(property.infoPanel, depth + 2));
     if (property.nonEditable !== undefined) lines.push(`${pad(depth + 2)}nonEditableField(input: ${property.nonEditable})`);
     if (property.unit && property.panelShowsUnit !== false) lines.push(`${pad(depth + 2)}unit(input: ${property.unit})`);
     if (property.multilingual) lines.push(`${pad(depth + 2)}isMultilingual(input: true)`);
@@ -1010,7 +1037,8 @@ export function elementRenderer(entity: M.UiEntity): ElementRenderer {
       }
       const property = propertyByKey.get(key);
       if (!property) throw new Error(`panel "${panel.alias}" references undeclared property "${key}"`);
-      if (property.panelElement) {
+      // a panel element, unless this panel shows the property as a plain field (elody:panelAsField)
+      if (property.panelElement && !panel.fieldOverrides?.find((o) => o.key === key)?.asField) {
         lines.push(renderPanelElement(entity, property, depth + 2));
         continue;
       }
@@ -1027,6 +1055,7 @@ export function elementRenderer(entity: M.UiEntity): ElementRenderer {
       const lines = [
         `${pad(depth)}${alias}entityListElement {`,
         ...(element.label !== undefined ? [`${pad(depth + 2)}label(input: "${element.label}")`] : []),
+        ...(element.displayCondition ? [`${pad(depth + 2)}displayCondition {`, `${pad(depth + 4)}key(input: "${element.displayCondition.key}")`, ...(element.displayCondition.value !== undefined ? [`${pad(depth + 4)}value(input: "${element.displayCondition.value}")`] : []), `${pad(depth + 2)}}`] : []),
         ...(element.mediaKind ? [`${pad(depth + 2)}type(input: ${element.mediaKind})`] : []),
         `${pad(depth + 2)}isCollapsed(input: ${element.collapsed ?? false})`,
       ];
@@ -1239,15 +1268,22 @@ function renderPanelElement(entity: M.UiEntity, property: M.UiProperty, depth: n
   const element = property.panelElement!;
   const label = property.label ?? property.key;
   if (element.kind === "wysiwyg") {
+    // the element under the property's panel alias; its extensions and configuration as declared, or the spec's
+    // defaults (starterKit, no line numbers) for an element inferred from the editor rather than a declared viewer
+    const extensions = property.extensions ?? (element.inferred ? ["starterKit"] : undefined);
+    const showLineNumbers = property.showLineNumbers ?? (element.inferred ? false : undefined);
+    const configuration = [
+      ...(showLineNumbers !== undefined ? [`${pad(depth + 4)}showLineNumbers(input: ${showLineNumbers})`] : []),
+      ...(property.editorStyles ? [`${pad(depth + 4)}customEditorStyles(input: "${property.editorStyles}")`] : []),
+      ...(property.virtualKeyboardLayouts?.length ? [`${pad(depth + 4)}virtualKeyboardLayouts(input: [${property.virtualKeyboardLayouts.map((l) => `"${l}"`).join(", ")}])`] : []),
+    ];
     const lines = [
-      `${pad(depth)}${property.key}: wysiwygElement {`,
+      `${pad(depth)}${property.panelAlias ?? property.alias ?? property.key}: wysiwygElement {`,
       `${pad(depth + 2)}label(input: "${label}")`,
       `${pad(depth + 2)}metadataKey(input: "${property.key}")`,
-      `${pad(depth + 2)}extensions(input: [starterKit])`,
-      // the PWA reads the configuration unguarded (virtualKeyboardLayouts, showLineNumbers)
-      `${pad(depth + 2)}wysiwygElementConfiguration {`,
-      `${pad(depth + 4)}showLineNumbers(input: false)`,
-      `${pad(depth + 2)}}`,
+      ...(property.infoPanel ? infoPanelLines(property.infoPanel, depth + 2) : []),
+      ...(extensions?.length ? [`${pad(depth + 2)}extensions(input: [${extensions.join(", ")}])`] : []),
+      ...(configuration.length ? [`${pad(depth + 2)}wysiwygElementConfiguration {`, ...configuration, `${pad(depth + 2)}}`] : []),
     ];
     if (property.multilingual) lines.push(`${pad(depth + 2)}isMultilingual(input: true)`);
     lines.push(`${pad(depth)}}`);
