@@ -412,6 +412,12 @@ export type UiApp = {
   panelHeaderLegacy?: boolean;
   /** elody:bulkModalFormQueryLegacy: the client opens bulk modals with formQuery (singular), the older baseGraphql form */
   bulkModalFormQueryLegacy?: boolean;
+  /** elody:relationFormFlatPanel: the bulk-edit relation form's panel without the WindowElementPanel inline fragment */
+  relationFormFlatPanel?: boolean;
+  /** elody:relationFormField: the client's own fields in the bulk-edit relation form's panel */
+  relationFormFields: { alias?: string; key: string; labelKey?: string; clientInputField?: string; order: number }[];
+  /** elody:geoFilterKey: the key the map's geo filter buckets on (GetGeoFilterForMap) */
+  geoFilterKey?: string;
   documents: string[];
   paginationLimits?: number[];
   dropzoneOptions: { icon?: string; labelKey: string; value: string; order: number }[];
@@ -425,7 +431,7 @@ export type UiApp = {
   filterMatcherLegacy?: boolean;
   sortOptions: { labelKey: string; value: string; primary?: boolean; icon?: string; order: number }[];
   /** elody:typeEntry: a type added to, spread otherwise in, or left out of a type-wide document */
-  typeEntries: { document: string; graphqlType: string; fragment?: string; operations?: UiBulkOperation[]; excluded?: boolean }[];
+  typeEntries: { document: string; graphqlType: string; fragment?: string; operations?: UiBulkOperation[]; excluded?: boolean; /** elody:bare: listed without a fragment */ bare?: boolean }[];
   /** relationValues read on every result of getEntities */
   relationValues?: boolean;
   /** the base bulk operations (... on BaseEntity), the entity's elody:bulkOperation nodes */

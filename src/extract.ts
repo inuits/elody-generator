@@ -196,7 +196,10 @@ type AppSettings = {
   filterMatcherKeys?: string[];
   filterMatcherLegacy?: boolean;
   sortOptions: { labelKey: string; value: string; primary?: boolean; icon?: string }[];
-  typeEntries: { document: string; graphqlType: string; fragment?: string; operations?: Operation[]; excluded?: boolean }[];
+  typeEntries: { document: string; graphqlType: string; fragment?: string; operations?: Operation[]; excluded?: boolean; bare?: boolean }[];
+  relationFormFlatPanel?: boolean;
+  relationFormFields?: { alias?: string; key: string; labelKey?: string; clientInputField?: string }[];
+  geoFilterKey?: string;
 };
 type DeleteOptions = {
   deleteEntityLabel?: string;
@@ -2575,6 +2578,13 @@ export class Extractor {
     };
     const sortBase = baseOf("GetSortOptions", "sortOptions");
     const bulkBase = baseOf("GetBulkOperations", "bulkOperationOptions");
+    // the bulk-edit relation form: its panel flat or under the panel union, with fields of the client's own
+    const relationForm = op("GetBulkOperationsRelationForm");
+    const relationPanels = relationForm ? child(fields(relationForm.selectionSet)[0], "panels") : undefined;
+    const panelUnion = relationPanels?.selectionSet?.selections.find((s): s is InlineFragmentNode => s.kind === Kind.INLINE_FRAGMENT);
+    const relationFields = fields((panelUnion ?? relationPanels)?.selectionSet).filter((f) => f.name.value === "metaData");
+    const geo = op("GetGeoFilterForMap");
+    const geoFilter = geo ? child(fields(geo.selectionSet)[0], "advancedFilter") : undefined;
     const menuQuery = op("GetMenu");
     const menuRoot = menuQuery ? child(child(fields(menuQuery.selectionSet)[0], "menu"), "menu") ?? child(fields(menuQuery.selectionSet)[0], "menu") : undefined;
     entity.app = {
@@ -2590,6 +2600,9 @@ export class Extractor {
       filterMatcherQueryName: matcherName,
       filterMatcherKeys: matcherKeys.length ? matcherKeys : undefined,
       filterMatcherLegacy: matcher && !matcherKeys.length ? true : undefined,
+      relationFormFlatPanel: relationPanels && !panelUnion ? true : undefined,
+      relationFormFields: relationFields.length ? relationFields.map((f) => ({ alias: alias(f) !== (input(child(f, "key")) ?? "") ? alias(f) : undefined, key: input(child(f, "key")) ?? alias(f), labelKey: input(child(f, "label")), clientInputField: ((t) => (t && !BASE_FIELDS[t] ? t : undefined))(child(f, "inputField") ? str(child(f, "inputField")!, "type") : undefined) })) : undefined,
+      geoFilterKey: geoFilter ? scalar(argument(geoFilter, "key")) : undefined,
       sortOptions: sortBase ? list(argument(sortBase, "input")).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT).map((o) => ({ labelKey: scalar(objectField(o, "label")) ?? "", value: scalar(objectField(o, "value")) ?? "", primary: objectField(o, "primary") ? scalar(objectField(o, "primary")) === "true" : undefined, icon: scalar(objectField(o, "icon")) })) : [],
       typeEntries: [],
     };
@@ -2676,7 +2689,10 @@ export class Extractor {
       FetchMediafilesOfEntity: main.filter((e) => e.graphqlType === "MediaFileEntity").map((e) => ({ graphqlType: e.graphqlType, spread: `minimal${e.documentName}` })),
       SetPrimaryThumbnail: main.filter((e) => ["Media", "Asset"].includes(e.graphqlType) && has(detailOf(e))).map((e) => ({ graphqlType: e.graphqlType, spread: detailOf(e) })),
       SetPrimaryMediafile: main.filter((e) => ["Media", "Asset"].includes(e.graphqlType) && has(detailOf(e))).map((e) => ({ graphqlType: e.graphqlType, spread: detailOf(e) })),
+      GetHistoryEntities: [],
     };
+    // the filters document under its other spelling
+    derived.GetAdvancedFilters = derived.getAdvancedFilters;
     for (const [document, derivedPairs] of Object.entries(derived)) {
       if (!app.app!.documents.includes(document)) continue;
       const definition = this.definitions.get(document);
@@ -2694,6 +2710,11 @@ export class Extractor {
         }
       };
       walk(definition.node.selectionSet, 0);
+      // the mediafiles read bare (id alone, no card): the type listed without a fragment
+      if (document === "FetchMediafilesOfEntity" && !actual.length && fields(fields(definition.node.selectionSet)[0]?.selectionSet).some((f) => f.name.value === "id")) {
+        app.app!.typeEntries.push({ document, graphqlType: "MediaFileEntity", bare: true });
+        continue;
+      }
       for (const pair of actual) {
         const d = derivedPairs.find((p) => p.graphqlType === pair.graphqlType);
         if (pair.operations) app.app!.typeEntries.push({ document, graphqlType: pair.graphqlType, operations: pair.operations });
@@ -3063,6 +3084,9 @@ export class Extractor {
       if (a.filterMatcherLegacy) out.push(`  elody:filterMatcherLegacy true ;`);
       if (a.panelHeaderLegacy || this.legacyPanelHeaders) out.push(`  elody:panelHeaderLegacy true ;`);
       if (a.bulkModalFormQueryLegacy || this.legacyBulkModalForms) out.push(`  elody:bulkModalFormQueryLegacy true ;`);
+      if (a.relationFormFlatPanel) out.push(`  elody:relationFormFlatPanel true ;`);
+      for (const [i, f] of (a.relationFormFields ?? []).entries()) out.push(`  elody:relationFormField [ sh:order ${i + 1}${f.alias ? ` ; elody:alias ${q(f.alias)}` : ""} ; elody:key ${q(f.key)}${f.labelKey ? ` ; elody:labelKey ${q(f.labelKey)}` : ""}${f.clientInputField ? ` ; elody:clientInputField ${q(f.clientInputField)}` : ""} ] ;`);
+      if (a.geoFilterKey) out.push(`  elody:geoFilterKey ${q(a.geoFilterKey)} ;`);
       const menuNode = (item: MenuItem, i: number, pad: string): string => {
         const parts = [`sh:order ${i + 1}`, `elody:alias ${q(item.alias)}`, `elody:labelKey ${q(item.labelKey)}`, ...(item.entityType ? [`elody:entityType ${q(item.entityType)}`] : []), ...(item.icon ? [`elody:icon ${q(item.icon)}`] : []), ...(item.isLoggedIn !== undefined ? [`elody:isLoggedIn ${item.isLoggedIn}`] : []), ...(item.requiresAuth !== undefined ? [`elody:requiresAuth ${item.requiresAuth}`] : []), ...(item.can ?? []).map((c) => `elody:can ${q(c)}`)];
         if (item.route !== undefined) parts.push(`elody:route ${q(item.route)}`);
@@ -3083,7 +3107,7 @@ export class Extractor {
             .map((t) => {
               const ops = t.operations ?? [];
               ops.forEach((op, i) => (op.order = i + 1));
-              return `[ elody:platformDocument ${q(t.document)} ; elody:graphqlType ${q(t.graphqlType)}${t.fragment ? ` ; elody:fragmentName ${q(t.fragment)}` : ""}${t.excluded ? " ; elody:excluded true" : ""}${ops.length ? ` ;\n      elody:operation ${ops.map((op) => this.writeOperation(op, this.stubs, formNodes).replace(/^/gm, "    ").trim()).join(" ,\n      ")}` : ""} ]`;
+              return `[ elody:platformDocument ${q(t.document)} ; elody:graphqlType ${q(t.graphqlType)}${t.fragment ? ` ; elody:fragmentName ${q(t.fragment)}` : ""}${t.excluded ? " ; elody:excluded true" : ""}${t.bare ? " ; elody:bare true" : ""}${ops.length ? ` ;\n      elody:operation ${ops.map((op) => this.writeOperation(op, this.stubs, formNodes).replace(/^/gm, "    ").trim()).join(" ,\n      ")}` : ""} ]`;
             })
             .join(" ,\n    ")} ;`,
         );

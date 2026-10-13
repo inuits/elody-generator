@@ -1655,6 +1655,9 @@ class Parse {
       menu: r.byOrder(r.nodes(subject, elody("menuItem"))).map((item) => this.menuItem(item)),
       panelHeaderLegacy: this.optionalFlag(subject, elody("panelHeaderLegacy")),
       bulkModalFormQueryLegacy: this.optionalFlag(subject, elody("bulkModalFormQueryLegacy")),
+      relationFormFlatPanel: this.optionalFlag(subject, elody("relationFormFlatPanel")),
+      relationFormFields: r.byOrder(r.nodes(subject, elody("relationFormField"))).map((field) => ({ alias: r.value(field, elody("alias")) || undefined, key: String(r.value(field, elody("key")) ?? ""), labelKey: r.value(field, elody("labelKey")) || undefined, clientInputField: r.value(field, elody("clientInputField")) || undefined, order: r.order(field) })),
+      geoFilterKey: r.value(subject, elody("geoFilterKey")) || undefined,
       documents: r.literals(subject, elody("platformDocument")),
       paginationLimits: limits ? r.list(limits.value).map(Number) : undefined,
       dropzoneOptions: r.byOrder(r.nodes(subject, elody("dropzoneOption"))).map((option) => ({ icon: r.value(option, elody("icon")) || undefined, labelKey: String(r.value(option, elody("labelKey")) ?? ""), value: String(r.value(option, elody("value")) ?? ""), order: r.order(option) })),
@@ -1667,7 +1670,7 @@ class Parse {
       filterMatcherKeys: keys ? r.list(keys.value) : undefined,
       filterMatcherLegacy: this.optionalFlag(subject, elody("filterMatcherLegacy")),
       sortOptions: r.byOrder(r.nodes(subject, elody("sortOption"))).map((option) => ({ labelKey: String(r.value(option, elody("labelKey")) ?? ""), value: String(r.value(option, elody("value")) ?? ""), primary: this.optionalFlag(option, elody("primary")), icon: r.value(option, elody("icon")) || undefined, order: r.order(option) })),
-      typeEntries: r.nodes(subject, elody("typeEntry")).map((entry) => ({ document: String(r.value(entry, elody("platformDocument")) ?? ""), graphqlType: String(r.value(entry, elody("graphqlType")) ?? ""), fragment: r.value(entry, elody("fragmentName")) || undefined, operations: r.nodes(entry, elody("operation")).length ? r.byOrder(r.nodes(entry, elody("operation"))).map((op) => this.bulkOperation(op)) : undefined, excluded: this.optionalFlag(entry, elody("excluded")) })),
+      typeEntries: r.nodes(subject, elody("typeEntry")).map((entry) => ({ document: String(r.value(entry, elody("platformDocument")) ?? ""), graphqlType: String(r.value(entry, elody("graphqlType")) ?? ""), fragment: r.value(entry, elody("fragmentName")) || undefined, operations: r.nodes(entry, elody("operation")).length ? r.byOrder(r.nodes(entry, elody("operation"))).map((op) => this.bulkOperation(op)) : undefined, excluded: this.optionalFlag(entry, elody("excluded")), bare: this.optionalFlag(entry, elody("bare")) })),
     };
   }
 

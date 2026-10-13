@@ -268,8 +268,16 @@ export function normalizeNode<T extends ASTNode>(node: T): T {
         const parentNode = parent && !Array.isArray(parent) ? (parent as ASTNode) : undefined;
         const parentName = parentNode?.kind === Kind.FIELD ? parentNode.name.value : "";
         // where a fragment is spread, and in which order, does not change what the PWA receives
-        const spreads = set.selections.filter((selection) => selection.kind === Kind.FRAGMENT_SPREAD).sort((a, b) => selectionName(a).localeCompare(selectionName(b)));
-        const fields = set.selections.filter((selection) => selection.kind !== Kind.FRAGMENT_SPREAD);
+        // a selection given twice, identical (a field, a spread: a client's slip), counts once: GraphQL merges it
+        const seenText = new Set<string>();
+        const once = set.selections.filter((selection) => {
+          const text = print(selection);
+          if (seenText.has(text)) return false;
+          seenText.add(text);
+          return true;
+        });
+        const spreads = once.filter((selection) => selection.kind === Kind.FRAGMENT_SPREAD).sort((a, b) => selectionName(a).localeCompare(selectionName(b)));
+        const fields = once.filter((selection) => selection.kind !== Kind.FRAGMENT_SPREAD);
         // spreads go last: where a fragment is spread does not change what the PWA receives
         if (ORDERED_PARENTS.has(parentName)) return { ...set, selections: [...fields, ...spreads] };
         // a field asked back twice (key ... key) is one field

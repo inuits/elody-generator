@@ -34,7 +34,17 @@ const CONSTANTS: Record<string, (app: M.UiApp) => string> = {
   BulkAddRelations: () => `  mutation BulkAddRelations($entityIds: [String!]!, $relationEntityId: String!, $relationType: String!) {\n    bulkAddRelations(entityIds: $entityIds, relationEntityId: $relationEntityId, relationType: $relationType)\n  }`,
   AddEntityRelations: () => `  mutation AddEntityRelations($id: String!, $relations: [BaseRelationValuesInput!]!, $collection: Collection!) {\n    addEntityRelations(id: $id, relations: $relations, collection: $collection)\n  }`,
   GenerateTranscode: () => `  mutation GenerateTranscode($mediafileIds: [String!]!, $transcodeType: TranscodeType!, $masterEntityId: String) {\n    generateTranscode(mediafileIds: $mediafileIds, transcodeType: $transcodeType, masterEntityId: $masterEntityId)\n  }`,
-  GetBulkOperationsRelationForm: () => `  query GetBulkOperationsRelationForm {\n    BulkOperationsRelationForm {\n      label(input: "bulk-operations.bulk-edit.bulk-edit-title")\n      relations: panels {\n        ... on WindowElementPanel {\n          panelHeaderContent(panelHeaderContentInput: { label: "bulk-operations.bulk-edit.relation-types" }) {\n            label\n          }\n          panelType(input: metadata)\n          isEditable(input: true)\n          isCollapsed(input: false)\n        }\n      }\n    }\n  }`,
+  GetBulkOperationsRelationForm: (app) => {
+    // the panel's header in the client's dialect, its fields of the client's own, with or without the panel union
+    const header = app.panelHeaderLegacy
+      ? [`label(input: "bulk-operations.bulk-edit.relation-types")`]
+      : [`panelHeaderContent(panelHeaderContentInput: { label: "bulk-operations.bulk-edit.relation-types" }) {`, "  label", "}"];
+    const fields = app.relationFormFields.flatMap((f) => [`${f.alias ?? f.key}: metaData {`, `  label(input: "${f.labelKey ?? f.key}")`, `  key(input: "${f.key}")`, `  inputField(type: ${f.clientInputField ?? "baseTextField"}) {`, "    ...inputfield", "  }", "}"]);
+    const inner = [...header, "panelType(input: metadata)", "isEditable(input: true)", "isCollapsed(input: false)", ...fields];
+    const panel = app.relationFormFlatPanel ? inner.map((l) => `        ${l}`) : ["        ... on WindowElementPanel {", ...inner.map((l) => `          ${l}`), "        }"];
+    return ["  query GetBulkOperationsRelationForm {", "    BulkOperationsRelationForm {", `      label(input: "bulk-operations.bulk-edit.bulk-edit-title")`, "      relations: panels {", ...panel, "      }", "    }", "  }"].join("\n");
+  },
+  GetGeoFilterForMap: (app) => `  query GetGeoFilterForMap {\n    GeoFilterForMap {\n      advancedFilter(type: geo, key: "${app.geoFilterKey ?? "gps_coordinates"}") {\n        type\n        key\n        bucket\n        hidden(value: true)\n      }\n    }\n  }`,
   GetDropzoneEntityToCreate: (app) => `  query GetDropzoneEntityToCreate {\n    DropzoneEntityToCreate {\n      options(input: [${app.dropzoneOptions.map((o) => `{ icon: ${o.icon ?? "NoIcon"}, label: "${o.labelKey}", value: "${o.value}" }`).join(", ")}]) {\n        icon\n        label\n        value\n      }\n    }\n  }`,
   GetPaginationLimitOptions: (app) => `  query GetPaginationLimitOptions {\n    PaginationLimitOptions {\n      options(input: [${(app.paginationLimits ?? [20, 50, 100]).map((n) => `{ icon: ListOl, label: "${n}", value: ${n} }`).join(", ")}]) {\n        icon\n        label\n        value\n      }\n    }\n  }`,
   GetEntityPickerForm: () => `  query GetEntityPickerForm {\n    GetDynamicForm {\n      import: formTab {\n        formFields {\n          entityPicker: metaData {\n            label(input: "metadata.labels.entity-picker")\n            key(input: "entityPicker")\n            inputField(type: baseEntityPickerField) {\n              ...inputfield\n            }\n          }\n        }\n      }\n    }\n  }`,
@@ -57,7 +67,7 @@ const filterMatcherMapping = (app: M.UiApp): string => {
 };
 
 /** The names the catalogue knows: constants, the matcher mapping, and the type-wide documents. */
-export const PLATFORM_DOCUMENTS = new Set([...Object.keys(CONSTANTS), "GetMenu", "getFilterMatcherMapping", "GetFilterMatcherMapping", "fullEntity", "getEntities", "getTenants", "getEntityById", "getAdvancedFilters", "GetSortOptions", "GetBulkOperations", "getPreviewComponents", "FetchMediafilesOfEntity", "SetPrimaryThumbnail", "SetPrimaryMediafile"]);
+export const PLATFORM_DOCUMENTS = new Set([...Object.keys(CONSTANTS), "GetMenu", "getFilterMatcherMapping", "GetFilterMatcherMapping", "fullEntity", "getEntities", "getTenants", "getEntityById", "getAdvancedFilters", "GetAdvancedFilters", "GetSortOptions", "GetBulkOperations", "getPreviewComponents", "FetchMediafilesOfEntity", "SetPrimaryThumbnail", "SetPrimaryMediafile", "GetHistoryEntities"]);
 
 /** The main declaration of each GraphQL type: not an app, an inline listing, a shared file or another card of the type. */
 export function mainEntities(all: M.UiEntity[]): M.UiEntity[] {
@@ -85,7 +95,8 @@ function pairs(document: string, app: M.UiApp, derivedPairs: { graphqlType: stri
     const at = result.findIndex((p) => p.graphqlType === entry.graphqlType);
     if (entry.excluded) {
       if (at >= 0) result.splice(at, 1);
-    } else if (entry.fragment || entry.operations) {
+    } else if (entry.fragment || entry.operations || entry.bare) {
+      // a bare entry lists the type without a fragment: the document reads only its own fields
       const pair = { graphqlType: entry.graphqlType, spread: entry.fragment, operations: entry.operations };
       if (at >= 0) result[at] = pair;
       else result.push(pair);
@@ -94,7 +105,7 @@ function pairs(document: string, app: M.UiApp, derivedPairs: { graphqlType: stri
   return result;
 }
 const inline = (list: { graphqlType: string; spread?: string; operations?: M.UiBulkOperation[] }[], indent: number, legacyFormQuery = false) =>
-  list.map((p) =>
+  list.filter((p) => p.spread || p.operations).map((p) =>
     p.operations
       ? [`${" ".repeat(indent)}... on ${p.graphqlType} {`, renderBulkOperationOptions(p.operations, indent + 2, legacyFormQuery), `${" ".repeat(indent)}}`].join("\n")
       : `${" ".repeat(indent)}... on ${p.graphqlType} {\n${" ".repeat(indent + 2)}...${p.spread}\n${" ".repeat(indent)}}`,
@@ -119,7 +130,8 @@ function derived(name: string, app: M.UiApp, all: M.UiEntity[]): string | undefi
         ? `  query getEntityById($id: String!, $type: String!, $preferredLanguage: String) {\n    Entity(id: $id, type: $type, preferredLanguage: $preferredLanguage) {\n${app.readsPermissions ? "      intialValues {\n        canUpdate\n        canDelete\n      }\n" : ""}      ...fullEntity\n    }\n  }`
         : `  query getEntityById($id: String!, $type: String!) {\n    Entity(id: $id, type: $type) {\n${app.readsPermissions ? "      intialValues {\n        canUpdate\n        canDelete\n      }\n" : ""}      ...fullEntity\n    }\n  }`;
     case "getAdvancedFilters":
-      return [`  query getAdvancedFilters($entityType: String!) {`, "    EntityTypeFilters(type: $entityType) {", ...inline(pairs(name, app, main.filter((e) => e.filters.length > 0).map((e) => ({ graphqlType: e.graphqlType, spread: e.filtersFragmentName ?? `filtersFor${nameOf(e)}` }))), 6), "    }", "  }"].join("\n");
+    case "GetAdvancedFilters":
+      return [`  query ${name}($entityType: String!) {`, "    EntityTypeFilters(type: $entityType) {", ...inline(pairs(name, app, main.filter((e) => e.filters.length > 0).map((e) => ({ graphqlType: e.graphqlType, spread: e.filtersFragmentName ?? `filtersFor${nameOf(e)}` }))), 6), "    }", "  }"].join("\n");
     case "GetSortOptions": {
       const base = app.sortOptions.length ? ["      ... on BaseEntity {", renderSortOptionsBlock(app.sortOptions.map((o) => ({ icon: o.icon, labelKey: o.labelKey, value: o.value, primary: o.primary })), 8, false), "      }"] : [];
       return [`  query GetSortOptions($entityType: String!) {`, "    EntityTypeSortOptions(entityType: $entityType) {", ...base, ...inline(pairs(name, app, main.filter((e) => renderSortOptions(e, 4) !== "").map((e) => ({ graphqlType: e.graphqlType, spread: sortFragmentOf(e) }))), 6), "    }", "  }"].join("\n");
@@ -135,8 +147,11 @@ function derived(name: string, app: M.UiApp, all: M.UiEntity[]): string | undefi
     case "FetchMediafilesOfEntity":
     {
       const shown = pairs(name, app, mediafile ? [{ graphqlType: "MediaFileEntity", spread: `minimal${nameOf(mediafile)}` }] : []);
-      return [`  query FetchMediafilesOfEntity($entityIds: [String!]!) {`, "    FetchMediafilesOfEntity(entityIds: $entityIds) {", ...(shown.length ? ["      id", ...shown.map((p) => `      ...${p.spread}`)] : ["      __typename"]), "    }", "  }"].join("\n");
+      return [`  query FetchMediafilesOfEntity($entityIds: [String!]!) {`, "    FetchMediafilesOfEntity(entityIds: $entityIds) {", ...(shown.length ? ["      id", ...shown.filter((p) => p.spread).map((p) => `      ...${p.spread}`)] : ["      __typename"]), "    }", "  }"].join("\n");
     }
+    case "GetHistoryEntities":
+      // the history listing: the latest versions first, the detail of every type the app lists (elody:typeEntry)
+      return [`  query GetHistoryEntities($limit: Int, $skip: Int, $advancedFilterInputs: [AdvancedFilterInput!]!, $type: Entitytyping!) {`, "    EntitiesHistory(", "      type: $type", "      limit: $limit", "      skip: $skip", "      searchInputType: AdvancedInputType", `      searchValue: { value: "", key: "date_updated", order_by: "date_updated", isAsc: false }`, "      advancedFilterInputs: $advancedFilterInputs", "    ) {", "      count", "      results {", "        id", "        uuid", "        type", ...inline(pairs(name, app, []), 8), "      }", "    }", "  }"].join("\n");
     case "SetPrimaryThumbnail":
     case "SetPrimaryMediafile": {
       const media = pairs(name, app, main.filter((e) => ["Media", "Asset"].includes(e.graphqlType) && e.detail).map((e) => ({ graphqlType: e.graphqlType, spread: detailOf(e) })));
