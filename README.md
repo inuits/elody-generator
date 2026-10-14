@@ -52,7 +52,8 @@ elody-ui validate FILE.ui.ttl|DIR  # meta-shapes only
 elody-ui migrate  FILE.ui.ttl --out NEW.ui.ttl   # retired dialect -> 0.1
 elody-ui compare  FILE.ui.ttl|DIR CLIENT/src [--scope scope.json] [--json report.json]
                                    # the generated GraphQL against the client's, per definition
-elody-ui extract  CLIENT/src --out FILE.ui.ttl|DIR [--namespace IRI]   # DIR: one file per query file (entities/<type>.ui.ttl, <client>.ui.ttl) + extract-notes.txt
+elody-ui extract  CLIENT/src --out FILE.ui.ttl|DIR [--namespace IRI]
+elody-ui reference --out DIR [--declarations DIR] [--base PATH]   # the reference pages (Markdown) from the vocabulary, the meta-shapes and the bindings; usage counts from clients/*/ui   # DIR: one file per query file (entities/<type>.ui.ttl, <client>.ui.ttl) + extract-notes.txt
                                    # a declaration proposal from the client's GraphQL (the reverse)
 ```
 

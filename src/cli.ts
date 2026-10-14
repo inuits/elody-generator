@@ -9,6 +9,7 @@
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { declarationFiles, loadDeclaration } from "./declarationFiles.js";
+import { readReference, renderReference } from "./reference.js";
 import { basename, join, dirname } from "path";
 import { compareClient, formatCompareReport, readQueryFiles } from "./compare.js";
 import { extractDeclaration, extractDeclarationFiles } from "./extract.js";
@@ -22,7 +23,8 @@ const usage = `usage:
   elody-ui validate FILE
   elody-ui migrate  FILE [--out FILE] [--translations DIR]
   elody-ui compare  DECLARATION CLIENT_SRC [--scope FILE] [--json FILE] [--name NAME]
-  elody-ui extract  CLIENT_SRC --out FILE [--namespace IRI]`;
+  elody-ui extract  CLIENT_SRC --out FILE [--namespace IRI]
+  elody-ui reference --out DIR [--declarations DIR] [--base PATH]`;
 
 function option(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(name);
@@ -127,6 +129,17 @@ export async function main(argv: string[]): Promise<number> {
     writeFileSync(out, result.ttl);
     console.log(`${out}: ${result.types.length} type(s) extracted, ${result.notes.length} note(s)`);
     for (const note of result.notes) console.error(`note: ${note}`);
+    return 0;
+  }
+
+  if (command === "reference") {
+    const out = option(rest, "--out");
+    if (!out) throw new Error(usage);
+    const reference = readReference({ declarations: option(rest, "--declarations") });
+    const pages = renderReference(reference, { basePath: option(rest, "--base") });
+    mkdirSync(out, { recursive: true });
+    for (const [file, content] of pages) writeFileSync(join(out, file), content);
+    console.log(`${out}: ${pages.size} file(s) from ${reference.terms.size} terms and ${reference.shapes.size} shapes${reference.clients ? `, usage from ${reference.clients} client(s)` : ""}`);
     return 0;
   }
 

@@ -30,3 +30,4 @@ export {
 } from "./compare.js";
 export { extractDeclaration, extractDeclarationFiles, Extractor, type ExtractOptions, type ExtractResult, type ExtractFilesResult } from "./extract.js";
 export { loadDeclaration, declarationFiles, declarationFileFor, declaredSubjects, isDeclarationDir } from "./declarationFiles.js";
+export { readReference, renderReference, curie, type Reference } from "./reference.js";
