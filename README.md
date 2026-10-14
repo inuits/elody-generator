@@ -126,7 +126,12 @@ shows is three lists (`elody:listingFields`, `elody:detailFields`,
 operation's context is one of the platform's presets
 (`elody:ReadModeSomeSelectedContext`, ...) when it matches; an operation
 several types declare identically is one named node in `_shared.ui.ttl`,
-referenced from each. An explicit declaration is as valid and renders the
+referenced from each; a label key every shape of a key carries is declared
+once on the key in `keys.ui.ttl`; two shapes of one key (an alias twin) are
+named property shapes, `ui:<Type>Ui-field-<alias>`, that the lists name by
+node; a form's fields are a list of the type's properties (`elody:fields`,
+`elody:fieldsFrom`), each inheriting its input and label unless it says its
+own. An explicit declaration is as valid and renders the
 same; `elody-ui expand` writes every default back for a tool that needs the
 explicit graph.
 
