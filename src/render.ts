@@ -61,16 +61,21 @@ const gqlString = (value: string): string =>
   // literal, so every backslash GraphQL needs is doubled for the template to cook it back
   print({ kind: Kind.STRING, value, block: value.includes("\n") }).replace(/\\/g, "\\\\");
 
-export function renderValidation(field: { required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; validationMessage?: string }, depth: number): string[] {
+export function renderValidation(field: { required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; validationMin?: number; validationMax?: number; validationMessage?: string }, depth: number): string[] {
   const rules = [...(field.required ? ["required"] : []), ...(field.validationRule ? [field.validationRule] : [])];
   if (!rules.length) return [];
   const value = rules.length === 1 ? rules[0] : `[${rules.join(", ")}]`;
   // the rule's argument goes under its own name: regex for a regex, has_required_relation its relation and count, customValue for the rest
+  // has_min_max_amount_of_relations carries its relation and bounds; has_required_relation its relation and count
+  const bounds =
+    field.validationRule === "has_min_max_amount_of_relations"
+      ? `, has_min_max_amount_of_relations: { ${[...(field.validationRelationType !== undefined ? [`relationType: "${field.validationRelationType}"`] : []), ...(field.validationMin !== undefined ? [`min: ${field.validationMin}`] : []), ...(field.validationMax !== undefined ? [`max: ${field.validationMax}`] : [])].join(", ")} }`
+      : "";
   const relation =
-    field.validationRelationType !== undefined || field.validationAmount !== undefined
+    !bounds && (field.validationRelationType !== undefined || field.validationAmount !== undefined)
       ? `, has_required_relation: { ${[...(field.validationRelationType !== undefined ? [`relationType: "${field.validationRelationType}"`] : []), ...(field.validationAmount !== undefined ? [`amount: ${field.validationAmount}`] : []), ...(field.validationExact !== undefined ? [`exact: ${field.validationExact}`] : [])].join(", ")} }`
       : "";
-  const extra = (field.validationMessage ? `, fastValidationMessage: "${field.validationMessage}"` : "") + (field.validationValue !== undefined ? `, ${field.validationRule === "regex" ? "regex" : "customValue"}: ${gqlString(field.validationValue)}` : "") + relation;
+  const extra = (field.validationMessage ? `, fastValidationMessage: "${field.validationMessage}"` : "") + (field.validationValue !== undefined ? `, ${field.validationRule === "regex" ? "regex" : "customValue"}: ${gqlString(field.validationValue)}` : "") + relation + bounds;
   return [`${pad(depth)}validation(input: { value: ${value}${extra} }) {`, `${pad(depth + 2)}...validation`, `${pad(depth)}}`];
 }
 

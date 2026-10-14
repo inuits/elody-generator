@@ -87,6 +87,8 @@ type Property = {
   validationValue?: string;
   validationRelationType?: string;
   validationAmount?: number;
+  validationMin?: number;
+  validationMax?: number;
   validationExact?: boolean;
   cardKey?: string;
   cardField?: string;
@@ -284,7 +286,7 @@ type Filter = {
   lookup?: Lookup;
 };
 
-type FormField = { key: string; order?: number; hiddenValueFrom?: { entityType?: string; relationType?: string; key?: string; inherited?: boolean }; copyValueFromParent?: { labelKey?: string; key: string; relationType?: string }; infoPanel?: { title?: string; content?: string }; showOnlyInEditMode?: boolean; valueTranslationKey?: string; onlyForEntityTypes?: string[]; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; hidden?: boolean; clientField?: string; validationMessage?: string; tooltipKey?: string; defaultValue?: string; noWidget?: boolean; virtualKeyboardLayouts?: string[]; pickerSearch?: { mode: string; keys: string[]; acceptedTypes: string[]; staticFilters?: { kind?: string; key?: string; value: string | string[]; matchExact?: boolean; operator?: string }[] } };
+type FormField = { key: string; order?: number; hiddenValueFrom?: { entityType?: string; relationType?: string; key?: string; inherited?: boolean }; copyValueFromParent?: { labelKey?: string; key: string; relationType?: string }; infoPanel?: { title?: string; content?: string }; showOnlyInEditMode?: boolean; valueTranslationKey?: string; onlyForEntityTypes?: string[]; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationMin?: number; validationMax?: number; validationExact?: boolean; hidden?: boolean; clientField?: string; validationMessage?: string; tooltipKey?: string; defaultValue?: string; noWidget?: boolean; virtualKeyboardLayouts?: string[]; pickerSearch?: { mode: string; keys: string[]; acceptedTypes: string[]; staticFilters?: { kind?: string; key?: string; value: string | string[]; matchExact?: boolean; operator?: string }[] } };
 type UploadField = { alias: string; label?: string; size?: string; kind: string; inputType: string; required?: boolean; dryRun?: boolean; addTypeToEndpoint?: boolean; extractTypeFromKey?: string; templateCsvs?: string[]; infoLabelUrl?: string; extraMediafileType?: string };
 type Upload = { flow: string; fields: UploadField[]; order: number };
 type FormAction = { alias: string; label?: string; icon?: string; kind?: string; actionQuery?: string; creationType?: string; showsFormErrors?: boolean; endpoint?: { name?: string; method?: string; variables: string[]; responseAction?: string }; progress?: { kind: string; steps: { alias: string; label?: string; kind: string }[] }; order: number };
@@ -1154,7 +1156,7 @@ export class Extractor {
     }));
   }
 
-  private validation(validation: FieldNode | undefined, where: string): { required: boolean; rule?: string; value?: string; relationType?: string; amount?: number; exact?: boolean; message?: string } {
+  private validation(validation: FieldNode | undefined, where: string): { required: boolean; rule?: string; value?: string; relationType?: string; amount?: number; exact?: boolean; min?: number; max?: number; message?: string } {
     if (!validation) return { required: false };
     const input = argument(validation, "input");
     const raw = input?.kind === Kind.OBJECT ? objectField(input, "value") : undefined;
@@ -1166,13 +1168,19 @@ export class Extractor {
     // has_required_relation carries its relation and count in an object of its own
     const relation = input?.kind === Kind.OBJECT ? objectField(input, "has_required_relation") : undefined;
     const amount = relation?.kind === Kind.OBJECT ? scalar(objectField(relation, "amount")) : undefined;
+    // has_min_max_amount_of_relations carries its relation and bounds likewise
+    const bounds = input?.kind === Kind.OBJECT ? objectField(input, "has_min_max_amount_of_relations") : undefined;
+    const min = bounds?.kind === Kind.OBJECT ? scalar(objectField(bounds, "min")) : undefined;
+    const max = bounds?.kind === Kind.OBJECT ? scalar(objectField(bounds, "max")) : undefined;
     return {
       required: rules.includes("required"),
       rule: others[0],
       value: custom,
       message: input?.kind === Kind.OBJECT ? scalar(objectField(input, "fastValidationMessage")) : undefined,
-      relationType: relation?.kind === Kind.OBJECT ? scalar(objectField(relation, "relationType")) : undefined,
+      relationType: relation?.kind === Kind.OBJECT ? scalar(objectField(relation, "relationType")) : bounds?.kind === Kind.OBJECT ? scalar(objectField(bounds, "relationType")) : undefined,
       amount: amount === undefined ? undefined : Number(amount),
+      min: min === undefined ? undefined : Number(min),
+      max: max === undefined ? undefined : Number(max),
       exact: relation?.kind === Kind.OBJECT && scalar(objectField(relation, "exact")) !== undefined ? scalar(objectField(relation, "exact")) === "true" : undefined,
     };
   }
@@ -1550,6 +1558,8 @@ export class Extractor {
             property.validationValue = validation.value;
             property.validationRelationType = validation.relationType;
             property.validationAmount = validation.amount;
+            property.validationMin = validation.min;
+            property.validationMax = validation.max;
             property.validationExact = validation.exact;
           }
           if (validation.message) property.validationMessage = validation.message;
@@ -2074,6 +2084,8 @@ export class Extractor {
       validationValue: validation.value,
       validationRelationType: validation.relationType,
       validationAmount: validation.amount,
+      validationMin: validation.min,
+      validationMax: validation.max,
       validationExact: validation.exact,
       hidden: child(field, "hiddenField") ? true : undefined,
       hiddenValueFrom: ((hiddenInput) => {
@@ -2269,6 +2281,8 @@ export class Extractor {
     if (p.validationValue !== undefined) lines.push(`    elody:validationValue ${q(p.validationValue)} ;`);
     if (p.validationRelationType) lines.push(`    elody:validationRelationType ${q(p.validationRelationType)} ;`);
     if (p.validationAmount !== undefined) lines.push(`    elody:validationAmount ${p.validationAmount} ;`);
+    if (p.validationMin !== undefined) lines.push(`    elody:validationMin ${p.validationMin} ;`);
+    if (p.validationMax !== undefined) lines.push(`    elody:validationMax ${p.validationMax} ;`);
     if (p.validationExact !== undefined) lines.push(`    elody:validationExact ${p.validationExact} ;`);
     if (p.technicalOrigin) lines.push(`    elody:technicalOrigin ${q(p.technicalOrigin)} ;`);
     for (const unless of p.readOnlyUnless ?? []) lines.push(`    elody:readOnlyUnless ${q(unless)} ;`);
@@ -2544,6 +2558,8 @@ export class Extractor {
               property.validationValue = validation.value;
               property.validationRelationType = validation.relationType;
               property.validationAmount = validation.amount;
+            property.validationMin = validation.min;
+            property.validationMax = validation.max;
               property.validationExact = validation.exact;
             }
           }
@@ -3258,6 +3274,8 @@ export class Extractor {
     if (field.validationValue !== undefined) s.push(`      elody:validationValue ${q(field.validationValue)} ;`);
     if (field.validationRelationType) s.push(`      elody:validationRelationType ${q(field.validationRelationType)} ;`);
     if (field.validationAmount !== undefined) s.push(`      elody:validationAmount ${field.validationAmount} ;`);
+    if (field.validationMin !== undefined) s.push(`      elody:validationMin ${field.validationMin} ;`);
+    if (field.validationMax !== undefined) s.push(`      elody:validationMax ${field.validationMax} ;`);
     if (field.validationExact !== undefined) s.push(`      elody:validationExact ${field.validationExact} ;`);
     if (field.hidden) s.push(`      dash:hidden true ;`);
     if (field.hiddenValueFrom) {

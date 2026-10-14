@@ -133,6 +133,9 @@ export type UiProperty = {
   /** elody:validationRelationType / elody:validationAmount: the has_required_relation rule's relation and count */
   validationRelationType?: string;
   validationAmount?: number;
+  /** elody:validationMin / elody:validationMax: the has_min_max_amount_of_relations rule's bounds */
+  validationMin?: number;
+  validationMax?: number;
   validationExact?: boolean;
   /** a relation-valued property (sh:class, or an inverse path): the Elody relation it reads */
   relationType?: string;
@@ -314,6 +317,9 @@ export type UiCreateFormField = {
   validationValue?: string;
   validationRelationType?: string;
   validationAmount?: number;
+  /** elody:validationMin / elody:validationMax: the has_min_max_amount_of_relations rule's bounds */
+  validationMin?: number;
+  validationMax?: number;
   validationExact?: boolean;
   /** dash:hidden: the field is in the form but hidden (hiddenField) */
   hidden?: boolean;
