@@ -196,6 +196,9 @@ class Parse {
     const predicate = this.predicateOf(node);
     const label = this.labelOf(node, this.labelPreference.length ? this.labelPreference : [sh("name")], minted, key, predicate ? [predicate] : []);
     if (label !== undefined) return label;
+    // the label key defined once on the key itself (em:computed_title elody:labelKey "..."); a shape's own wins
+    const keyLabel = predicate ? this.r.value(predicate, elody("labelKey")) : undefined;
+    if (keyLabel) return keyLabel;
     return predicate && localName(predicate) !== key ? localName(predicate) : undefined;
   }
 
@@ -772,19 +775,19 @@ class Parse {
       const head = r.node(subject, elody(term));
       return head ? new Set(r.list(head)) : undefined;
     };
+    const listed = (list: Set<string>, property: M.UiProperty) => list.has(property.path ?? "");
     const listingFields = fieldList("listingFields");
     const detailFields = fieldList("detailFields");
     const cardFields = fieldList("cardFields");
     for (const { node, property } of ordered) {
-      const path = property.path ?? "";
       if (listingFields && detailFields) {
-        const inListing = listingFields.has(path);
-        const inDetail = detailFields.has(path);
+        const inListing = listed(listingFields, property);
+        const inDetail = listed(detailFields, property);
         if (!r.has(node, elody("detailOnly"))) property.detailOnly = !inListing;
         if (!r.has(node, elody("listingOnly"))) property.listingOnly = inListing && !inDetail;
         if (!r.has(node, elody("readsValue"))) property.readsValue = inListing || inDetail;
       }
-      if (cardFields && !r.has(node, elody("teaser"))) property.teaser = cardFields.has(path);
+      if (cardFields && !r.has(node, elody("teaser"))) property.teaser = listed(cardFields, property);
       if (listingFields || cardFields) property.teaser = property.teaser && !property.detailOnly;
     }
     const pathToKey = new Map(properties.filter((p) => p.path).map((p) => [p.path!, p.key]));

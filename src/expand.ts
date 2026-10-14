@@ -45,7 +45,9 @@ export function expandDeclaration(ttl: string): ExpandResult {
         const key = objects(quads, node, `${SH}path`)[0]?.object.value;
         const text = objects(quads, node, `${SH}name`).length + objects(quads, node, `${RDFS}label`).length;
         if (key && !text) {
-          quads.push(quad(subject, namedNode(path), literal(conventionalLabelKey(localName(key)))));
+          // the key's own label (em:x elody:labelKey "...") before the convention
+          const own = objects(quads, key, `${ELODY}labelKey`)[0]?.object.value;
+          quads.push(quad(subject, namedNode(path), literal(own ?? conventionalLabelKey(localName(key)))));
           added += 1;
         }
       }

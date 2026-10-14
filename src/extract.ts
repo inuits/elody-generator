@@ -2339,6 +2339,7 @@ export class Extractor {
     const files = new Map<string, string>();
     const formNodes = new Set<string>();
     this.collectSharedOperations(entities);
+    this.collectKeyLabels(entities);
     // a node is declared once: the first file that declares it keeps it (a flow declared on its type and named by the menu, a stub)
     const declared = new Set<string>();
     const once = (text: string): string => {
@@ -2356,6 +2357,8 @@ export class Extractor {
       for (const entity of group) out.push(once(this.writeEntity(entity, formNodes)), "");
       files.set(file, out.join("\n"));
     }
+    // the label of each key, once
+    if (this.keyLabels.size) files.set("keys.ui.ttl", [...this.prefixes(options), "# The label key of each metadata key, once: a shape says its own only where it differs.", "", ...this.keyLabelLines(), ""].join("\n"));
     // the operations several types share, once, in the shared file
     const shared = this.sharedOperationNodes();
     if (shared.length) files.set("_shared.ui.ttl", [files.get("_shared.ui.ttl") ?? [...this.prefixes(options), "# The bulk operations several types declare identically, named once and referenced from each.", ""].join("\n"), ...shared.map((node) => `${node}\n`)].join("\n"));
@@ -2406,8 +2409,10 @@ export class Extractor {
     out.push("");
     const formNodes = new Set<string>();
     this.collectSharedOperations(entities);
+    this.collectKeyLabels(entities);
     for (const entity of entities) out.push(this.writeEntity(entity, formNodes), "");
     for (const node of this.sharedOperationNodes()) out.push(node, "");
+    if (this.keyLabels.size) out.push("# The label key of each metadata key, once: a shape says its own only where it differs.", ...this.keyLabelLines(), "");
     for (const stub of this.stubs)
       if (!formNodes.has(stub)) out.push(`# a document declared elsewhere (the platform document, or hand-written)`, `ui:${stub}`, `  elody:queryName ${q(stub)} .`, "");
     return out.join("\n");
@@ -2421,6 +2426,8 @@ export class Extractor {
     const shape = (p: Property) => `${p.inListing}|${p.inDetail}|${p.readsValue}|${p.teaser}`;
     const byKey = new Map<string, Set<string>>();
     for (const p of properties) (byKey.get(p.key) ?? byKey.set(p.key, new Set()).get(p.key)!).add(shape(p));
+    // two shapes of one key read differently (an alias twin): a list by path cannot tell them apart, and an alias is unique per
+    // fragment only (the listing's "title" may be the detail's key "title"): the flags say it
     if ([...byKey.values()].some((shapes) => shapes.size > 1)) return undefined;
     // a value read in the listing but not read at all (a spread provides it) has no list form: the flags say it
     if (properties.some((p) => p.inListing && !p.readsValue)) return undefined;
@@ -2530,8 +2537,8 @@ export class Extractor {
       if (source) lines.push(`    elody:source ${source} ;`);
     }
     if (p.index !== undefined) lines.push(`    elody:index ${p.index} ;`);
-    // the conventional label key is the default (elody:defaultRule): written only when it differs
-    if (p.labelKey && p.labelKey !== conventionalLabelKey(p.key)) lines.push(`    elody:labelKey ${q(p.labelKey)} ;`);
+    // the conventional label key is the default (elody:defaultRule), the key's own label (keys.ui.ttl) the next: written only when it differs
+    if (p.labelKey && p.labelKey !== conventionalLabelKey(p.key) && this.keyLabels.get(p.key) !== p.labelKey) lines.push(`    elody:labelKey ${q(p.labelKey)} ;`);
     if (p.unit) lines.push(`    elody:unit ${p.unit} ;`);
     if (p.colSpan !== undefined) lines.push(`    elody:colSpan ${p.colSpan} ;`);
     if (p.sortable) lines.push(`    elody:sortable true ;`);
@@ -2625,6 +2632,34 @@ export class Extractor {
     lines[0] = `    [ ${lines[1].trim()}`;
     lines.splice(1, 1);
     return compactNode(lines);
+  }
+
+  /** the label key each metadata key carries everywhere in the client (em:x elody:labelKey "..."), declared once in keys.ui.ttl */
+  private readonly keyLabels = new Map<string, string>();
+
+  /** The keys whose label is the same on every shape and form field that names one, and not the convention: declared once on the key. */
+  private collectKeyLabels(entities: Entity[]): void {
+    const labels = new Map<string, Map<string, number>>();
+    const note = (key: string, label: string | undefined) => {
+      if (!label) return;
+      const counts = labels.get(key) ?? labels.set(key, new Map()).get(key)!;
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    };
+    // a shape without a label means the convention: it counts, so a key-level label never changes it
+    for (const entity of entities) {
+      for (const p of entity.properties) note(p.key, p.labelKey ?? conventionalLabelKey(p.key));
+      for (const form of entity.forms) for (const field of [...form.fields, ...form.tabs.flatMap((t) => t.fields)]) note(field.key, field.label ?? conventionalLabelKey(field.key));
+    }
+    for (const [key, counts] of labels) {
+      if (counts.size !== 1) continue;
+      const [label, n] = [...counts.entries()][0];
+      if (n >= 2 && label !== conventionalLabelKey(key)) this.keyLabels.set(key, label);
+    }
+  }
+
+  /** The keys' labels as triples on the keys, one per line. */
+  private keyLabelLines(): string[] {
+    return [...this.keyLabels.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, label]) => `em:${key} elody:labelKey ${q(label)} .`);
   }
 
   /** operations identical across types, declared once as named nodes (ui:<Label>Operation): the operation's text to its name */
@@ -3581,7 +3616,7 @@ export class Extractor {
     }
     if (field.editor && !field.noWidget) s.push(`      shui:editor ${field.editor} ;`);
     if (field.clientField) s.push(`      elody:clientInputField ${q(field.clientField)} ;`);
-    if (field.label && field.label !== conventionalLabelKey(field.key)) s.push(`      elody:labelKey ${q(field.label)} ;`);
+    if (field.label && field.label !== conventionalLabelKey(field.key) && this.keyLabels.get(field.key) !== field.label) s.push(`      elody:labelKey ${q(field.label)} ;`);
     s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
     return compactNode(s).replace(/^    \[/, "      [");
   }
