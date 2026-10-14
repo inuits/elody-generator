@@ -193,6 +193,8 @@ describe("a selection filter that fetches its options", () => {
         "          value",
         "          key",
         "          match_exact",
+        "          metadata_key_as_label",
+        "          item_types",
         "        }",
         "        tooltip(value: true)",
         "      }",
@@ -209,14 +211,14 @@ describe("a selection filter that fetches its options", () => {
     const filters = fragment(file, "filtersForKeyword");
     expect(filters).toContain('            distinct_by: "metadata.access.value"\n          }');
     expect(filters).not.toContain("match_exact: ");
-    expect(filters).toContain("          match_exact\n");
+    expect(filters).toContain("          match_exact\n          metadata_key_as_label\n          item_types\n");
     const plain = await render(
       entity(`sh:property ${label} ; elody:filter
         [ rdfs:label "metadata.labels.id" ; sh:order 1 ; elody:alias "id" ; elody:key "aicap:1|id" ; elody:displayedByDefault true ;
           elody:optionsType "site" ; elody:optionsKey "aicap:1|id" ; elody:filterKind elody:SelectionFilter ]`),
     );
     expect(fragment(plain, "filtersForKeyword")).not.toContain("match_exact: ");
-    expect(fragment(plain, "filtersForKeyword")).toContain("          match_exact\n");
+    expect(fragment(plain, "filtersForKeyword")).toContain("          match_exact\n          metadata_key_as_label\n          item_types\n");
   });
 
   it("places the thumbnail among the card's fields by sh:order", async () => {
@@ -232,7 +234,7 @@ describe("a selection filter that fetches its options", () => {
     );
     const filters = fragment(file, "filtersForKeyword");
     expect(filters).toContain('            value: "*"\n            distinct_by: "metadata.status.value"\n            match_exact: true');
-    expect(filters).toContain("          type\n          key\n          value\n          distinct_by\n          match_exact\n        }");
+    expect(filters).toContain("          type\n          key\n          value\n          distinct_by\n          match_exact\n          metadata_key_as_label\n          item_types\n        }");
   });
 });
 

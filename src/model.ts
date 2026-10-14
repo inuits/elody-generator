@@ -136,6 +136,8 @@ export type UiProperty = {
   /** elody:validationMin / elody:validationMax: the has_min_max_amount_of_relations rule's bounds */
   validationMin?: number;
   validationMax?: number;
+  /** elody:validationFields: the keys of which validationAmount must be filled (has_one_of_required_metadata) */
+  validationFields?: string[];
   validationExact?: boolean;
   /** a relation-valued property (sh:class, or an inverse path): the Elody relation it reads */
   relationType?: string;
@@ -208,6 +210,10 @@ export type UiFilter = {
   matchersType?: string;
   /** elody:matcherLabel: the labels the filter shows for its matchers */
   matcherLabels?: { matcher: string; labelKey: string; order: number }[];
+  /** elody:asksBack: fields the filter asks back without passing them */
+  asksBack?: string[];
+  /** elody:useOldWayToFetchOptions */
+  useOldWayToFetchOptions?: boolean;
   /** elody:lookup: the join the filter needs */
   lookup?: UiLookup;
   label?: string;
@@ -297,13 +303,15 @@ export type UiBulkOperation = {
   label?: string;
   primary?: boolean;
   can: string[];
+  /** elody:allowCondition: the condition values under which the operation is offered */
+  allowCondition?: string[];
   context?: UiBulkOpContext;
   modal?: UiBulkOpModal;
   /** elody:subOperation: the operations offered under this one (subOptions) */
   subOptions?: UiBulkOperation[];
 };
 
-export type UiCustomBulkOperations = { queryName: string; operations: UiBulkOperation[] };
+export type UiCustomBulkOperations = { queryName: string; operations: UiBulkOperation[]; /** elody:conditionVariable: the document's variable passed as the options' condition */ conditionVariable?: string };
 
 export type UiCreateFormField = {
   /** elody:showOnlyInEditMode, elody:valueTranslationKey, elody:onlyForEntityTypes on a form field */
@@ -324,9 +332,13 @@ export type UiCreateFormField = {
   /** elody:validationMin / elody:validationMax: the has_min_max_amount_of_relations rule's bounds */
   validationMin?: number;
   validationMax?: number;
+  /** elody:validationFields: the keys of which validationAmount must be filled (has_one_of_required_metadata) */
+  validationFields?: string[];
   validationExact?: boolean;
   /** dash:hidden: the field is in the form but hidden (hiddenField) */
   hidden?: boolean;
+  /** elody:unit: the unit the form field shows its value in (a date format) */
+  unit?: string;
   /** elody:hiddenValueFrom: the hidden field's value from a related entity */
   hiddenValueFrom?: { entityType?: string; relationType?: string; key?: string; inherited?: boolean };
   /** elody:copyValueFromParent: a button copying a related entity's value into the field */
@@ -371,7 +383,7 @@ export type UiCreateForm = {
   /** elody:fieldsSpread: shared fields fragments spread before the fields */
   fieldsSpreads?: string[];
   /** elody:copyFromParent: prefill from the entity the form is opened on */
-  copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string }[] };
+  copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string; /** elody:relationType: copied from a related entity */ relationType?: string }[] };
   /** the form tab's GraphQL alias (elody:alias on the form); default "name" */
   tabAlias?: string;
   /** the submit action; elody:alias names it (default createAction) */
@@ -496,9 +508,14 @@ export type UiPicker = {
   emitFilters?: boolean;
   /** elody:facets: the entities document reads facets; elody:filtersSpread: fragments spread in the filters document */
   facets?: boolean;
+  /** elody:bareResults: the results alone, each result's selections rendered directly (no count, limit, id, uuid, type or type conditions) */
+  bareResults?: boolean;
   filtersSpreads: string[];
   /** elody:queryRoot elody:SingleEntityRoot: one entity by id and type instead of a page of entities */
   rootKind?: "entity";
+  /** elody:rootType, elody:rootCollection: the type and collection fixed in a single-entity read */
+  rootType?: string;
+  rootCollection?: string;
 };
 
 export type UiPanel = {
@@ -724,6 +741,8 @@ export type UiEntity = {
   cardName?: string;
   /** elody:withoutBaseEntity: the listing fragment does not spread ...minimalBaseEntity */
   withoutBaseEntity?: boolean;
+  /** elody:detailSpreadsListing: the detail fragment spreads the listing instead of reading values of its own */
+  detailSpreadsListing?: boolean;
   /** elody:detailName: the detail fragment's own name when the client does not call it full<X> */
   detailName?: string;
   /** elody:bulkFragmentName: the bulk operations fragment's own name when the client does not call it <x>BulkOperations */

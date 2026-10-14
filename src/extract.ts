@@ -89,6 +89,7 @@ type Property = {
   validationAmount?: number;
   validationMin?: number;
   validationMax?: number;
+  validationFields?: string[];
   validationExact?: boolean;
   cardKey?: string;
   cardField?: string;
@@ -286,18 +287,21 @@ type Filter = {
   showTime?: boolean;
   matchersType?: string;
   matcherLabels?: { matcher: string; labelKey: string }[];
+  asksBack?: string[];
+  useOldWayToFetchOptions?: boolean;
   lookup?: Lookup;
 };
 
-type FormField = { key: string; order?: number; hiddenValueFrom?: { entityType?: string; relationType?: string; key?: string; inherited?: boolean }; copyValueFromParent?: { labelKey?: string; key: string; relationType?: string }; infoPanel?: { title?: string; content?: string }; showOnlyInEditMode?: boolean; valueTranslationKey?: string; onlyForEntityTypes?: string[]; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationMin?: number; validationMax?: number; validationExact?: boolean; hidden?: boolean; clientField?: string; validationMessage?: string; tooltipKey?: string; defaultValue?: string; noWidget?: boolean; virtualKeyboardLayouts?: string[]; pickerSearch?: { mode: string; keys: string[]; acceptedTypes: string[]; staticFilters?: { kind?: string; key?: string; value: string | string[]; matchExact?: boolean; operator?: string }[] } };
+type FormField = { key: string; order?: number; hiddenValueFrom?: { entityType?: string; relationType?: string; key?: string; inherited?: boolean }; copyValueFromParent?: { labelKey?: string; key: string; relationType?: string }; infoPanel?: { title?: string; content?: string }; showOnlyInEditMode?: boolean; valueTranslationKey?: string; onlyForEntityTypes?: string[]; alias?: string; label?: string; editor?: string; datatype?: string; single: boolean; required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationMin?: number; validationMax?: number; validationFields?: string[]; validationExact?: boolean; hidden?: boolean; clientField?: string; validationMessage?: string; tooltipKey?: string; unit?: string; defaultValue?: string; noWidget?: boolean; virtualKeyboardLayouts?: string[]; pickerSearch?: { mode: string; keys: string[]; acceptedTypes: string[]; staticFilters?: { kind?: string; key?: string; value: string | string[]; matchExact?: boolean; operator?: string }[] } };
 type UploadField = { alias: string; label?: string; size?: string; kind: string; inputType: string; required?: boolean; dryRun?: boolean; addTypeToEndpoint?: boolean; extractTypeFromKey?: string; templateCsvs?: string[]; infoLabelUrl?: string; extraMediafileType?: string };
 type Upload = { flow: string; fields: UploadField[]; order: number };
 type FormAction = { alias: string; label?: string; icon?: string; kind?: string; actionQuery?: string; creationType?: string; showsFormErrors?: boolean; endpoint?: { name?: string; method?: string; variables: string[]; responseAction?: string }; progress?: { kind: string; steps: { alias: string; label?: string; kind: string }[] }; order: number };
-type FormTab = { alias?: string; fields: FormField[]; fieldsSpreads: string[]; copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string }[] }; upload?: Upload; actions: FormAction[]; submit?: Form["submit"] };
-type Form = { queryName: string; label?: string; infoLabel?: string; modalStyle?: string; upload?: Upload; actions: FormAction[]; tabs: FormTab[]; tabAlias?: string; fields: FormField[]; fieldsSpreads: string[]; copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string }[] }; submit?: { alias?: string; label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors: boolean; submitAction?: string } };
+type FormTab = { alias?: string; fields: FormField[]; fieldsSpreads: string[]; copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string; relationType?: string }[] }; upload?: Upload; actions: FormAction[]; submit?: Form["submit"] };
+type Form = { queryName: string; label?: string; infoLabel?: string; modalStyle?: string; upload?: Upload; actions: FormAction[]; tabs: FormTab[]; tabAlias?: string; fields: FormField[]; fieldsSpreads: string[]; copyFromParent?: { autoCopy?: boolean; keyMap: { key: string; fromKey: string; relationType?: string }[] }; submit?: { alias?: string; label?: string; icon?: string; actionQuery?: string; creationType?: string; showsFormErrors: boolean; submitAction?: string } };
 
 type Operation = {
   order?: number;
+  allowCondition?: string[];
   label?: string;
   icon?: string;
   kind?: string;
@@ -353,7 +357,7 @@ type WindowFragment = { name: string; panels: Panel[] };
 type ElementsFragment = { name: string; elements: Element[] };
 type ValuesFragment = { name: string; cardName?: string; fields: string[]; aliases: string[]; valuesFields: string[]; cardShows?: string[]; contextMenu?: Entity["contextMenu"] };
 
-type ListQuery = { node?: string; name: string; filtersOnly?: boolean; rootKind?: "entity"; facets?: boolean; filtersSpreads?: string[]; filtersName?: string; filtersType?: string; relationValues?: boolean; readsHost?: boolean; hostOptional?: boolean; results: { type: string; fragments: string[]; listingNode?: string; cardMenuSpread?: string }[]; filters: Filter[] };
+type ListQuery = { node?: string; name: string; filtersOnly?: boolean; bareResults?: boolean; rootKind?: "entity"; rootType?: string; rootCollection?: string; facets?: boolean; filtersSpreads?: string[]; filtersName?: string; filtersType?: string; relationValues?: boolean; readsHost?: boolean; hostOptional?: boolean; results: { type: string; fragments: string[]; listingNode?: string; cardMenuSpread?: string; bare?: boolean }[]; filters: Filter[] };
 type Picker = ListQuery;
 
 type Entity = {
@@ -415,6 +419,8 @@ type Entity = {
   cardName?: string;
   /** elody:withoutBaseEntity: the listing fragment does not spread ...minimalBaseEntity */
   withoutBaseEntity?: boolean;
+  /** elody:detailSpreadsListing: the detail fragment spreads the listing instead of reading values */
+  detailSpreadsListing?: boolean;
   /** elody:detailName: the detail fragment's own name, the client's casing of full<X> */
   detailName?: string;
   /** elody:bulkFragmentName: the bulk operations fragment's own name, the client's casing of <x>BulkOperations */
@@ -430,7 +436,7 @@ type Entity = {
   /** elody:preview: the previewFor<X> fragment and the layouts it names */
   preview?: { fragmentName?: string; kind?: string; coverage?: string; labelKey?: string; openByDefault?: boolean; showCurrentPreviewFlow?: boolean; keepLastActiveItemHighlighted?: boolean; displayOpenDetailPageButton?: boolean; layout?: PreviewLayout; metadataLayout?: PreviewLayout };
   operations?: Operation[];
-  customOperations: { name: string; operations: Operation[] }[];
+  customOperations: { name: string; operations: Operation[]; conditionVariable?: string }[];
   listQueries: ListQuery[];
   /** elody:detailCard: the card the detail fragment carries as well */
   detailCard?: { fields: string[]; contextMenu?: Entity["contextMenu"] };
@@ -492,12 +498,24 @@ export class Extractor {
     return fields(child(entities, "results")?.selectionSet).some((f) => f.name.value === "relationValues");
   }
 
-  private resultsOf(query: OperationDefinitionNode | undefined, queryName: string, file: string): ListQuery["results"] {
+  private resultsOf(query: OperationDefinitionNode | undefined, queryName: string, file: string, ownerType?: string): ListQuery["results"] {
     if (!query) return [];
     const entities = fields(query.selectionSet).find((f) => f.name.value === "Entities");
     // one entity by id and type: the per-type selections sit under Entity itself
     const single = entities ? undefined : fields(query.selectionSet).find((f) => f.name.value === "Entity");
-    const inline = ((entities ? child(entities, "results") : single)?.selectionSet?.selections ?? []).filter((s): s is InlineFragmentNode => s.kind === Kind.INLINE_FRAGMENT);
+    const selections = (entities ? child(entities, "results") : single)?.selectionSet?.selections ?? [];
+    const inline = selections.filter((s): s is InlineFragmentNode => s.kind === Kind.INLINE_FRAGMENT);
+    // bare results: fields beyond the head without a type condition (a map overlay reading id and a few values)
+    const bareFields = selections.filter((s): s is FieldNode => s.kind === Kind.FIELD && !["uuid", "type", "relationValues", "__typename"].includes(s.name.value));
+    if (entities && ownerType && inline.length === 0 && bareFields.some((f) => f.name.value !== "id")) {
+      let name = `${ownerType}In${queryName}`;
+      for (let n = 2; this.definitions.has(`minimal${name}`); n++) name = `${ownerType}In${queryName}${n}`;
+      const node: FragmentDefinitionNode = { kind: Kind.FRAGMENT_DEFINITION, name: { kind: Kind.NAME, value: `minimal${name}` }, typeCondition: { kind: Kind.NAMED_TYPE, name: { kind: Kind.NAME, value: ownerType } }, directives: [], selectionSet: { kind: Kind.SELECTION_SET, selections: bareFields } };
+      this.definitions.set(`minimal${name}`, { name: `minimal${name}`, kind: "fragment", file, node, normalized: "" });
+      this.inlineNames.push(name);
+      this.inlineSet.add(name);
+      return [{ type: ownerType, fragments: [], listingNode: `${name}Ui`, bare: true }];
+    }
     return inline.map((on) => {
       const type = on.typeCondition?.name.value ?? "";
       let own = on.selectionSet.selections.filter((x) => x.kind !== Kind.FRAGMENT_SPREAD && !(x.kind === Kind.FIELD && x.name.value === "__typename"));
@@ -724,6 +742,8 @@ export class Extractor {
     const minimalValues = child(listing, "intialValues");
     if (core) entity.listingCore = true;
     const fullValues = full ? child(full, "intialValues") : undefined;
+    // a detail that spreads the listing instead of reading values of its own
+    if (full && !fullValues && spreads(full.selectionSet).includes(`minimal${name}`)) entity.detailSpreadsListing = true;
     const byAlias = new Map<string, Property>();
     const add = (field: FieldNode, listing: boolean) => {
       const a = alias(field);
@@ -1006,7 +1026,7 @@ export class Extractor {
     if (listingHas) {
       entity.relationValues = true;
       if (full && !detailHas) this.note(`${where}: the listing reads relationValues but the detail page does not; both will read them`);
-    } else if (full && !detailHas) entity.relationValues = false;
+    } else if (full && !detailHas && !entity.detailSpreadsListing) entity.relationValues = false;
 
     // sort options: <x>SortOptions, or the client's own name for them (declared as elody:sortFragmentName)
     const sortName = this.fragmentOfKind(name, `${name.charAt(0).toLowerCase() + name.slice(1)}SortOptions`, /SortOptions$/);
@@ -1159,7 +1179,7 @@ export class Extractor {
     }));
   }
 
-  private validation(validation: FieldNode | undefined, where: string): { required: boolean; rule?: string; value?: string; relationType?: string; amount?: number; exact?: boolean; min?: number; max?: number; message?: string } {
+  private validation(validation: FieldNode | undefined, where: string): { required: boolean; rule?: string; value?: string; relationType?: string; amount?: number; exact?: boolean; min?: number; max?: number; fields?: string[]; message?: string } {
     if (!validation) return { required: false };
     const input = argument(validation, "input");
     const raw = input?.kind === Kind.OBJECT ? objectField(input, "value") : undefined;
@@ -1175,13 +1195,17 @@ export class Extractor {
     const bounds = input?.kind === Kind.OBJECT ? objectField(input, "has_min_max_amount_of_relations") : undefined;
     const min = bounds?.kind === Kind.OBJECT ? scalar(objectField(bounds, "min")) : undefined;
     const max = bounds?.kind === Kind.OBJECT ? scalar(objectField(bounds, "max")) : undefined;
+    // has_one_of_required_metadata: of these keys, so many must be filled
+    const oneOf = input?.kind === Kind.OBJECT ? objectField(input, "has_one_of_required_metadata") : undefined;
+    const oneOfAmount = oneOf?.kind === Kind.OBJECT ? scalar(objectField(oneOf, "amount")) : undefined;
     return {
       required: rules.includes("required"),
       rule: others[0],
       value: custom,
       message: input?.kind === Kind.OBJECT ? scalar(objectField(input, "fastValidationMessage")) : undefined,
       relationType: relation?.kind === Kind.OBJECT ? scalar(objectField(relation, "relationType")) : bounds?.kind === Kind.OBJECT ? scalar(objectField(bounds, "relationType")) : undefined,
-      amount: amount === undefined ? undefined : Number(amount),
+      amount: amount !== undefined ? Number(amount) : oneOfAmount !== undefined ? Number(oneOfAmount) : undefined,
+      fields: oneOf?.kind === Kind.OBJECT ? list(objectField(oneOf, "includedMetadataFields")).map((v) => scalar(v) ?? "") : undefined,
       min: min === undefined ? undefined : Number(min),
       max: max === undefined ? undefined : Number(max),
       exact: relation?.kind === Kind.OBJECT && scalar(objectField(relation, "exact")) !== undefined ? scalar(objectField(relation, "exact")) === "true" : undefined,
@@ -1527,7 +1551,12 @@ export class Extractor {
         if (child(field, "copyToClipboard")) property.copyToClipboard = input(child(field, "copyToClipboard")) === "true";
         if (child(field, "masked")) property.masked = input(child(field, "masked")) === "true";
         const reveal = input(child(field, "revealQuery"));
-        if (reveal) property.revealQuery = reveal;
+        if (reveal) {
+          property.revealQuery = reveal;
+          // the read of the secret: a single-entity query declared on the type
+          const revealNode = this.listQuery(reveal, undefined, `${where} reveal`, entity);
+          if (!entity.entityListQueries.includes(revealNode)) entity.entityListQueries.push(revealNode);
+        }
         const info = child(field, "infoPanel");
         if (info) property.infoPanel = { title: scalar(argument(info, "title")), content: scalar(argument(info, "content")) };
         if (child(field, "nonEditableField")) property.nonEditable = input(child(field, "nonEditableField")) === "true";
@@ -1563,6 +1592,7 @@ export class Extractor {
             property.validationAmount = validation.amount;
             property.validationMin = validation.min;
             property.validationMax = validation.max;
+            property.validationFields = validation.fields;
             property.validationExact = validation.exact;
           }
           if (validation.message) property.validationMessage = validation.message;
@@ -1707,12 +1737,15 @@ export class Extractor {
     const query = this.operation(name);
     let results: ListQuery["results"] = [];
     if (query && !this.queriesWithResults.has(name)) {
-      results = this.resultsOf(query, name, this.definitions.get(name)?.file ?? "");
+      results = this.resultsOf(query, name, this.definitions.get(name)?.file ?? "", entity.graphqlType);
       if (results.length) this.queriesWithResults.add(name);
     }
     const filters = filtersName ? this.operation(filtersName) : undefined;
     const { block, filtersType } = this.advancedFiltersOf(filters);
-    entity.listQueries.push({ node, name, rootKind: query && !fields(query.selectionSet).some((f) => f.name.value === "Entities") && fields(query.selectionSet).some((f) => f.name.value === "Entity") ? "entity" : undefined, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, readsHost: results.length ? this.queryReadsHost(query) || undefined : undefined, hostOptional: results.length && this.queryHostOptional(query) ? true : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [], facets: query && child(fields(query.selectionSet)[0], "facets") ? true : undefined, filtersSpreads: block ? spreads(block.selectionSet) : [] });
+    const singleRoot = query && !fields(query.selectionSet).some((f) => f.name.value === "Entities") ? fields(query.selectionSet).find((f) => f.name.value === "Entity") : undefined;
+    const rootTypeArg = singleRoot ? argument(singleRoot, "type") : undefined;
+    const rootCollectionArg = singleRoot ? argument(singleRoot, "collection") : undefined;
+    entity.listQueries.push({ node, name, bareResults: results.some((r) => r.bare) || undefined, rootKind: singleRoot ? "entity" : undefined, rootType: rootTypeArg?.kind === Kind.STRING ? rootTypeArg.value : undefined, rootCollection: rootCollectionArg?.kind === Kind.ENUM ? rootCollectionArg.value : undefined, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, readsHost: results.length ? this.queryReadsHost(query) || undefined : undefined, hostOptional: results.length && this.queryHostOptional(query) ? true : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [], facets: query && child(fields(query.selectionSet)[0], "facets") ? true : undefined, filtersSpreads: block ? spreads(block.selectionSet) : [] });
     if (filtersName && !filters) this.note(`${where}: filters document ${filtersName} is not in these files; the list query declares no filters and the name stays`);
     return node;
   }
@@ -1730,8 +1763,9 @@ export class Extractor {
     const options = child(child(custom, "bulkOperationOptions"), "options");
     const operations = this.operations(options, `${where} ${name}`, entity);
     const declaredEmpty = list(options ? argument(options, "input") : undefined).length === 0;
+    const condition = options ? argument(options, "condition") : undefined;
     if (operations.length || declaredEmpty) {
-      entity.customOperations.push({ name, operations });
+      entity.customOperations.push({ name, operations, conditionVariable: condition?.kind === Kind.VARIABLE ? condition.name.value : undefined });
       this.declaredCustomOps.add(name);
     }
     else {
@@ -1761,6 +1795,9 @@ export class Extractor {
         label: str(field, "label"),
         displayed: str(field, "isDisplayedByDefault") === "true",
         tooltip: child(field, "tooltip") !== undefined,
+        // a field asked back without being passed (parentKey on a filter without a parent)
+        asksBack: !argument(field, "parentKey") && fields(field.selectionSet).some((f) => f.name.value === "parentKey") ? ["parentKey"] : undefined,
+        useOldWayToFetchOptions: str(field, "useOldWayToFetchOptions") === undefined ? undefined : str(field, "useOldWayToFetchOptions") === "true",
         defaults: list(defaultValue).map((v) => scalar(v) ?? ""),
         defaultAsList: defaultValue?.kind === Kind.LIST,
         defaultBare: defaultValue?.kind === Kind.BOOLEAN || defaultValue?.kind === Kind.ENUM || (defaultValue?.kind === Kind.LIST && defaultValue.values.length > 0 && defaultValue.values.every((v) => v.kind === Kind.ENUM)) ? true : undefined,
@@ -1844,7 +1881,7 @@ export class Extractor {
           .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
           .map((option) => ({ label: scalar(objectField(option, "label")) ?? "", value: scalar(objectField(option, "value")) ?? "" }));
       for (const a of field.arguments ?? [])
-        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "aggregation", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator", "showTimeForDateFilter", "matchersType", "lookup", "options", "itemTypes", "defaultMatcher", "allowedMatchers", "facets", "limitConfig", "matcherLabels"].includes(a.name.value))
+        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "aggregation", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator", "showTimeForDateFilter", "matchersType", "lookup", "options", "itemTypes", "defaultMatcher", "allowedMatchers", "facets", "limitConfig", "matcherLabels", "useOldWayToFetchOptions"].includes(a.name.value))
           this.note(`${where}: filter ${alias(field)} argument ${a.name.value} has no term; left out`);
       result.push(filter);
     }
@@ -1990,7 +2027,7 @@ export class Extractor {
         autoCopy: auto === undefined ? undefined : auto === "true",
         keyMap: list(objectField(copyInput, "keyMap"))
           .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
-          .map((entry) => ({ key: scalar(objectField(entry, "key")) ?? "", fromKey: scalar(objectField(entry, "fromKey")) ?? "" })),
+          .map((entry) => ({ key: scalar(objectField(entry, "key")) ?? "", fromKey: scalar(objectField(entry, "fromKey")) ?? "", relationType: scalar(objectField(entry, "fromRelationType")) })),
       };
     }
     for (const field of fields(tab?.selectionSet))
@@ -2106,6 +2143,7 @@ export class Extractor {
       validationAmount: validation.amount,
       validationMin: validation.min,
       validationMax: validation.max,
+      validationFields: validation.fields,
       validationExact: validation.exact,
       hidden: child(field, "hiddenField") ? true : undefined,
       hiddenValueFrom: ((hiddenInput) => {
@@ -2121,6 +2159,7 @@ export class Extractor {
       clientField: base ? undefined : type,
       validationMessage: validation.message,
       tooltipKey: input(child(field, "tooltip")),
+      unit: input(child(field, "unit")) ? this.instance("Unit", input(child(field, "unit")), `${where} field ${key} unit`) : undefined,
       showOnlyInEditMode: child(field, "showOnlyInEditMode") ? input(child(field, "showOnlyInEditMode")) === "true" : undefined,
       valueTranslationKey: input(child(field, "valueTranslationKey")),
       onlyForEntityTypes: child(field, "onlyForEntityTypes") ? list(argument(child(field, "onlyForEntityTypes")!, "input")).map((v) => scalar(v) ?? "") : undefined,
@@ -2157,6 +2196,7 @@ export class Extractor {
         icon: scalar(objectField(entry, "icon")),
         kind: this.instance("BulkOperationKind", scalar(objectField(entry, "value")), `${where} bulk operation`),
         can: list(objectField(entry, "can")).map((v) => scalar(v) ?? ""),
+        allowCondition: objectField(entry, "allowCondition") ? list(objectField(entry, "allowCondition")).map((v) => scalar(v) ?? "") : undefined,
       };
       const primary = scalar(objectField(entry, "primary"));
       if (primary !== undefined) operation.primary = primary === "true";
@@ -2227,7 +2267,7 @@ export class Extractor {
       // the operations offered under this one (a dropdown)
       const subs = list(objectField(entry, "subOptions"));
       if (subs.length) operation.subOptions = this.operationsOf(subs, where, entity);
-      for (const f of entry.fields.map((f) => f.name.value).filter((n) => !["icon", "label", "value", "primary", "can", "actionContext", "bulkOperationModal", "subOptions"].includes(n)))
+      for (const f of entry.fields.map((f) => f.name.value).filter((n) => !["icon", "label", "value", "primary", "can", "actionContext", "bulkOperationModal", "subOptions", "allowCondition"].includes(n)))
         this.note(`${where}: bulk operation field ${f} has no term; left out`);
       result.push(operation);
     }
@@ -2303,6 +2343,7 @@ export class Extractor {
     if (p.validationAmount !== undefined) lines.push(`    elody:validationAmount ${p.validationAmount} ;`);
     if (p.validationMin !== undefined) lines.push(`    elody:validationMin ${p.validationMin} ;`);
     if (p.validationMax !== undefined) lines.push(`    elody:validationMax ${p.validationMax} ;`);
+    if (p.validationFields?.length) lines.push(`    elody:validationFields ( ${p.validationFields.map(q).join(" ")} ) ;`);
     if (p.validationExact !== undefined) lines.push(`    elody:validationExact ${p.validationExact} ;`);
     if (p.technicalOrigin) lines.push(`    elody:technicalOrigin ${q(p.technicalOrigin)} ;`);
     for (const unless of p.readOnlyUnless ?? []) lines.push(`    elody:readOnlyUnless ${q(unless)} ;`);
@@ -2415,6 +2456,8 @@ export class Extractor {
     if (f.showTime !== undefined) lines.push(`    elody:showTime ${f.showTime} ;`);
     if (f.matchersType) lines.push(`    elody:matchersType ${q(f.matchersType)} ;`);
     for (const [i, m] of (f.matcherLabels ?? []).entries()) lines.push(`    elody:matcherLabel [ sh:order ${i + 1} ; elody:matcher ${q(m.matcher)} ; elody:labelKey ${q(m.labelKey)} ] ;`);
+    for (const name of f.asksBack ?? []) lines.push(`    elody:asksBack ${q(name)} ;`);
+    if (f.useOldWayToFetchOptions !== undefined) lines.push(`    elody:useOldWayToFetchOptions ${f.useOldWayToFetchOptions} ;`);
     if (f.lookup)
       lines.push(`    elody:lookup ${this.lookupNode(f.lookup)} ;`);
     if (f.selectionSpread) lines.push(`    elody:selectionSpread ${q(f.selectionSpread)} ;`);
@@ -2461,6 +2504,7 @@ export class Extractor {
     if (op.kind) lines.push(`    elody:operationKind ${op.kind} ;`);
     if (op.primary !== undefined) lines.push(`    elody:primary ${op.primary} ;`);
     for (const can of op.can) lines.push(`    elody:can ${q(can)} ;`);
+    for (const value of op.allowCondition ?? []) lines.push(`    elody:allowCondition ${q(value)} ;`);
     if (op.context)
       lines.push(
         `    elody:context`,
@@ -2583,6 +2627,7 @@ export class Extractor {
               property.validationAmount = validation.amount;
             property.validationMin = validation.min;
             property.validationMax = validation.max;
+            property.validationFields = validation.fields;
               property.validationExact = validation.exact;
             }
           }
@@ -2715,7 +2760,9 @@ export class Extractor {
       const query = d.node as OperationDefinitionNode;
       const top = fields(query.selectionSet)[0]?.name.value;
       // in the app's file a referenced form or flow is declared too: no type's file holds it
-      if (referenced(d.name) && !(d.file === appFile && (top === "GetDynamicForm" || top === "GetRepetitiveForm"))) continue;
+      // an entities query referenced from a config string alone (a map's overlay query) is still declared here
+      const declaredElsewhere = (name: string) => [...this.listQueryNodes.keys(), ...this.pickerNodes.keys()].some((k) => k.split("|")[0] === name) || this.declaredCustomOps.has(name);
+      if (referenced(d.name) && !(top === "Entities" && !declaredElsewhere(d.name)) && !(d.file === appFile && (top === "GetDynamicForm" || top === "GetRepetitiveForm"))) continue;
       const sortField = top === "EntityTypeSortOptions" ? child(fields(query.selectionSet)[0], "sortOptions") : undefined;
       const sortOptionsField = sortField ? child(sortField, "options") : undefined;
       const sortEntries = sortOptionsField ? list(argument(sortOptionsField, "input")).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT) : [];
@@ -3305,6 +3352,7 @@ export class Extractor {
     if (field.validationAmount !== undefined) s.push(`      elody:validationAmount ${field.validationAmount} ;`);
     if (field.validationMin !== undefined) s.push(`      elody:validationMin ${field.validationMin} ;`);
     if (field.validationMax !== undefined) s.push(`      elody:validationMax ${field.validationMax} ;`);
+    if (field.validationFields?.length) s.push(`      elody:validationFields ( ${field.validationFields.map(q).join(" ")} ) ;`);
     if (field.validationExact !== undefined) s.push(`      elody:validationExact ${field.validationExact} ;`);
     if (field.hidden) s.push(`      dash:hidden true ;`);
     if (field.hiddenValueFrom) {
@@ -3319,6 +3367,7 @@ export class Extractor {
     }
     if (field.infoPanel) s.push(`      elody:infoPanel [ ${[...(field.infoPanel.title !== undefined ? [`elody:infoTitle ${q(field.infoPanel.title)}`] : []), ...(field.infoPanel.content !== undefined ? [`elody:infoContent ${q(field.infoPanel.content)}`] : [])].join(" ; ")} ] ;`);
     if (field.tooltipKey) s.push(`      elody:tooltipKey ${q(field.tooltipKey)} ;`);
+    if (field.unit) s.push(`      elody:unit ${field.unit} ;`);
     if (field.showOnlyInEditMode !== undefined) s.push(`      elody:showOnlyInEditMode ${field.showOnlyInEditMode} ;`);
     if (field.valueTranslationKey) s.push(`      elody:valueTranslationKey ${q(field.valueTranslationKey)} ;`);
     if (field.onlyForEntityTypes?.length) s.push(`      elody:onlyForEntityTypes ( ${field.onlyForEntityTypes.map(q).join(" ")} ) ;`);
@@ -3392,6 +3441,7 @@ export class Extractor {
     if (entity.filePath && !entity.app) out.push(`  elody:filePath ${q(entity.filePath)} ;`);
     if (entity.cardName) out.push(`  elody:cardName ${q(entity.cardName)} ;`);
     if (entity.withoutBaseEntity) out.push(`  elody:withoutBaseEntity true ;`);
+    if (entity.detailSpreadsListing) out.push(`  elody:detailSpreadsListing true ;`);
     if (entity.detailName) out.push(`  elody:detailName ${q(entity.detailName)} ;`);
     if (entity.bulkFragmentName) out.push(`  elody:bulkFragmentName ${q(entity.bulkFragmentName)} ;`);
     if (entity.sortFragmentName) out.push(`  elody:sortFragmentName ${q(entity.sortFragmentName)} ;`);
@@ -3606,7 +3656,7 @@ export class Extractor {
       if (f.copyFromParent) {
         const parts = [
           ...(f.copyFromParent.autoCopy !== undefined ? [`elody:autoCopy ${f.copyFromParent.autoCopy}`] : []),
-          ...(f.copyFromParent.keyMap.length ? [`elody:copyKey ${f.copyFromParent.keyMap.map((entry, i) => `[ sh:order ${i + 1} ; elody:key ${q(entry.key)} ; elody:fromKey ${q(entry.fromKey)} ]`).join(" , ")}`] : []),
+          ...(f.copyFromParent.keyMap.length ? [`elody:copyKey ${f.copyFromParent.keyMap.map((entry, i) => `[ sh:order ${i + 1} ; elody:key ${q(entry.key)} ; elody:fromKey ${q(entry.fromKey)}${entry.relationType ? ` ; elody:relationType ${q(entry.relationType)}` : ""} ]`).join(" , ")}`] : []),
         ];
         lines.push(`  elody:copyFromParent [ ${parts.join(" ; ")} ] ;`);
       }
@@ -3660,7 +3710,7 @@ export class Extractor {
       for (const custom of entity.customOperations) {
         const ops = custom.operations;
         ops.forEach((op, i) => (op.order = i + 1));
-        const lines = [`ui:${custom.name}`, `  elody:queryName ${q(custom.name)} ;`];
+        const lines = [`ui:${custom.name}`, `  elody:queryName ${q(custom.name)} ;`, ...(custom.conditionVariable ? [`  elody:conditionVariable ${q(custom.conditionVariable)} ;`] : [])];
         if (ops.length) lines.push(`  elody:operation`, ops.map((op) => this.writeOperation(op, this.stubs, formNodes)).join(" ,\n") + " .");
         else lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " .");
         extra.push(lines.join("\n"));
@@ -3679,13 +3729,14 @@ export class Extractor {
     }
     for (const lq of [...entity.listQueries, ...entity.pickers.map((p) => ({ ...p, picker: true }))]) {
       // a filters document alone: the node is named after it, no entities document
-      const lines = [`ui:${lq.node ?? lq.name}`, `  a ${"picker" in lq ? "elody:Picker" : "elody:ListQuery"} ;`, ...(lq.filtersOnly ? [] : [`  elody:queryName ${q(lq.name)} ;`]), ...("rootKind" in lq && lq.rootKind === "entity" ? ["  elody:queryRoot elody:SingleEntityRoot ;"] : [])];
+      const lines = [`ui:${lq.node ?? lq.name}`, `  a ${"picker" in lq ? "elody:Picker" : "elody:ListQuery"} ;`, ...(lq.filtersOnly ? [] : [`  elody:queryName ${q(lq.name)} ;`]), ...("rootKind" in lq && lq.rootKind === "entity" ? ["  elody:queryRoot elody:SingleEntityRoot ;"] : []), ...("rootType" in lq && lq.rootType ? [`  elody:rootType ${q(lq.rootType)} ;`] : []), ...("rootCollection" in lq && lq.rootCollection ? [`  elody:rootCollection ${q(lq.rootCollection)} ;`] : [])];
       if (lq.filtersName) lines.push(`  elody:filtersQuery ${q(lq.filtersName)} ;`);
       if (lq.filtersType) lines.push(`  elody:filtersType ${q(lq.filtersType)} ;`);
       if (lq.relationValues) lines.push(`  elody:relationValues true ;`);
       if (lq.readsHost) lines.push(`  elody:readsHost true ;`);
       if (lq.hostOptional) lines.push(`  elody:hostOptional true ;`);
       if (lq.facets) lines.push(`  elody:facets true ;`);
+      if (lq.bareResults) lines.push(`  elody:bareResults true ;`);
       for (const s of lq.filtersSpreads ?? []) lines.push(`  elody:filtersSpread ${q(s)} ;`);
       if (lq.results.length)
         lines.push(

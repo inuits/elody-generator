@@ -110,7 +110,7 @@ describe("askforceone", () => {
     );
     expect(file).toContain('        advancedFilterInputForRetrievingOptions: [\n          { type: type, value: "tenant" }\n        ]\n      ) {');
     expect(file).not.toContain("type: text");
-    expect(file).toContain("        advancedFilterInputForRetrievingOptions {\n          type\n          value\n          key\n          match_exact\n        }");
+    expect(file).toContain("        advancedFilterInputForRetrievingOptions {\n          type\n          value\n          key\n          match_exact\n          metadata_key_as_label\n          item_types\n        }");
   });
 
   it("renders a column under its alias and a panel's permission", async () => {

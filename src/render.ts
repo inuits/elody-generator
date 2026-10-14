@@ -74,7 +74,7 @@ const gqlString = (value: string): string =>
   // literal, so every backslash GraphQL needs is doubled for the template to cook it back
   print({ kind: Kind.STRING, value, block: value.includes("\n") }).replace(/\\/g, "\\\\");
 
-export function renderValidation(field: { required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; validationMin?: number; validationMax?: number; validationMessage?: string }, depth: number): string[] {
+export function renderValidation(field: { required: boolean; validationRule?: string; validationValue?: string; validationRelationType?: string; validationAmount?: number; validationExact?: boolean; validationMin?: number; validationMax?: number; validationFields?: string[]; validationMessage?: string }, depth: number): string[] {
   const rules = [...(field.required ? ["required"] : []), ...(field.validationRule ? [field.validationRule] : [])];
   if (!rules.length) return [];
   const value = rules.length === 1 ? rules[0] : `[${rules.join(", ")}]`;
@@ -84,11 +84,16 @@ export function renderValidation(field: { required: boolean; validationRule?: st
     field.validationRule === "has_min_max_amount_of_relations"
       ? `, has_min_max_amount_of_relations: { ${[...(field.validationRelationType !== undefined ? [`relationType: "${field.validationRelationType}"`] : []), ...(field.validationMin !== undefined ? [`min: ${field.validationMin}`] : []), ...(field.validationMax !== undefined ? [`max: ${field.validationMax}`] : [])].join(", ")} }`
       : "";
+  // has_one_of_required_metadata: of these keys, so many must be filled
+  const oneOf =
+    field.validationRule === "has_one_of_required_metadata"
+      ? `, has_one_of_required_metadata: { ${[...(field.validationFields?.length ? [`includedMetadataFields: [${field.validationFields.map((k) => `"${k}"`).join(", ")}]`] : []), ...(field.validationAmount !== undefined ? [`amount: ${field.validationAmount}`] : [])].join(", ")} }`
+      : "";
   const relation =
-    !bounds && (field.validationRelationType !== undefined || field.validationAmount !== undefined)
+    !bounds && !oneOf && (field.validationRelationType !== undefined || field.validationAmount !== undefined)
       ? `, has_required_relation: { ${[...(field.validationRelationType !== undefined ? [`relationType: "${field.validationRelationType}"`] : []), ...(field.validationAmount !== undefined ? [`amount: ${field.validationAmount}`] : []), ...(field.validationExact !== undefined ? [`exact: ${field.validationExact}`] : [])].join(", ")} }`
       : "";
-  const extra = (field.validationMessage ? `, fastValidationMessage: "${field.validationMessage}"` : "") + (field.validationValue !== undefined ? `, ${field.validationRule === "regex" ? "regex" : "customValue"}: ${gqlString(field.validationValue)}` : "") + relation + bounds;
+  const extra = (field.validationMessage ? `, fastValidationMessage: "${field.validationMessage}"` : "") + (field.validationValue !== undefined ? `, ${field.validationRule === "regex" ? "regex" : "customValue"}: ${gqlString(field.validationValue)}` : "") + relation + bounds + oneOf;
   return [`${pad(depth)}validation(input: { value: ${value}${extra} }) {`, `${pad(depth + 2)}...validation`, `${pad(depth)}}`];
 }
 
@@ -383,8 +388,9 @@ function renderFilterOptions(options: NonNullable<M.UiFilter["options"]>, indent
     `${pad(indent + 2)}type`,
     ...(options.distinctBy ? [`${pad(indent + 2)}key`, `${pad(indent + 2)}value`, `${pad(indent + 2)}distinct_by`] : [`${pad(indent + 2)}value`, `${pad(indent + 2)}key`]),
     `${pad(indent + 2)}match_exact`,
-    ...(options.labelKey ? [`${pad(indent + 2)}metadata_key_as_label`] : []),
-    ...(options.itemTypes?.length ? [`${pad(indent + 2)}item_types`] : []),
+    // asked back regardless (what is asked back beyond the client's does not count)
+    `${pad(indent + 2)}metadata_key_as_label`,
+    `${pad(indent + 2)}item_types`,
     ...(options.lookup || options.inputs?.some((input) => input.lookup) ? [`${pad(indent + 2)}lookup {`, `${pad(indent + 4)}from`, `${pad(indent + 4)}local_field`, `${pad(indent + 4)}foreign_field`, `${pad(indent + 4)}as`, `${pad(indent + 2)}}`] : []),
     `${pad(indent)}}`,
   ];
@@ -458,6 +464,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       `${pad(indent + 4)}type: ${filter.kind}`,
       ...(filter.matchersType ? [`${pad(indent + 4)}matchersType: ${filter.matchersType}`] : []),
       ...(filter.matcherLabels?.length ? [`${pad(indent + 4)}matcherLabels: [${filter.matcherLabels.map((m) => `{ matcher: ${m.matcher}, label: "${m.labelKey}" }`).join(", ")}]`] : []),
+      ...(filter.useOldWayToFetchOptions !== undefined ? [`${pad(indent + 4)}useOldWayToFetchOptions: ${filter.useOldWayToFetchOptions}`] : []),
       ...(filter.parentKey ? [`${pad(indent + 4)}parentKey: "${filter.parentKey}"`] : []),
       ...(filter.keys ? [`${pad(indent + 4)}key: [${filter.keys.map((k) => `"${k}"`).join(", ")}]`] : filter.key ? [`${pad(indent + 4)}key: ${filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`}`] : []),
       ...(filter.aggregation ? [`${pad(indent + 4)}aggregation: "${filter.aggregation}"`] : []),
@@ -486,6 +493,8 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       `${pad(indent + 4)}type`,
       ...(filter.matchersType ? [`${pad(indent + 4)}matchersType`] : []),
       ...(filter.matcherLabels?.length ? [`${pad(indent + 4)}matcherLabels {`, `${pad(indent + 6)}matcher`, `${pad(indent + 6)}label`, `${pad(indent + 4)}}`] : []),
+      // fields the client asks back without passing them (elody:asksBack)
+      ...(filter.asksBack ?? []).map((name) => `${pad(indent + 4)}${name}`),
       ...(filter.parentKey ? [`${pad(indent + 4)}parentKey`] : []),
       ...(filter.key || filter.keys ? [`${pad(indent + 4)}key`] : []),
       ...(filter.aggregation ? [`${pad(indent + 4)}aggregation`] : []),
@@ -569,6 +578,7 @@ function renderOperationEntry(operation: M.UiBulkOperation, indent: number, lega
   lines.push(`${pad(indent + 2)}value: "${operation.value}"`);
   if (operation.primary !== undefined) lines.push(`${pad(indent + 2)}primary: ${operation.primary}`);
   if (operation.can.length > 0) lines.push(`${pad(indent + 2)}can: [${operation.can.map((entry) => `"${entry}"`).join(", ")}]`);
+  if (operation.allowCondition?.length) lines.push(`${pad(indent + 2)}allowCondition: [${operation.allowCondition.map((entry) => `"${entry}"`).join(", ")}]`);
   if (operation.context) {
     lines.push(`${pad(indent + 2)}actionContext: {`);
     if (operation.context.activeViewMode) lines.push(`${pad(indent + 4)}activeViewMode: ${operation.context.activeViewMode}`);
@@ -619,12 +629,13 @@ function renderOperationEntry(operation: M.UiBulkOperation, indent: number, lega
 }
 
 /** options(input: [...]) { ...the fields asked back } at an indentation: a bulk operations set or a list's actions on its result. */
-function renderOptionsBlock(operations: M.UiBulkOperation[], indent: number, contextAsFields = false, legacyFormQuery = false): string {
+function renderOptionsBlock(operations: M.UiBulkOperation[], indent: number, contextAsFields = false, legacyFormQuery = false, condition?: string): string {
   const entries = operations.map((operation) => renderOperationEntry(operation, indent + 4, legacyFormQuery));
+  // the options' condition: the document's variable (elody:conditionVariable)
   const input =
     operations.length === 0
-      ? `${pad(indent)}options(input: []) {`
-      : [`${pad(indent)}options(`, `${pad(indent + 2)}input: [`, ...entries, `${pad(indent + 2)}]`, `${pad(indent)}) {`].join("\n");
+      ? `${pad(indent)}options(${condition ? `condition: $${condition}, ` : ""}input: []) {`
+      : [`${pad(indent)}options(`, ...(condition ? [`${pad(indent + 2)}condition: $${condition}`] : []), `${pad(indent + 2)}input: [`, ...entries, `${pad(indent + 2)}]`, `${pad(indent)}) {`].join("\n");
   return [
     input,
     `${pad(indent + 2)}icon`,
@@ -649,8 +660,8 @@ function renderOptionsBlock(operations: M.UiBulkOperation[], indent: number, con
   ].join("\n");
 }
 
-export function renderBulkOperationOptions(operations: M.UiBulkOperation[], indent: number, legacyFormQuery = false): string {
-  return [`${pad(indent)}bulkOperationOptions {`, renderOptionsBlock(operations, indent + 2, false, legacyFormQuery), `${pad(indent)}}`].join("\n");
+export function renderBulkOperationOptions(operations: M.UiBulkOperation[], indent: number, legacyFormQuery = false, condition?: string): string {
+  return [`${pad(indent)}bulkOperationOptions {`, renderOptionsBlock(operations, indent + 2, false, legacyFormQuery, condition), `${pad(indent)}}`].join("\n");
 }
 
 /** The sort options fragment's name: <x>SortOptions, or the client's own (elody:sortFragmentName). */
@@ -668,7 +679,7 @@ function renderCopyFromParent(copy: M.UiCreateForm["copyFromParent"]): string[] 
   if (!copy) return [];
   const parts = [
     ...(copy.autoCopy !== undefined ? [`autoCopy: ${copy.autoCopy}`] : []),
-    ...(copy.keyMap.length ? [`keyMap: [${copy.keyMap.map((entry) => `{ key: "${entry.key}", fromKey: "${entry.fromKey}" }`).join(", ")}]`] : []),
+    ...(copy.keyMap.length ? [`keyMap: [${copy.keyMap.map((entry) => `{ key: "${entry.key}", fromKey: "${entry.fromKey}"${entry.relationType ? `, fromRelationType: "${entry.relationType}"` : ""} }`).join(", ")}]`] : []),
   ];
   return [`        copyFromParent(input: { ${parts.join(", ")} }) {`, "          ...copyFromParent", "        }"];
 }
@@ -683,6 +694,7 @@ export function renderFormField(field: M.UiCreateFormField, indent: number): str
     ...(field.languageIn.length ? [`${pad(indent + 2)}languageIn(input: ${stringList(field.languageIn)})`] : []),
     ...(field.showOnlyInEditMode !== undefined ? [`${pad(indent + 2)}showOnlyInEditMode(input: ${field.showOnlyInEditMode})`] : []),
     ...(field.tooltipKey ? [`${pad(indent + 2)}tooltip(input: "${field.tooltipKey}")`] : []),
+    ...(field.unit ? [`${pad(indent + 2)}unit(input: ${field.unit})`] : []),
     ...(field.valueTranslationKey ? [`${pad(indent + 2)}valueTranslationKey(input: "${field.valueTranslationKey}")`] : []),
     ...(field.onlyForEntityTypes?.length ? [`${pad(indent + 2)}onlyForEntityTypes(input: [${field.onlyForEntityTypes.join(", ")}])`] : []),
     ...(field.defaultValue !== undefined ? [`${pad(indent + 2)}defaultValue(input: "${field.defaultValue}")`] : []),
@@ -978,10 +990,44 @@ export function renderListQuery(picker: M.UiPicker): string {
     .join("\n");
 
   // one entity by id and type (elody:queryRoot elody:SingleEntityRoot): the per-type selections under Entity
-  if (picker.rootKind === "entity")
+  if (picker.rootKind === "entity") {
+    // a type fixed in the document (elody:rootType, a secret's read) takes only the id and reads id alone
+    if (picker.rootType)
+      return [`  query ${picker.queryName}($id: String!) {`, `    Entity(id: $id, type: "${picker.rootType}"${picker.rootCollection ? `, collection: ${picker.rootCollection}` : ""}) {`, "      id", results.replace(/^ {2}/gm, ""), "    }", "  }"].join("\n");
     return [`  query ${picker.queryName}($id: String!, $type: String!) {`, "    Entity(id: $id, type: $type) {", "      id", "      uuid", "      type", ...(picker.relationValues ? ["      relationValues"] : []), results.replace(/^ {2}/gm, ""), "    }", "  }"].join("\n");
+  }
+
+  // the results alone (elody:bareResults): no count, limit or __typename, each result's selections directly under results
+  if (picker.bareResults) {
+    const bodies = picker.results
+      .filter((result) => result.fragments.length || result.listing)
+      .flatMap((result) => [...result.fragments.map((fragment) => `        ...${fragment}`), ...(result.listing ? renderListingBody(result.listing, 8) : [])]);
+    return [...renderEntitiesHead(picker), "      results {", ...bodies, "      }", "    }", "  }"].join("\n");
+  }
 
   const list = [
+    ...renderEntitiesHead(picker),
+    "      count",
+    "      limit",
+    ...(picker.facets ? ["      facets"] : []),
+    "      results {",
+    "        id",
+    "        uuid",
+    "        type",
+    ...(picker.relationValues ? ["        relationValues"] : []),
+    results,
+    "      }",
+    "      __typename",
+    "    }",
+    "  }",
+  ].join("\n");
+
+  return list;
+}
+
+/** The entities document's head: the operation, its variables and the Entities field with its arguments. */
+function renderEntitiesHead(picker: M.UiPicker): string[] {
+  return [
     `  query ${picker.queryName}(`,
     "    $type: Entitytyping!",
     "    $limit: Int",
@@ -1001,22 +1047,7 @@ export function renderListQuery(picker: M.UiPicker): string {
     "      advancedFilterInputs: $advancedFilterInputs",
     "      searchInputType: $searchInputType",
     "    ) {",
-    "      count",
-    "      limit",
-    ...(picker.facets ? ["      facets"] : []),
-    "      results {",
-    "        id",
-    "        uuid",
-    "        type",
-    ...(picker.relationValues ? ["        relationValues"] : []),
-    results,
-    "      }",
-    "      __typename",
-    "    }",
-    "  }",
-  ].join("\n");
-
-  return list;
+  ];
 }
 
 export function renderListFilters(picker: M.UiPicker): string {
@@ -1511,8 +1542,10 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string, all: M
     // the detail fragment's name: full<X>, or the client's own (elody:detailName)
     const full: string[] = [`  fragment ${entity.detailName ?? `full${type}`} on ${onType} {`];
     if (entity.detail.shapeDriven) full.push("    shapeFields");
+    // the detail spreads the listing instead of reading values of its own (elody:detailSpreadsListing)
+    if (entity.detailSpreadsListing) full.push(`    ...${cardFragment}`);
     // no block when nothing is read on the detail page (an empty selection set is not GraphQL)
-    const detailValues = renderInitialValues(entity, 6, entity.detailFormatters !== false);
+    const detailValues = entity.detailSpreadsListing ? "" : renderInitialValues(entity, 6, entity.detailFormatters !== false);
     if (detailValues || entity.spreads.detailValues.length) {
       full.push("    intialValues {");
       for (const spread of entity.spreads.detailValues) full.push(`      ...${spread}`);
@@ -1537,7 +1570,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string, all: M
     }
     if (entity.deleteOptions) full.push(renderDeleteOptions(entity.deleteOptions, 4));
     if (entity.viewModesOnDetail) full.push(...modes);
-    if (readsRelationValues(entity, "detail")) full.push("    relationValues");
+    if (!entity.detailSpreadsListing && readsRelationValues(entity, "detail")) full.push("    relationValues");
     for (const field of entity.detail.fragmentFields) full.push(`    ${field}`);
     full.push(renderDetailView(entity, 4));
     full.push("  }");
@@ -1650,7 +1683,7 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string, all: M
 
   for (const custom of entity.customBulkOperations)
     documents.push(
-      [`  query ${custom.queryName} {`, "    CustomBulkOperations {", renderBulkOperationOptions(custom.operations, 6, entity.bulkModalFormQueryLegacy), "    }", "  }"].join("\n"),
+      [`  query ${custom.queryName}${custom.conditionVariable ? `($${custom.conditionVariable}: String)` : ""} {`, "    CustomBulkOperations {", renderBulkOperationOptions(custom.operations, 6, entity.bulkModalFormQueryLegacy, custom.conditionVariable), "    }", "  }"].join("\n"),
     );
 
   for (const form of entity.repetitiveForms) documents.push(renderRepetitiveForm(form));

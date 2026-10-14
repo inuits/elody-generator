@@ -833,6 +833,7 @@ class Parse {
       filePath: r.value(subject, elody("filePath")) || undefined,
       cardName: r.value(subject, elody("cardName")) || undefined,
       withoutBaseEntity: this.optionalFlag(subject, elody("withoutBaseEntity")) || undefined,
+      detailSpreadsListing: this.optionalFlag(subject, elody("detailSpreadsListing")) || undefined,
       detailName: r.value(subject, elody("detailName")) || undefined,
       bulkFragmentName: r.value(subject, elody("bulkFragmentName")) || undefined,
       sortFragmentName: r.value(subject, elody("sortFragmentName")) || undefined,
@@ -909,6 +910,7 @@ class Parse {
       customBulkOperations: r.nodes(subject, elody("customBulkOperations")).filter((node) => this.emitsOnce(`custom:${this.queryNameOf(node, "custom bulk operations set")}`)).map((node) => ({
         queryName: this.queryNameOf(node, "custom bulk operations set"),
         operations: r.byOrder(r.nodes(node, elody("operation"))).map((op) => this.bulkOperation(op)),
+        conditionVariable: r.value(node, elody("conditionVariable")) || undefined,
       })),
       createForms: this.createForms(subject),
       repetitiveForms: this.guidedFlows(subject),
@@ -1017,6 +1019,7 @@ class Parse {
       validationExact: this.optionalFlag(node, elody("validationExact")),
       validationMin: typeof r.literal(node, elody("validationMin")) === "number" ? (r.literal(node, elody("validationMin")) as number) : undefined,
       validationMax: typeof r.literal(node, elody("validationMax")) === "number" ? (r.literal(node, elody("validationMax")) as number) : undefined,
+      validationFields: r.node(node, elody("validationFields")) ? r.list(r.node(node, elody("validationFields"))!) : undefined,
       cardKey: r.value(node, elody("cardKey")) || undefined,
       cardField: r.value(node, elody("cardField")) || undefined,
       cardEditable: r.literal(node, elody("cardEditable")) === true,
@@ -1104,6 +1107,8 @@ class Parse {
       operator: r.value(node, elody("filterOperator")) || undefined,
       showTime: this.optionalFlag(node, elody("showTime")),
       matchersType: r.value(node, elody("matchersType")) || undefined,
+      asksBack: r.literals(node, elody("asksBack")).length ? r.literals(node, elody("asksBack")) : undefined,
+      useOldWayToFetchOptions: this.optionalFlag(node, elody("useOldWayToFetchOptions")),
       matcherLabels: r.nodes(node, elody("matcherLabel")).length ? r.byOrder(r.nodes(node, elody("matcherLabel"))).map((m) => ({ matcher: String(r.value(m, elody("matcher")) ?? ""), labelKey: String(r.value(m, elody("labelKey")) ?? ""), order: r.order(m) })) : undefined,
       lookup: r.node(node, elody("lookup")) ? this.lookup(r.node(node, elody("lookup"))!) : undefined,
       itemTypes: r.literals(node, elody("itemTypes")).length ? r.literals(node, elody("itemTypes")) : undefined,
@@ -1230,6 +1235,7 @@ class Parse {
       label: r.value(node, rdfs("label")),
       primary: typeof primary === "boolean" ? primary : undefined,
       can: r.literals(node, elody("can")),
+      allowCondition: r.literals(node, elody("allowCondition")).length ? r.literals(node, elody("allowCondition")) : undefined,
       context,
       subOptions: r.nodes(node, elody("subOperation")).length ? r.byOrder(r.nodes(node, elody("subOperation"))).map((sub) => this.bulkOperation(sub)) : undefined,
       modal: modalNode
@@ -1332,7 +1338,7 @@ class Parse {
     const r = this.r;
     return {
       autoCopy: this.optionalFlag(node, elody("autoCopy")),
-      keyMap: r.byOrder(r.nodes(node, elody("copyKey"))).map((entry) => ({ key: String(r.value(entry, elody("key")) ?? ""), fromKey: String(r.value(entry, elody("fromKey")) ?? "") })),
+      keyMap: r.byOrder(r.nodes(node, elody("copyKey"))).map((entry) => ({ key: String(r.value(entry, elody("key")) ?? ""), fromKey: String(r.value(entry, elody("fromKey")) ?? ""), relationType: r.value(entry, elody("relationType")) || undefined })),
     };
   }
 
@@ -1526,6 +1532,7 @@ class Parse {
       validationExact: this.optionalFlag(node, elody("validationExact")),
       validationMin: typeof r.literal(node, elody("validationMin")) === "number" ? (r.literal(node, elody("validationMin")) as number) : undefined,
       validationMax: typeof r.literal(node, elody("validationMax")) === "number" ? (r.literal(node, elody("validationMax")) as number) : undefined,
+      validationFields: r.node(node, elody("validationFields")) ? r.list(r.node(node, elody("validationFields"))!) : undefined,
       tooltipKey: r.value(node, elody("tooltipKey")) || undefined,
       showOnlyInEditMode: this.optionalFlag(node, elody("showOnlyInEditMode")),
       valueTranslationKey: r.value(node, elody("valueTranslationKey")) || undefined,
@@ -1543,6 +1550,7 @@ class Parse {
           }))(r.node(node, elody("pickerSearch"))!)
         : undefined,
       hidden: this.hidden(node) || undefined,
+      unit: this.enumValue(node, elody("unit"), elody("Unit")),
       hiddenValueFrom: ((from) => (from ? { entityType: r.value(from, elody("entityType")) || undefined, relationType: r.value(from, elody("relationType")) || undefined, key: r.value(from, elody("key")) || undefined, inherited: this.optionalFlag(from, elody("inherited")) } : undefined))(r.node(node, elody("hiddenValueFrom"))),
       copyValueFromParent: ((copy) => (copy ? { labelKey: r.value(copy, elody("labelKey")) || undefined, key: String(r.value(copy, elody("key")) ?? ""), relationType: r.value(copy, elody("relationType")) || undefined } : undefined))(r.node(node, elody("copyValueFromParent"))),
       infoPanel: this.infoPanel(r.node(node, elody("infoPanel"))),
@@ -1665,6 +1673,7 @@ class Parse {
       readsHost: r.literal(node, elody("readsHost")) === true,
       hostOptional: r.literal(node, elody("hostOptional")) === true || undefined,
       facets: this.optionalFlag(node, elody("facets")),
+      bareResults: this.optionalFlag(node, elody("bareResults")),
       filtersSpreads: r.literals(node, elody("filtersSpread")),
       // the document of a name goes with the first node that renders it: one with results, one with filters
       emitList: r.nodes(node, elody("result")).length ? this.emitsOnce(`document:${names.list}`) : false,
@@ -1687,6 +1696,8 @@ class Parse {
       filters: r.byOrder(r.nodes(node, elody("filter"))).map((filter) => this.filter(filter)),
       filtersType: r.value(node, elody("filtersType")) || undefined,
       rootKind: r.node(node, elody("queryRoot")) === elody("SingleEntityRoot") ? "entity" : undefined,
+      rootType: r.value(node, elody("rootType")) || undefined,
+      rootCollection: r.value(node, elody("rootCollection")) || undefined,
     };
   }
 
