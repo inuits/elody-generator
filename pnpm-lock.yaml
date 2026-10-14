@@ -12,8 +12,8 @@ importers:
         specifier: ^3.0.1
         version: 3.0.1(@rdfjs/types@2.0.1)(@types/clownface@2.0.10)(@types/rdf-dataset-ext@1.0.8)(@types/rdfjs__data-model@2.0.9)(@types/rdfjs__dataset@2.0.7)(@types/rdfjs__environment@1.0.0)(@types/rdfjs__formats@4.0.1)(@types/rdfjs__namespace@2.0.10)(@types/rdfjs__term-map@2.0.10)(@types/rdfjs__term-set@2.0.9)(@types/rdfjs__traverser@0.1.5)
       elody-ontology:
-        specifier: github:inuits/elody-ontology#v0.5.0
-        version: https://codeload.github.com/inuits/elody-ontology/tar.gz/ae62e28c6ab75ec95eb0c4e835cda08d60cc0853
+        specifier: github:inuits/elody-ontology#v0.6.0
+        version: https://codeload.github.com/inuits/elody-ontology/tar.gz/19d61173bf022833585f2588f49b674c898d20ff
       graphql:
         specifier: ^16.14.2
         version: 16.14.2
@@ -619,9 +619,9 @@ packages:
   duplex-to@2.0.0:
     resolution: {integrity: sha512-f2nMnk11mwDptEFBTv2mcWHpF4ENAbuQ63yTiSy/99rG4Exsxsf0GJhJYq/AHF2cdMYswSx23LPuoijBflpquQ==}
 
-  elody-ontology@https://codeload.github.com/inuits/elody-ontology/tar.gz/ae62e28c6ab75ec95eb0c4e835cda08d60cc0853:
-    resolution: {tarball: https://codeload.github.com/inuits/elody-ontology/tar.gz/ae62e28c6ab75ec95eb0c4e835cda08d60cc0853}
-    version: 0.5.0
+  elody-ontology@https://codeload.github.com/inuits/elody-ontology/tar.gz/19d61173bf022833585f2588f49b674c898d20ff:
+    resolution: {tarball: https://codeload.github.com/inuits/elody-ontology/tar.gz/19d61173bf022833585f2588f49b674c898d20ff}
+    version: 0.6.0
 
   es-module-lexer@1.7.0:
     resolution: {integrity: sha512-jEQoCwk8hyb2AZziIOLhDqpm5+2ww5uIE6lkO/6jcOCusfk6LhMHpXXfBLXTZ7Ydyt0j4VoUQv6uGNYbdW+kBA==}
@@ -1472,7 +1472,7 @@ snapshots:
 
   duplex-to@2.0.0: {}
 
-  elody-ontology@https://codeload.github.com/inuits/elody-ontology/tar.gz/ae62e28c6ab75ec95eb0c4e835cda08d60cc0853: {}
+  elody-ontology@https://codeload.github.com/inuits/elody-ontology/tar.gz/19d61173bf022833585f2588f49b674c898d20ff: {}
 
   es-module-lexer@1.7.0: {}
 

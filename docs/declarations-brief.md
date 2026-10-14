@@ -25,7 +25,7 @@ equal, or explicitly excluded with a gap that explains why.
 
 | Repo | Location | Role |
 |---|---|---|
-| `elody-ontology` | root of elody-common, github `inuits/elody-ontology`, `main`, tag `v0.5.0` | Vocabulary `ui/elody-ui.ttl` (`https://elody.eu/ns/ui#`), meta-shapes `ui/elody-ui.shapes.ttl`, `scripts/check.py` (rdflib + pyshacl). Versioning rules: see its README (new term = minor; retired term = minor + `dcterms:isReplacedBy`). |
+| `elody-ontology` | root of elody-common, github `inuits/elody-ontology`, `main`, tag `v0.6.0` | Vocabulary `ui/elody-ui.ttl` (`https://elody.eu/ns/ui#`), meta-shapes `ui/elody-ui.shapes.ttl`, `scripts/check.py` (rdflib + pyshacl). Versioning rules: see its README (new term = minor; retired term = minor + `dcterms:isReplacedBy`). |
 | `elody-generator` | root of elody-common, github `inuits/elody-generator`, `main` | CLI `elody-ui generate \| check \| validate \| migrate`. Code: `src/parse.ts` (declaration → UI model), `src/render.ts` (model → GraphQL), `src/fromShacl.ts`, `src/generate.ts` (writes `*.queries.ts`, `src/ui/generatedFields.ts`, translations, `src/ui/sparqlSources.json`), `src/migrate.ts` (legacy dialect → current). Bindings (enum literals, PWA widgets, schema fields) live in `ontology/elody-ui.bindings.ttl`. 198 vitest tests. |
 | Golden test | `elody-generator/tests` | The DiSHACLed declaration renders **byte-identical** to the hand-written GraphQL. This proves the approach; reuse the pattern for every client. |
 | Execution harness | `elody-generator/scripts/showcase-execute.cts`, `scripts/roundtrip/graphql.cts` | Executes GraphQL documents with the real baseGraphql resolvers inside the dashboard container (`docker cp` to `/tmp`, `tsx`, env `BASEGRAPHQL`). Reuse it for the behavioural comparison. |

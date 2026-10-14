@@ -25,7 +25,7 @@ A UI declaration uses the W3C **SHACL 1.2 UI** vocabulary (`shui:`) and
   elody-common: `ui/elody-ui.ttl` (namespace `https://elody.eu/ns/ui#`, imports
   shui + dash) says what a declaration may say; `ui/elody-ui.shapes.ttl` says
   what a valid declaration looks like. It is a dependency
-  (`github:inuits/elody-ontology#v0.5.0`, pinned to the tag). The generator
+  (`github:inuits/elody-ontology#v0.6.0`, pinned to the tag). The generator
   reads it through `ELODY_ONTOLOGY` when set (to try an unreleased change in a
   checkout), else the installed `elody-ontology` package, else the checkout at
   the root of elody-common.
@@ -197,7 +197,7 @@ Whatever Elody cannot render is listed as a gap on the field.
   is read with a warning; `elody-ui migrate --translations src/translations`
   rewrites it and fills `sh:name` per language from the client's bundles.
 
-## What a type reads and carries (ontology 0.5.0)
+## What a type reads and carries (ontology 0.6.0)
 
 - `elody:alias` on a property shape reads the value under another GraphQL
   field name (`title: keyValue(key: "email")`); several shapes may share one
