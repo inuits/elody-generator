@@ -90,6 +90,8 @@ export type UiProperty = {
   cardLineClamp?: string;
   /** elody:cardLinkText: the card field shows the link text too */
   cardLinkText?: boolean;
+  /** elody:cardCopyToClipboard: the card field offers copying its value */
+  cardCopyToClipboard?: boolean;
   panelLineClamp?: string;
   panelAlias?: string;
   highlightIfPrimaryThumbnail?: boolean;
@@ -105,6 +107,13 @@ export type UiProperty = {
   extensions?: string[];
   showLineNumbers?: boolean;
   editorStyles?: string;
+  /** elody:taggingQuery, elody:taggable: a rich text panel element's tagging */
+  taggingQuery?: string;
+  taggables?: UiTaggable[];
+  /** elody:transliteration: the rich text element's transliteration configuration */
+  transliteration?: { enabledByProperty?: string; items: { alias: string; labelKey?: string; mappingKey: string; insertSpaces?: boolean; order: number }[] };
+  /** elody:cardCustomValue: a constant shown on the card in place of the value */
+  cardCustomValue?: string;
   /** elody:masked, elody:revealQuery: a secret shown masked, revealed by a query */
   masked?: boolean;
   revealQuery?: string;
@@ -478,6 +487,8 @@ export type UiPicker = {
   /** elody:facets: the entities document reads facets; elody:filtersSpread: fragments spread in the filters document */
   facets?: boolean;
   filtersSpreads: string[];
+  /** elody:queryRoot elody:SingleEntityRoot: one entity by id and type instead of a page of entities */
+  rootKind?: "entity";
 };
 
 export type UiPanel = {
@@ -510,12 +521,30 @@ export type UiPanel = {
   elements: UiElement[];
 };
 
-export type UiElementKind = "shaclShape" | "window" | "list" | "markdown" | "singleMedia" | "map" | "entityViewer" | "comments" | "graph";
+export type UiElementKind = "shaclShape" | "window" | "list" | "markdown" | "singleMedia" | "map" | "entityViewer" | "comments" | "hierarchy" | "graph";
 
 /** elody:Taggable: what a rich-text editor can tag */
-export type UiTaggable = { tag?: string; entityType: string; relationType: string; filterKey?: string; triggerCharacter?: string; triggerMinCharacters?: number; flowQuery?: string; flowButtonLabel?: string; order: number };
+export type UiTaggable = {
+  tag?: string;
+  entityType: string;
+  relationType: string;
+  filterKey?: string;
+  triggerCharacter?: string;
+  triggerMinCharacters?: number;
+  flowQuery?: string;
+  flowButtonLabel?: string;
+  /** elody:form: the form creating a new entity to tag (createNewEntityFormQuery) */
+  createFormQuery?: string;
+  /** elody:replaceCharacters: replacements applied to tagged content */
+  replaceCharacters?: { regex: string; replacement: string; order: number }[];
+  /** elody:attributeKeys: metadata keys set as attributes of the tag */
+  attributeKeys?: string[];
+  /** elody:tagConfigurationByEntity: tags configured by a related entity */
+  tagConfigurationByEntity?: { entityType?: string; relationType?: string; tagKey?: string; colorKey?: string; attributeKeys?: string[]; secondaryAttribute?: string };
+  order: number;
+};
 /** elody:composer: the rich-text editor of a comments element */
-export type UiComposer = { label?: string; metadataKey: string; extensions: string[]; editorStyles?: string; multilingual?: boolean; taggables: UiTaggable[] };
+export type UiComposer = { label?: string; metadataKey: string; extensions: string[]; editorStyles?: string; multilingual?: boolean; taggables: UiTaggable[]; /** elody:taggingQuery: the list query the tagging searches */ taggingQuery?: string };
 
 /** elody:windowStatus: the status edited in a window's header (windowElementStatus) */
 export type UiWindowStatus = { labelKey?: string; statusKey: string; statusInputField: string };
@@ -533,6 +562,10 @@ export type UiElement = {
   expandButton?: boolean;
   /** elody:windowLayout: how the window lays out its panels (layout) */
   windowLayout?: string;
+  /** elody:hierarchyLevel, elody:centerEntityType, elody:centerCoordinatesKey: a hierarchy list's tree */
+  hierarchyLevels?: { key: string; entityType: string; order: number }[];
+  centerEntityType?: string;
+  centerCoordinatesKey?: string;
   panels: UiPanel[];
   entityTypes: string[];
   relationType?: string;

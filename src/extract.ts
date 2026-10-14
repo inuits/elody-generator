@@ -119,6 +119,7 @@ type Property = {
   cardLineClamp?: string;
   /** elody:cardLinkText: the card field shows the link text too */
   cardLinkText?: boolean;
+  cardCopyToClipboard?: boolean;
   panelLineClamp?: string;
   panelAlias?: string;
   highlightIfPrimaryThumbnail?: boolean;
@@ -136,6 +137,12 @@ type Property = {
   extensions?: string[];
   showLineNumbers?: boolean;
   editorStyles?: string;
+  /** elody:taggingQuery (a list query node) and elody:taggable nodes of a rich text panel element */
+  taggingQuery?: string;
+  taggables?: Taggable[];
+  transliteration?: { enabledByProperty?: string; items: { alias: string; labelKey?: string; mappingKey: string; insertSpaces?: boolean }[] };
+  /** elody:cardCustomValue: a constant on the card in place of the value */
+  cardCustomValue?: string;
   nonEditable?: boolean;
   tooltipKey?: string;
   panelShowsUnit?: boolean;
@@ -147,16 +154,18 @@ type Property = {
 
 type PanelFieldOverride = { key: string; labelKey?: string; alias?: string; widget?: boolean; asField?: boolean };
 type Panel = { header?: boolean; alias: string; label?: string; kind?: string; collapsed: boolean; editable: boolean; editableDefault?: boolean; repetitionKey?: string; displayConditionKey?: string; bulkDataSource?: string; overrides: PanelFieldOverride[]; multipleColumns?: boolean; can?: string; fields: string[]; spreads: string[]; elements: Element[] };
+type Taggable = { tag?: string; entityType: string; relationType: string; filterKey?: string; triggerCharacter?: string; triggerMinCharacters?: number; flowQuery?: string; flowButtonLabel?: string; createFormQuery?: string; replaceCharacters?: { regex: string; replacement: string }[]; attributeKeys?: string[]; tagConfigurationByEntity?: { entityType?: string; relationType?: string; tagKey?: string; colorKey?: string; attributeKeys?: string[]; secondaryAttribute?: string } };
 type WindowStatus = { labelKey?: string; statusKey: string; statusInputField: string };
 type Element =
   | { kind: "window"; alias?: string; label?: string; expandButton?: boolean; windowLayout?: string; editButton?: boolean; hideInHistory?: boolean; windowStatus?: WindowStatus; contextMenu?: Entity["contextMenu"]; panelSpreads: string[]; panels: Panel[] }
   | { kind: "shaclShape"; label?: string; fieldsKey?: string; collapsed: boolean }
   | { kind: "markdown"; label?: string; metadataKey?: string; collapsed: boolean }
   | { kind: "singleMedia"; label?: string; collapsed: boolean }
+  | { kind: "hierarchy"; alias?: string; label?: string; collapsed: boolean; levels: { key: string; entityType: string }[]; listQuery?: string; can?: string[]; centerEntityType?: string; centerCoordinatesKey?: string }
   | { kind: "entityViewer"; label?: string; relationType?: string; metadataKey?: string }
   | { kind: "map"; label?: string; collapsed: boolean; mapType?: string; center?: string; wktKey?: string; config: { key: string; value: ValueNode | undefined }[] }
   | { kind: "graph"; alias?: string; label?: string; collapsed: boolean; graphType?: string; datasource?: string; datasetLabels: string[]; datasetFilter?: { key: string; values: string[] }; timeUnit?: string; datapoints?: number; convertTo?: string }
-  | { kind: "comments"; alias?: string; label?: string; parentFilterKey?: string; readOnly?: boolean; createFields: { key: string; labelKey?: string; inputType?: string }[]; composer?: { label?: string; metadataKey: string; extensions: string[]; editorStyles?: string; multilingual?: boolean; taggables: { tag?: string; entityType: string; relationType: string; filterKey?: string; triggerCharacter?: string; triggerMinCharacters?: number; flowQuery?: string; flowButtonLabel?: string }[] } }
+  | { kind: "comments"; alias?: string; label?: string; parentFilterKey?: string; readOnly?: boolean; createFields: { key: string; labelKey?: string; inputType?: string }[]; composer?: { label?: string; metadataKey: string; extensions: string[]; editorStyles?: string; multilingual?: boolean; taggables: Taggable[]; taggingQuery?: string } }
   | {
       kind: "list";
       /** inside a panel: the position among the panel's items (fields and elements), from 1 */
@@ -339,7 +348,7 @@ type WindowFragment = { name: string; panels: Panel[] };
 type ElementsFragment = { name: string; elements: Element[] };
 type ValuesFragment = { name: string; cardName?: string; fields: string[]; aliases: string[]; valuesFields: string[]; cardShows?: string[]; contextMenu?: Entity["contextMenu"] };
 
-type ListQuery = { node?: string; name: string; filtersOnly?: boolean; facets?: boolean; filtersSpreads?: string[]; filtersName?: string; filtersType?: string; relationValues?: boolean; readsHost?: boolean; hostOptional?: boolean; results: { type: string; fragments: string[]; listingNode?: string; cardMenuSpread?: string }[]; filters: Filter[] };
+type ListQuery = { node?: string; name: string; filtersOnly?: boolean; rootKind?: "entity"; facets?: boolean; filtersSpreads?: string[]; filtersName?: string; filtersType?: string; relationValues?: boolean; readsHost?: boolean; hostOptional?: boolean; results: { type: string; fragments: string[]; listingNode?: string; cardMenuSpread?: string }[]; filters: Filter[] };
 type Picker = ListQuery;
 
 type Entity = {
@@ -481,7 +490,9 @@ export class Extractor {
   private resultsOf(query: OperationDefinitionNode | undefined, queryName: string, file: string): ListQuery["results"] {
     if (!query) return [];
     const entities = fields(query.selectionSet).find((f) => f.name.value === "Entities");
-    const inline = (child(entities, "results")?.selectionSet?.selections ?? []).filter((s): s is InlineFragmentNode => s.kind === Kind.INLINE_FRAGMENT);
+    // one entity by id and type: the per-type selections sit under Entity itself
+    const single = entities ? undefined : fields(query.selectionSet).find((f) => f.name.value === "Entity");
+    const inline = ((entities ? child(entities, "results") : single)?.selectionSet?.selections ?? []).filter((s): s is InlineFragmentNode => s.kind === Kind.INLINE_FRAGMENT);
     return inline.map((on) => {
       const type = on.typeCondition?.name.value ?? "";
       let own = on.selectionSet.selections.filter((x) => x.kind !== Kind.FRAGMENT_SPREAD && !(x.kind === Kind.FIELD && x.name.value === "__typename"));
@@ -841,12 +852,14 @@ export class Extractor {
         const candidates = entity.properties.filter((p) => p.key === key || (p.alias ?? p.key) === key);
         let property =
           candidates.find((p) => p.inListing && (p.alias ?? p.key) === alias(field)) ?? candidates.find((p) => (p.alias ?? p.key) === alias(field)) ?? byAlias.get(key) ?? byAlias.get(alias(field));
-        if (!property && entity.inline) {
-          // an inline listing shows a card over values a spread fragment reads: the field is shown, its value not read here
+        const customValue = input(child(field, "customValue"));
+        if (!property && (entity.inline || customValue !== undefined)) {
+          // an inline listing shows a card over values a spread fragment reads, or a constant: the field is shown, its value not read here
           property = { key, alias: alias(field) !== key ? alias(field) : undefined, inListing: true, inDetail: false, readsValue: false, teaser: true, sortable: false, single: true, required: false, readOnly: false, labelRole: false };
           entity.properties.push(property);
           byAlias.set(alias(field), property);
         }
+        if (property && customValue !== undefined) property.cardCustomValue = customValue;
         if (!property) {
           this.note(`${where}: card field ${alias(field)} reads no initial value; left out`);
           continue;
@@ -1251,7 +1264,27 @@ export class Extractor {
             .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
             .map((entry) => ({ key: scalar(objectField(entry, "key")) ?? "", value: objectField(entry, "value") })),
         });
-      } else if (element.name.value === "commentsElement") elements.push(this.comments(element, where));
+      } else if (element.name.value === "commentsElement") elements.push(this.comments(element, where, entity));
+      else if (element.name.value === "hierarchyListElement") {
+        // a tree of related entities: its levels, the single-entity query it loads, the centre
+        for (const f of fields(element.selectionSet)) if (!["label", "isCollapsed", "hierarchyRelationList", "customQuery", "can", "entityTypeAsCenterPoint", "centerCoordinatesKey"].includes(f.name.value)) this.note(`${where}: hierarchy list ${alias(element)} field ${f.name.value} has no term; left out`);
+        const levelsField = child(element, "hierarchyRelationList");
+        const levels = list(levelsField ? argument(levelsField, "input") : undefined).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT).map((o) => ({ key: scalar(objectField(o, "key")) ?? "", entityType: scalar(objectField(o, "entityType")) ?? "" }));
+        const queryName = input(child(element, "customQuery"));
+        const listQuery = queryName ? this.listQuery(queryName, undefined, `${where} hierarchy list ${alias(element)}`, entity) : undefined;
+        const can = child(element, "can");
+        elements.push({
+          kind: "hierarchy",
+          alias: element.alias?.value,
+          label: input(child(element, "label")),
+          collapsed: input(child(element, "isCollapsed")) === "true",
+          levels,
+          listQuery,
+          can: can ? list(argument(can, "input")).map((v) => scalar(v) ?? "") : undefined,
+          centerEntityType: input(child(element, "entityTypeAsCenterPoint")),
+          centerCoordinatesKey: input(child(element, "centerCoordinatesKey")),
+        });
+      }
       else if (element.name.value === "graphElement") {
         for (const f of fields(element.selectionSet)) if (!["label", "isCollapsed", "type", "datasource", "dataset", "timeUnit", "datapoints", "convert_to"].includes(f.name.value)) this.note(`${where}: graph element ${alias(element)} field ${f.name.value} has no term; left out`);
         const dataset = child(element, "dataset");
@@ -1278,8 +1311,49 @@ export class Extractor {
     return elements;
   }
 
+  /** A rich text element's tagging configuration: what it can tag, and the list query it searches (declared on the type). */
+  private taggingOf(tagging: FieldNode | undefined, w: string, entity: Entity): { taggables: Taggable[]; taggingQuery?: string } {
+    if (!tagging) return { taggables: [] };
+    for (const f of fields(tagging.selectionSet)) if (!["customQuery", "taggableEntityConfiguration"].includes(f.name.value)) this.note(`${w}: tagging field ${f.name.value} has no term; left out`);
+    const queryName = input(child(tagging, "customQuery"));
+    const taggingQuery = queryName ? this.listQuery(queryName, undefined, w, entity) : undefined;
+    if (queryName && !entity.entityListQueries.includes(taggingQuery!)) entity.entityListQueries.push(taggingQuery!);
+    const configuration = child(tagging, "taggableEntityConfiguration");
+    const keys = (object: ObjectValueNode, name: string) => (objectField(object, name) ? list(objectField(object, name)).map((v) => scalar(v) ?? "") : undefined);
+    const taggables = list(configuration ? argument(configuration, "configuration") : undefined)
+      .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
+      .map((entry): Taggable => {
+        for (const f of entry.fields) if (!["tag", "taggableEntityType", "relationType", "metadataFilterForTagContent", "inlineTrigger", "guidedFlowQuery", "guidedFlowButtonLabel", "createNewEntityFormQuery", "replaceCharacterFromTagSettings", "metadataKeysToSetAsAttribute", "tagConfigurationByEntity"].includes(f.name.value)) this.note(`${w}: taggable field ${f.name.value} has no term; left out`);
+        const trigger = objectField(entry, "inlineTrigger");
+        const min = trigger?.kind === Kind.OBJECT ? scalar(objectField(trigger, "minCharacters")) : undefined;
+        const byEntity = objectField(entry, "tagConfigurationByEntity");
+        const form = scalar(objectField(entry, "createNewEntityFormQuery"));
+        if (form) this.stubs.add(form);
+        return {
+          tag: scalar(objectField(entry, "tag")),
+          entityType: scalar(objectField(entry, "taggableEntityType")) ?? "",
+          relationType: scalar(objectField(entry, "relationType")) ?? "",
+          filterKey: scalar(objectField(entry, "metadataFilterForTagContent")),
+          triggerCharacter: trigger?.kind === Kind.OBJECT ? scalar(objectField(trigger, "character")) : undefined,
+          triggerMinCharacters: min !== undefined ? Number(min) : undefined,
+          flowQuery: scalar(objectField(entry, "guidedFlowQuery")),
+          flowButtonLabel: scalar(objectField(entry, "guidedFlowButtonLabel")),
+          createFormQuery: form,
+          replaceCharacters: objectField(entry, "replaceCharacterFromTagSettings")
+            ? list(objectField(entry, "replaceCharacterFromTagSettings")).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT).map((rc) => ({ regex: scalar(objectField(rc, "replacementCharactersRegex")) ?? "", replacement: scalar(objectField(rc, "characterToReplaceWith")) ?? "" }))
+            : undefined,
+          attributeKeys: keys(entry, "metadataKeysToSetAsAttribute"),
+          tagConfigurationByEntity:
+            byEntity?.kind === Kind.OBJECT
+              ? { entityType: scalar(objectField(byEntity, "configurationEntityType")), relationType: scalar(objectField(byEntity, "configurationEntityRelationType")), tagKey: scalar(objectField(byEntity, "tagMetadataKey")), colorKey: scalar(objectField(byEntity, "colorMetadataKey")), attributeKeys: keys(byEntity, "metadataKeysToSetAsAttribute"), secondaryAttribute: scalar(objectField(byEntity, "secondaryAttributeToDetermineTagConfig")) }
+              : undefined,
+        };
+      });
+    return { taggables, taggingQuery };
+  }
+
   /** A comments element: its composer (extensions, taggables, editor styles) and the fields a comment is created with. */
-  private comments(element: FieldNode, where: string): Element {
+  private comments(element: FieldNode, where: string, entity: Entity): Element {
     const w = `${where} comments element ${alias(element)}`;
     for (const f of fields(element.selectionSet)) if (!["label", "parentEntityFilterKey", "readOnly", "createFields", "composer"].includes(f.name.value)) this.note(`${w}: field ${f.name.value} has no term; left out`);
     const createFields = fields(child(element, "createFields")?.selectionSet).map((field) => {
@@ -1292,26 +1366,9 @@ export class Extractor {
       for (const f of fields(composerField.selectionSet)) if (!["label", "metadataKey", "extensions", "isMultilingual", "taggingConfiguration", "wysiwygElementConfiguration"].includes(f.name.value)) this.note(`${w}: composer field ${f.name.value} has no term; left out`);
       const extensionsField = child(composerField, "extensions");
       const extensions = list(extensionsField ? argument(extensionsField, "input") : undefined).map((v) => this.instance("WysiwygExtension", scalar(v), `${w} extension`) ?? "");
-      const tagging = child(child(composerField, "taggingConfiguration"), "taggableEntityConfiguration");
       const configuration = child(composerField, "wysiwygElementConfiguration");
       for (const f of fields(configuration?.selectionSet)) if (f.name.value !== "customEditorStyles") this.note(`${w}: composer configuration field ${f.name.value} has no term; left out`);
-      const taggables = list(tagging ? argument(tagging, "configuration") : undefined)
-        .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
-        .map((entry) => {
-          for (const f of entry.fields) if (!["tag", "taggableEntityType", "relationType", "metadataFilterForTagContent", "inlineTrigger", "guidedFlowQuery", "guidedFlowButtonLabel"].includes(f.name.value)) this.note(`${w}: taggable field ${f.name.value} has no term; left out`);
-          const trigger = objectField(entry, "inlineTrigger");
-          const min = trigger?.kind === Kind.OBJECT ? scalar(objectField(trigger, "minCharacters")) : undefined;
-          return {
-            tag: scalar(objectField(entry, "tag")),
-            entityType: scalar(objectField(entry, "taggableEntityType")) ?? "",
-            relationType: scalar(objectField(entry, "relationType")) ?? "",
-            filterKey: scalar(objectField(entry, "metadataFilterForTagContent")),
-            triggerCharacter: trigger?.kind === Kind.OBJECT ? scalar(objectField(trigger, "character")) : undefined,
-            triggerMinCharacters: min !== undefined ? Number(min) : undefined,
-            flowQuery: scalar(objectField(entry, "guidedFlowQuery")),
-            flowButtonLabel: scalar(objectField(entry, "guidedFlowButtonLabel")),
-          };
-        });
+      const { taggables, taggingQuery } = this.taggingOf(child(composerField, "taggingConfiguration"), w, entity);
       composer = {
         label: input(child(composerField, "label")),
         metadataKey: input(child(composerField, "metadataKey")) ?? "",
@@ -1319,6 +1376,7 @@ export class Extractor {
         editorStyles: configuration ? input(child(configuration, "customEditorStyles")) : undefined,
         multilingual: input(child(composerField, "isMultilingual")) === "true" ? true : undefined,
         taggables,
+        taggingQuery,
       };
     }
     return {
@@ -1393,13 +1451,25 @@ export class Extractor {
           if (styles) property.editorStyles = styles;
           const layouts = configuration ? child(configuration, "virtualKeyboardLayouts") : undefined;
           if (layouts) property.virtualKeyboardLayouts = list(argument(layouts, "input")).map((v) => scalar(v) ?? "");
-          for (const f of fields(configuration?.selectionSet)) if (!["showLineNumbers", "customEditorStyles", "virtualKeyboardLayouts"].includes(f.name.value)) this.note(`${where}: panel ${alias(panel)} wysiwyg field ${alias(field)} configuration field ${f.name.value} has no term; left out`);
+          const taggingField = child(field, "taggingConfiguration");
+          if (taggingField) {
+            const { taggables, taggingQuery } = this.taggingOf(taggingField, `${where} wysiwyg ${alias(field)}`, entity);
+            if (taggables.length) property.taggables = taggables;
+            property.taggingQuery = taggingQuery;
+          }
+          const transliteration = configuration ? child(configuration, "transliterationConfig") : undefined;
+          if (transliteration) {
+            const items = fields(transliteration.selectionSet).filter((f) => f.name.value === "transliterationConfigItem").map((f) => ({ alias: alias(f), labelKey: scalar(argument(f, "label")), mappingKey: scalar(argument(f, "mappingKey")) ?? "", insertSpaces: argument(f, "insertSpaces") ? scalar(argument(f, "insertSpaces")) === "true" : undefined }));
+            property.transliteration = { enabledByProperty: input(child(transliteration, "enabledByProperty")), items };
+            for (const f of fields(transliteration.selectionSet)) if (!["enabledByProperty", "transliterationConfigItem"].includes(f.name.value)) this.note(`${where}: panel ${alias(panel)} wysiwyg field ${alias(field)} transliteration field ${f.name.value} has no term; left out`);
+          }
+          for (const f of fields(configuration?.selectionSet)) if (!["showLineNumbers", "customEditorStyles", "virtualKeyboardLayouts", "transliterationConfig"].includes(f.name.value)) this.note(`${where}: panel ${alias(panel)} wysiwyg field ${alias(field)} configuration field ${f.name.value} has no term; left out`);
           const label = input(child(field, "label"));
           if (label && !property.labelKey) property.labelKey = label;
           if (input(child(field, "isMultilingual")) === "true") property.multilingual = true;
           const info = child(field, "infoPanel");
           if (info) property.infoPanel = { title: scalar(argument(info, "title")), content: scalar(argument(info, "content")) };
-          for (const f of fields(field.selectionSet)) if (!["label", "metadataKey", "infoPanel", "isMultilingual", "extensions", "wysiwygElementConfiguration"].includes(f.name.value)) this.note(`${where}: panel ${alias(panel)} wysiwyg field ${alias(field)} field ${f.name.value} has no term; left out`);
+          for (const f of fields(field.selectionSet)) if (!["label", "metadataKey", "infoPanel", "isMultilingual", "extensions", "wysiwygElementConfiguration", "taggingConfiguration"].includes(f.name.value)) this.note(`${where}: panel ${alias(panel)} wysiwyg field ${alias(field)} field ${f.name.value} has no term; left out`);
           result.fields.push(property.key);
           this.panelSeen.add(property);
           continue;
@@ -1616,7 +1686,7 @@ export class Extractor {
     }
     const filters = filtersName ? this.operation(filtersName) : undefined;
     const { block, filtersType } = this.advancedFiltersOf(filters);
-    entity.listQueries.push({ node, name, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, readsHost: results.length ? this.queryReadsHost(query) || undefined : undefined, hostOptional: results.length && this.queryHostOptional(query) ? true : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [], facets: query && child(fields(query.selectionSet)[0], "facets") ? true : undefined, filtersSpreads: block ? spreads(block.selectionSet) : [] });
+    entity.listQueries.push({ node, name, rootKind: query && !fields(query.selectionSet).some((f) => f.name.value === "Entities") && fields(query.selectionSet).some((f) => f.name.value === "Entity") ? "entity" : undefined, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, readsHost: results.length ? this.queryReadsHost(query) || undefined : undefined, hostOptional: results.length && this.queryHostOptional(query) ? true : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [], facets: query && child(fields(query.selectionSet)[0], "facets") ? true : undefined, filtersSpreads: block ? spreads(block.selectionSet) : [] });
     if (filtersName && !filters) this.note(`${where}: filters document ${filtersName} is not in these files; the list query declares no filters and the name stays`);
     return node;
   }
@@ -2209,6 +2279,7 @@ export class Extractor {
     if (p.detailContainsRelation === false) lines.push(`    elody:detailContainsRelation false ;`);
     if (p.cardLineClamp) lines.push(`    elody:cardLineClamp ${q(p.cardLineClamp)} ;`);
     if (p.cardLinkText) lines.push(`    elody:cardLinkText true ;`);
+    if (p.cardCopyToClipboard !== undefined) lines.push(`    elody:cardCopyToClipboard ${p.cardCopyToClipboard} ;`);
     if (p.panelLineClamp) lines.push(`    elody:panelLineClamp ${q(p.panelLineClamp)} ;`);
     if (p.panelAlias) lines.push(`    elody:panelAlias ${q(p.panelAlias)} ;`);
     if (p.highlightIfPrimaryThumbnail !== undefined) lines.push(`    elody:highlightIfPrimaryThumbnail ${p.highlightIfPrimaryThumbnail} ;`);
@@ -2225,6 +2296,13 @@ export class Extractor {
     if (p.extensions?.length) lines.push(`    elody:extensions ( ${p.extensions.join(" ")} ) ;`);
     if (p.showLineNumbers !== undefined) lines.push(`    elody:showLineNumbers ${p.showLineNumbers} ;`);
     if (p.editorStyles) lines.push(`    elody:editorStyles ${q(p.editorStyles)} ;`);
+    if (p.taggingQuery) lines.push(`    elody:taggingQuery ui:${p.taggingQuery} ;`);
+    if (p.transliteration) {
+      const items = p.transliteration.items.map((item, i) => `elody:transliterationItem [ sh:order ${i + 1} ; elody:alias ${q(item.alias)}${item.labelKey ? ` ; elody:labelKey ${q(item.labelKey)}` : ""} ; elody:mappingKey ${q(item.mappingKey)}${item.insertSpaces !== undefined ? ` ; elody:insertSpaces ${item.insertSpaces}` : ""} ]`);
+      lines.push(`    elody:transliteration [ ${[...(p.transliteration.enabledByProperty ? [`elody:enabledByProperty ${q(p.transliteration.enabledByProperty)}`] : []), ...items].join(" ; ")} ] ;`);
+    }
+    for (const [i, t] of (p.taggables ?? []).entries()) lines.push(`    elody:taggable [ ${this.taggableParts(t, i).join(" ; ")} ] ;`);
+    if (p.cardCustomValue !== undefined) lines.push(`    elody:cardCustomValue ${q(p.cardCustomValue)} ;`);
     if (p.nonEditable !== undefined) lines.push(`    elody:nonEditable ${p.nonEditable} ;`);
     if (p.tooltipKey) lines.push(`    elody:tooltipKey ${q(p.tooltipKey)} ;`);
     if (p.panelShowsUnit === false) lines.push(`    elody:panelShowsUnit false ;`);
@@ -2916,6 +2994,7 @@ export class Extractor {
     const colSpan = input(child(field, "colSpan"));
     if (colSpan) property.colSpan = Number(colSpan);
     if (field.name.value !== "metaData") property.cardField = field.name.value;
+    if (child(field, "copyToClipboard")) property.cardCopyToClipboard = input(child(field, "copyToClipboard")) === "true";
     // the link text shown on the card as well
     const linkText = input(child(field, "linkText"));
     if (linkText) {
@@ -2940,6 +3019,25 @@ export class Extractor {
       }
       if (!child(widget, "validation")) property.cardValidates = false;
     }
+  }
+
+  /** The predicates of an elody:taggable node: what a rich text element can tag. */
+  private taggableParts(t: Taggable, i: number): string[] {
+    const parts = [`sh:order ${i + 1}`, ...(t.tag ? [`elody:tag ${q(t.tag)}`] : []), `elody:entityType ${q(t.entityType)}`, `elody:relationType ${q(t.relationType)}`];
+    if (t.filterKey) parts.push(`elody:tagFilterKey ${q(t.filterKey)}`);
+    if (t.triggerCharacter) parts.push(`elody:triggerCharacter ${q(t.triggerCharacter)}`);
+    if (t.triggerMinCharacters !== undefined) parts.push(`elody:triggerMinCharacters ${t.triggerMinCharacters}`);
+    if (t.flowQuery) parts.push(`elody:flow ui:${t.flowQuery}`);
+    if (t.flowButtonLabel) parts.push(`elody:flowButtonLabel ${q(t.flowButtonLabel)}`);
+    if (t.createFormQuery) parts.push(`elody:form ui:${t.createFormQuery}`);
+    for (const [j, rc] of (t.replaceCharacters ?? []).entries()) parts.push(`elody:replaceCharacters [ sh:order ${j + 1} ; elody:regex ${q(rc.regex)} ; elody:replacement ${q(rc.replacement)} ]`);
+    if (t.attributeKeys?.length) parts.push(`elody:attributeKeys ( ${t.attributeKeys.map(q).join(" ")} )`);
+    const by = t.tagConfigurationByEntity;
+    if (by) {
+      const byParts = [...(by.entityType ? [`elody:entityType ${q(by.entityType)}`] : []), ...(by.relationType ? [`elody:relationType ${q(by.relationType)}`] : []), ...(by.tagKey ? [`elody:tagKey ${q(by.tagKey)}`] : []), ...(by.colorKey ? [`elody:colorKey ${q(by.colorKey)}`] : []), ...(by.attributeKeys?.length ? [`elody:attributeKeys ( ${by.attributeKeys.map(q).join(" ")} )`] : []), ...(by.secondaryAttribute ? [`elody:secondaryAttribute ${q(by.secondaryAttribute)}`] : [])];
+      parts.push(`elody:tagConfigurationByEntity [ ${byParts.join(" ; ")} ]`);
+    }
+    return parts;
   }
 
   /** The lines of an elody:contextMenu node (the card's or a window's), the first one opening the bracket. */
@@ -3073,6 +3171,18 @@ export class Extractor {
       w[w.length - 1] = w[w.length - 1].replace(/ ;$/, " ]");
       return w.join("\n");
     }
+    if (element.kind === "hierarchy") {
+      const h = [`      [ a elody:HierarchyListElement ;`, ...(element.label !== undefined ? [`      rdfs:label ${q(element.label)} ;`] : []), `      sh:order ${e + 1} ;`];
+      if (element.alias) h.push(`      elody:alias ${q(element.alias)} ;`);
+      h.push(`      elody:collapsed ${element.collapsed} ;`);
+      for (const [i, level] of element.levels.entries()) h.push(`      elody:hierarchyLevel [ sh:order ${i + 1} ; elody:key ${q(level.key)} ; elody:entityType ${q(level.entityType)} ] ;`);
+      if (element.listQuery) h.push(`      elody:listQuery ui:${element.listQuery} ;`);
+      for (const c of element.can ?? []) h.push(`      elody:can ${q(c)} ;`);
+      if (element.centerEntityType) h.push(`      elody:centerEntityType ${q(element.centerEntityType)} ;`);
+      if (element.centerCoordinatesKey) h.push(`      elody:centerCoordinatesKey ${q(element.centerCoordinatesKey)} ;`);
+      h[h.length - 1] = h[h.length - 1].replace(/ ;$/, " ]");
+      return h.join("\n");
+    }
     if (element.kind === "shaclShape") {
       const s = [`      [ a elody:ShaclShapeElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ;`];
       if (element.fieldsKey) s.push(`      elody:fieldsKey ${q(element.fieldsKey)} ;`);
@@ -3115,15 +3225,8 @@ export class Extractor {
         if (c.extensions.length) lines.push(`        elody:extensions ( ${c.extensions.join(" ")} ) ;`);
         if (c.editorStyles) lines.push(`        elody:editorStyles ${q(c.editorStyles)} ;`);
         if (c.multilingual) lines.push(`        elody:multilingual true ;`);
-        for (const [i, t] of c.taggables.entries()) {
-          const parts = [`sh:order ${i + 1}`, ...(t.tag ? [`elody:tag ${q(t.tag)}`] : []), `elody:entityType ${q(t.entityType)}`, `elody:relationType ${q(t.relationType)}`];
-          if (t.filterKey) parts.push(`elody:tagFilterKey ${q(t.filterKey)}`);
-          if (t.triggerCharacter) parts.push(`elody:triggerCharacter ${q(t.triggerCharacter)}`);
-          if (t.triggerMinCharacters !== undefined) parts.push(`elody:triggerMinCharacters ${t.triggerMinCharacters}`);
-          if (t.flowQuery) parts.push(`elody:flow ui:${t.flowQuery}`);
-          if (t.flowButtonLabel) parts.push(`elody:flowButtonLabel ${q(t.flowButtonLabel)}`);
-          lines.push(`        elody:taggable [ ${parts.join(" ; ")} ] ;`);
-        }
+        if (c.taggingQuery) lines.push(`        elody:taggingQuery ui:${c.taggingQuery} ;`);
+        for (const [i, t] of c.taggables.entries()) lines.push(`        elody:taggable [ ${this.taggableParts(t, i).join(" ; ")} ] ;`);
         lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " ] ;");
         s.push(...lines);
       }
@@ -3529,7 +3632,7 @@ export class Extractor {
     }
     for (const lq of [...entity.listQueries, ...entity.pickers.map((p) => ({ ...p, picker: true }))]) {
       // a filters document alone: the node is named after it, no entities document
-      const lines = [`ui:${lq.node ?? lq.name}`, `  a ${"picker" in lq ? "elody:Picker" : "elody:ListQuery"} ;`, ...(lq.filtersOnly ? [] : [`  elody:queryName ${q(lq.name)} ;`])];
+      const lines = [`ui:${lq.node ?? lq.name}`, `  a ${"picker" in lq ? "elody:Picker" : "elody:ListQuery"} ;`, ...(lq.filtersOnly ? [] : [`  elody:queryName ${q(lq.name)} ;`]), ...("rootKind" in lq && lq.rootKind === "entity" ? ["  elody:queryRoot elody:SingleEntityRoot ;"] : [])];
       if (lq.filtersName) lines.push(`  elody:filtersQuery ${q(lq.filtersName)} ;`);
       if (lq.filtersType) lines.push(`  elody:filtersType ${q(lq.filtersType)} ;`);
       if (lq.relationValues) lines.push(`  elody:relationValues true ;`);

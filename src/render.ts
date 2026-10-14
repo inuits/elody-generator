@@ -16,6 +16,39 @@ const stringList = (values: string[]) => `[${values.map((value) => `"${value}"`)
 
 /** The listing fragment leaves out the detail-only properties; the detail fragment reads them all. */
 /** validation(input: { value: ... }): required (sh:minCount 1) and the declared rule, with its argument. */
+/** A rich text element's tagging (elody:taggable, elody:taggingQuery): taggingConfiguration { customQuery taggableEntityConfiguration(...) }. */
+function renderTaggingConfiguration(taggables: M.UiTaggable[], taggingQuery: string | undefined, depth: number): string[] {
+  const entries = taggables.map((t) => {
+    const parts = [...(t.tag ? [`tag: "${t.tag}"`] : []), `taggableEntityType: ${t.entityType}`];
+    if (t.createFormQuery) parts.push(`createNewEntityFormQuery: "${t.createFormQuery}"`);
+    parts.push(`relationType: "${t.relationType}"`);
+    if (t.filterKey) parts.push(`metadataFilterForTagContent: "${t.filterKey}"`);
+    if (t.triggerCharacter) parts.push(`inlineTrigger: { character: "${t.triggerCharacter}"${t.triggerMinCharacters !== undefined ? `, minCharacters: ${t.triggerMinCharacters}` : ""} }`);
+    if (t.flowQuery) parts.push(`guidedFlowQuery: "${t.flowQuery}"`);
+    if (t.flowButtonLabel) parts.push(`guidedFlowButtonLabel: "${t.flowButtonLabel}"`);
+    if (t.replaceCharacters?.length) parts.push(`replaceCharacterFromTagSettings: [${t.replaceCharacters.map((rc) => `{ replacementCharactersRegex: ${gqlString(rc.regex)}, characterToReplaceWith: ${gqlString(rc.replacement)} }`).join(", ")}]`);
+    if (t.attributeKeys?.length) parts.push(`metadataKeysToSetAsAttribute: [${t.attributeKeys.map((k) => `"${k}"`).join(", ")}]`);
+    const by = t.tagConfigurationByEntity;
+    if (by) {
+      const byParts = [...(by.entityType ? [`configurationEntityType: ${by.entityType}`] : []), ...(by.relationType ? [`configurationEntityRelationType: "${by.relationType}"`] : []), ...(by.tagKey ? [`tagMetadataKey: "${by.tagKey}"`] : []), ...(by.colorKey ? [`colorMetadataKey: "${by.colorKey}"`] : []), ...(by.attributeKeys?.length ? [`metadataKeysToSetAsAttribute: [${by.attributeKeys.map((k) => `"${k}"`).join(", ")}]`] : []), ...(by.secondaryAttribute ? [`secondaryAttributeToDetermineTagConfig: "${by.secondaryAttribute}"`] : [])];
+      parts.push(`tagConfigurationByEntity: { ${byParts.join(", ")} }`);
+    }
+    return `${pad(depth + 6)}{ ${parts.join(", ")} }`;
+  });
+  return [
+    `${pad(depth)}taggingConfiguration {`,
+    ...(taggingQuery ? [`${pad(depth + 2)}customQuery(input: "${taggingQuery}")`] : []),
+    `${pad(depth + 2)}taggableEntityConfiguration(`,
+    `${pad(depth + 4)}configuration: [`,
+    ...entries,
+    `${pad(depth + 4)}]`,
+    `${pad(depth + 2)}) {`,
+    `${pad(depth + 4)}...taggableEntityConfiguration`,
+    `${pad(depth + 2)}}`,
+    `${pad(depth)}}`,
+  ];
+}
+
 /** An info panel next to a field (elody:infoPanel): infoPanel(title: ..., content: ...) { title content }. */
 function infoPanelLines(info: { title?: string; content?: string }, depth: number): string[] {
   const args = [...(info.title !== undefined ? [`title: ${gqlString(info.title)}`] : []), ...(info.content !== undefined ? [`content: ${gqlString(info.content)}`] : [])];
@@ -117,10 +150,12 @@ export function renderTeaserFields(entity: M.UiEntity, indent: number): string {
       const lines = [
         `${pad(indent)}${property.cardAlias ?? property.alias ?? property.key}: ${property.cardField ?? "metaData"} {`,
         `${pad(indent + 2)}label(input: "${property.label ?? property.key}")`,
-        `${pad(indent + 2)}key(input: "${property.cardKey ?? property.alias ?? property.key}")`,
+        // a constant on the card in place of the value (elody:cardCustomValue), else the key
+        ...(property.cardCustomValue !== undefined ? [`${pad(indent + 2)}customValue(input: ${gqlString(property.cardCustomValue)})`] : [`${pad(indent + 2)}key(input: "${property.cardKey ?? property.alias ?? property.key}")`]),
       ];
       if (property.cardLineClamp) lines.push(`${pad(indent + 2)}lineClamp(input: "${property.cardLineClamp}")`);
       if (property.cardLinkText && property.linkText) lines.push(`${pad(indent + 2)}linkText(input: "${property.linkText}")`);
+      if (property.cardCopyToClipboard !== undefined) lines.push(`${pad(indent + 2)}copyToClipboard(input: ${property.cardCopyToClipboard})`);
       if (property.valueTranslationKey) lines.push(`${pad(indent + 2)}valueTranslationKey(input: "${property.valueTranslationKey}")`);
       if (property.highlightIfPrimaryThumbnail !== undefined) lines.push(`${pad(indent + 2)}highlightIfPrimaryThumbnail(input: ${property.highlightIfPrimaryThumbnail})`);
       if (property.multilingual) lines.push(`${pad(indent + 2)}isMultilingual(input: true)`);
@@ -919,6 +954,10 @@ export function renderListQuery(picker: M.UiPicker): string {
     )
     .join("\n");
 
+  // one entity by id and type (elody:queryRoot elody:SingleEntityRoot): the per-type selections under Entity
+  if (picker.rootKind === "entity")
+    return [`  query ${picker.queryName}($id: String!, $type: String!) {`, "    Entity(id: $id, type: $type) {", "      id", "      uuid", "      type", ...(picker.relationValues ? ["      relationValues"] : []), results.replace(/^ {2}/gm, ""), "    }", "  }"].join("\n");
+
   const list = [
     `  query ${picker.queryName}(`,
     "    $type: Entitytyping!",
@@ -1124,6 +1163,24 @@ export function elementRenderer(entity: M.UiEntity): ElementRenderer {
       lines.push(`${pad(depth)}}`);
       return lines.join("\n");
     }
+    if (element.kind === "hierarchy") {
+      // a tree of related entities, one level per relation, centred on the entity
+      const levels = (element.hierarchyLevels ?? []).map((l) => `{ key: "${l.key}", entityType: ${l.entityType} }`);
+      return [
+        `${pad(depth)}${element.alias ? `${element.alias}: ` : ""}hierarchyListElement {`,
+        ...(element.label !== undefined ? [`${pad(depth + 2)}label(input: "${element.label}")`] : []),
+        `${pad(depth + 2)}isCollapsed(input: ${element.collapsed ?? false})`,
+        `${pad(depth + 2)}hierarchyRelationList(input: [${levels.join(", ")}]) {`,
+        `${pad(depth + 4)}key`,
+        `${pad(depth + 4)}entityType`,
+        `${pad(depth + 2)}}`,
+        ...(element.customQuery ? [`${pad(depth + 2)}customQuery(input: "${element.customQuery}")`] : []),
+        ...(element.can.length ? [`${pad(depth + 2)}can(input: [${element.can.map((c) => `"${c}"`).join(", ")}])`] : []),
+        ...(element.centerEntityType ? [`${pad(depth + 2)}entityTypeAsCenterPoint(input: ${element.centerEntityType})`] : []),
+        ...(element.centerCoordinatesKey ? [`${pad(depth + 2)}centerCoordinatesKey(input: "${element.centerCoordinatesKey}")`] : []),
+        `${pad(depth)}}`,
+      ].join("\n");
+    }
     if (element.kind === "comments") {
       const lines = [`${pad(depth)}${element.alias ? `${element.alias}: ` : ""}commentsElement {`, `${pad(depth + 2)}label(input: "${element.label ?? ""}")`];
       if (element.parentFilterKey) lines.push(`${pad(depth + 2)}parentEntityFilterKey(input: "${element.parentFilterKey}")`);
@@ -1142,17 +1199,7 @@ export function elementRenderer(entity: M.UiEntity): ElementRenderer {
         lines.push(`${pad(depth + 2)}composer {`, `${pad(depth + 4)}label(input: "${composer.label ?? ""}")`, `${pad(depth + 4)}metadataKey(input: "${composer.metadataKey}")`);
         lines.push(`${pad(depth + 4)}extensions(input: [${composer.extensions.join(", ")}])`);
         if (composer.multilingual) lines.push(`${pad(depth + 4)}isMultilingual(input: true)`);
-        if (composer.taggables.length) {
-          const entries = composer.taggables.map((t) => {
-            const parts = [...(t.tag ? [`tag: "${t.tag}"`] : []), `taggableEntityType: ${t.entityType}`, `relationType: "${t.relationType}"`];
-            if (t.filterKey) parts.push(`metadataFilterForTagContent: "${t.filterKey}"`);
-            if (t.triggerCharacter) parts.push(`inlineTrigger: { character: "${t.triggerCharacter}"${t.triggerMinCharacters !== undefined ? `, minCharacters: ${t.triggerMinCharacters}` : ""} }`);
-            if (t.flowQuery) parts.push(`guidedFlowQuery: "${t.flowQuery}"`);
-            if (t.flowButtonLabel) parts.push(`guidedFlowButtonLabel: "${t.flowButtonLabel}"`);
-            return `${pad(depth + 10)}{ ${parts.join(", ")} }`;
-          });
-          lines.push(`${pad(depth + 4)}taggingConfiguration {`, `${pad(depth + 6)}taggableEntityConfiguration(`, `${pad(depth + 8)}configuration: [`, ...entries, `${pad(depth + 8)}]`, `${pad(depth + 6)}) {`, `${pad(depth + 8)}...taggableEntityConfiguration`, `${pad(depth + 6)}}`, `${pad(depth + 4)}}`);
-        }
+        if (composer.taggables.length) lines.push(...renderTaggingConfiguration(composer.taggables, composer.taggingQuery, depth + 4));
         if (composer.editorStyles) lines.push(`${pad(depth + 4)}wysiwygElementConfiguration {`, `${pad(depth + 6)}customEditorStyles(input: "${composer.editorStyles}")`, `${pad(depth + 4)}}`);
         lines.push(`${pad(depth + 2)}}`);
       }
@@ -1276,6 +1323,20 @@ function renderPanelElement(entity: M.UiEntity, property: M.UiProperty, depth: n
       ...(showLineNumbers !== undefined ? [`${pad(depth + 4)}showLineNumbers(input: ${showLineNumbers})`] : []),
       ...(property.editorStyles ? [`${pad(depth + 4)}customEditorStyles(input: "${property.editorStyles}")`] : []),
       ...(property.virtualKeyboardLayouts?.length ? [`${pad(depth + 4)}virtualKeyboardLayouts(input: [${property.virtualKeyboardLayouts.map((l) => `"${l}"`).join(", ")}])`] : []),
+      ...(property.transliteration
+        ? [
+            `${pad(depth + 4)}transliterationConfig {`,
+            ...(property.transliteration.enabledByProperty ? [`${pad(depth + 6)}enabledByProperty(input: "${property.transliteration.enabledByProperty}")`] : []),
+            ...property.transliteration.items.flatMap((item) => [
+              `${pad(depth + 6)}${item.alias}: transliterationConfigItem(${[...(item.labelKey ? [`label: "${item.labelKey}"`] : []), `mappingKey: "${item.mappingKey}"`, ...(item.insertSpaces !== undefined ? [`insertSpaces: ${item.insertSpaces}`] : [])].join(", ")}) {`,
+              `${pad(depth + 8)}label`,
+              `${pad(depth + 8)}mapping`,
+              `${pad(depth + 8)}insertSpaces`,
+              `${pad(depth + 6)}}`,
+            ]),
+            `${pad(depth + 4)}}`,
+          ]
+        : []),
     ];
     const lines = [
       `${pad(depth)}${property.panelAlias ?? property.alias ?? property.key}: wysiwygElement {`,
@@ -1284,6 +1345,7 @@ function renderPanelElement(entity: M.UiEntity, property: M.UiProperty, depth: n
       ...(property.infoPanel ? infoPanelLines(property.infoPanel, depth + 2) : []),
       ...(extensions?.length ? [`${pad(depth + 2)}extensions(input: [${extensions.join(", ")}])`] : []),
       ...(configuration.length ? [`${pad(depth + 2)}wysiwygElementConfiguration {`, ...configuration, `${pad(depth + 2)}}`] : []),
+      ...(property.taggables?.length ? renderTaggingConfiguration(property.taggables, property.taggingQuery, depth + 2) : []),
     ];
     if (property.multilingual) lines.push(`${pad(depth + 2)}isMultilingual(input: true)`);
     lines.push(`${pad(depth)}}`);

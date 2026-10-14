@@ -95,7 +95,7 @@ export const pickerFiltersNameFor = (queryName: string): string =>
 
 /** Element classes the ontology defines but the generator cannot render yet. */
 const UNRENDERED_ELEMENTS = [
-  "MediaFileElement", "HierarchyListElement",
+  "MediaFileElement",
   "ManifestViewerElement", "ActionElement", "WysiwygElement",
 ].map((name) => elody(name));
 
@@ -962,6 +962,7 @@ class Parse {
       detailContainsRelation: this.optionalFlag(node, elody("detailContainsRelation")),
       cardLineClamp: r.value(node, elody("cardLineClamp")) || undefined,
       cardLinkText: r.literal(node, elody("cardLinkText")) === true || undefined,
+      cardCopyToClipboard: this.optionalFlag(node, elody("cardCopyToClipboard")),
       panelLineClamp: r.value(node, elody("panelLineClamp")) || undefined,
       panelAlias: r.value(node, elody("panelAlias")) || undefined,
       highlightIfPrimaryThumbnail: this.optionalFlag(node, elody("highlightIfPrimaryThumbnail")),
@@ -975,6 +976,10 @@ class Parse {
       extensions: ((term) => (term ? r.list(term.value).map((iri) => this.o.enumValue(iri) ?? iri) : undefined))(r.term(node, elody("extensions"))),
       showLineNumbers: this.optionalFlag(node, elody("showLineNumbers")),
       editorStyles: r.value(node, elody("editorStyles")) || undefined,
+      taggingQuery: this.taggingQuery(node),
+      taggables: r.nodes(node, elody("taggable")).length ? this.taggables(node) : undefined,
+      transliteration: ((t) => (t ? { enabledByProperty: r.value(t, elody("enabledByProperty")) || undefined, items: r.byOrder(r.nodes(t, elody("transliterationItem"))).map((item) => ({ alias: String(r.value(item, elody("alias")) ?? ""), labelKey: r.value(item, elody("labelKey")) || undefined, mappingKey: String(r.value(item, elody("mappingKey")) ?? ""), insertSpaces: this.optionalFlag(item, elody("insertSpaces")), order: r.order(item) })) } : undefined))(r.node(node, elody("transliteration"))),
+      cardCustomValue: r.value(node, elody("cardCustomValue")) || undefined,
       revealQuery: r.value(node, elody("revealQuery")) || undefined,
       infoPanel: this.infoPanel(r.node(node, elody("infoPanel"))),
       nonEditable: this.optionalFlag(node, elody("nonEditable")),
@@ -1674,6 +1679,7 @@ class Parse {
       }),
       filters: r.byOrder(r.nodes(node, elody("filter"))).map((filter) => this.filter(filter)),
       filtersType: r.value(node, elody("filtersType")) || undefined,
+      rootKind: r.node(node, elody("queryRoot")) === elody("SingleEntityRoot") ? "entity" : undefined,
     };
   }
 
@@ -1803,7 +1809,9 @@ class Parse {
                   ? "comments"
                   : types.includes(elody("GraphElement"))
                     ? "graph"
-                    : "window";
+                    : types.includes(elody("HierarchyListElement"))
+                      ? "hierarchy"
+                      : "window";
 
     const kindOf = kind;
     const labelsTerm = r.term(element, elody("datasetLabels"));
@@ -1871,6 +1879,9 @@ class Parse {
       collapsed: r.literal(element, elody("collapsed")) === true,
       expandButton: this.optionalFlag(element, elody("expandButton")),
       windowLayout: this.enumValue(element, elody("windowLayout"), elody("WindowLayout")),
+      hierarchyLevels: kindOf === "hierarchy" ? r.byOrder(r.nodes(element, elody("hierarchyLevel"))).map((level) => ({ key: String(r.value(level, elody("key")) ?? ""), entityType: String(r.value(level, elody("entityType")) ?? ""), order: r.order(level) })) : undefined,
+      centerEntityType: r.value(element, elody("centerEntityType")) || undefined,
+      centerCoordinatesKey: r.value(element, elody("centerCoordinatesKey")) || undefined,
       panels: r.byOrder(r.nodes(element, elody("panel"))).map((panel) => this.panel(panel, pathToKey)),
       contextMenu: this.contextMenu(r.node(element, elody("contextMenu"))),
       panelSpreads: r.literals(element, elody("panelSpread")).length ? r.literals(element, elody("panelSpread")) : undefined,
@@ -1921,22 +1932,58 @@ class Parse {
       extensions,
       editorStyles: r.value(node, elody("editorStyles")) || undefined,
       multilingual: this.optionalFlag(node, elody("multilingual")),
-      taggables: r.byOrder(r.nodes(node, elody("taggable"))).map((taggable) => {
-        const flow = r.node(taggable, elody("flow"));
-        const min = r.literal(taggable, elody("triggerMinCharacters"));
-        return {
-          tag: r.value(taggable, elody("tag")) || undefined,
-          entityType: String(r.value(taggable, elody("entityType")) ?? ""),
-          relationType: String(r.value(taggable, elody("relationType")) ?? ""),
-          filterKey: r.value(taggable, elody("tagFilterKey")) || undefined,
-          triggerCharacter: r.value(taggable, elody("triggerCharacter")) || undefined,
-          triggerMinCharacters: typeof min === "number" ? min : undefined,
-          flowQuery: flow ? this.queryNameOf(flow, "guided flow") : undefined,
-          flowButtonLabel: r.value(taggable, elody("flowButtonLabel")) || undefined,
-          order: r.order(taggable),
-        };
-      }),
+      taggables: this.taggables(node),
+      taggingQuery: this.taggingQuery(node),
     };
+  }
+
+  /** elody:taggable nodes of a rich text element or property shape, with what each can tag. */
+  private taggables(node: string): M.UiTaggable[] {
+    const r = this.r;
+    return r.byOrder(r.nodes(node, elody("taggable"))).map((taggable) => {
+      const flow = r.node(taggable, elody("flow"));
+      const form = r.node(taggable, elody("form"));
+      const min = r.literal(taggable, elody("triggerMinCharacters"));
+      const keys = (subject: string) => ((term) => (term ? r.list(term.value) : undefined))(r.term(subject, elody("attributeKeys")));
+      const byEntity = r.node(taggable, elody("tagConfigurationByEntity"));
+      return {
+        tag: r.value(taggable, elody("tag")) || undefined,
+        entityType: String(r.value(taggable, elody("entityType")) ?? ""),
+        relationType: String(r.value(taggable, elody("relationType")) ?? ""),
+        filterKey: r.value(taggable, elody("tagFilterKey")) || undefined,
+        triggerCharacter: r.value(taggable, elody("triggerCharacter")) || undefined,
+        triggerMinCharacters: typeof min === "number" ? min : undefined,
+        flowQuery: flow ? this.queryNameOf(flow, "guided flow") : undefined,
+        flowButtonLabel: r.value(taggable, elody("flowButtonLabel")) || undefined,
+        createFormQuery: form ? this.queryNameOf(form, "form") : undefined,
+        replaceCharacters: r.nodes(taggable, elody("replaceCharacters")).length
+          ? r.byOrder(r.nodes(taggable, elody("replaceCharacters"))).map((rc) => ({ regex: String(r.value(rc, elody("regex")) ?? ""), replacement: String(r.value(rc, elody("replacement")) ?? ""), order: r.order(rc) }))
+          : undefined,
+        attributeKeys: keys(taggable),
+        tagConfigurationByEntity: byEntity
+          ? {
+              entityType: r.value(byEntity, elody("entityType")) || undefined,
+              relationType: r.value(byEntity, elody("relationType")) || undefined,
+              tagKey: r.value(byEntity, elody("tagKey")) || undefined,
+              colorKey: r.value(byEntity, elody("colorKey")) || undefined,
+              attributeKeys: keys(byEntity),
+              secondaryAttribute: r.value(byEntity, elody("secondaryAttribute")) || undefined,
+            }
+          : undefined,
+        order: r.order(taggable),
+      };
+    });
+  }
+
+  /** elody:taggingQuery: the list query a rich text element's tagging searches, emitted once as a document. */
+  private taggingQuery(node: string): string | undefined {
+    const queryNode = this.r.node(node, elody("taggingQuery"));
+    if (!queryNode) return undefined;
+    if (!this.emittedListQueries.has(queryNode)) {
+      this.emittedListQueries.add(queryNode);
+      this.listQueries.set(queryNode, this.picker(queryNode));
+    }
+    return this.pickerNames(queryNode).list;
   }
 
   /** elody:config entries of a node: a value is a literal, an RDF list, or a node of entries (an object). */
