@@ -92,6 +92,6 @@ describe("batch 48: defaults and the compact form", () => {
   it("shows the defaults in the reference", () => {
     const pages = renderReference(readReference());
     expect(pages.get("detail-page.md")).toMatch(/### Panel\n[\s\S]*?\| Term \| Type \| How many \| Default \| Meaning \|[\s\S]*?`elody:collapsed` \| `xsd:boolean` \| at most one \| `false` \|/);
-    expect(pages.get("properties.md")).toMatch(/`elody:labelKey` \| `xsd:string` \| at most one \| metadata\.labels\.&lt;key&gt;/);
+    expect(pages.get("properties.md")).toMatch(/`elody:labelKey` \| `xsd:string` \| at most one \| [^|]*metadata\.labels\.&lt;key&gt;/);
   });
 });

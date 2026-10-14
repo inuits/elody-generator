@@ -68,7 +68,7 @@ describe("field, filter and element extras", () => {
     expect(ttl).toMatch(/elody:displayConditionKey "is_omnibus" ;\n\s+elody:displayConditionValue "true" ;/);
     expect(ttl).toContain('    elody:panelAlias "reading_field" ;');
     expect(ttl).toMatch(/shui:viewer shui:HTMLViewer ;\s+elody:extensions \( elody:StarterKitExtension \) ;\s+elody:showLineNumbers false [;\]]/);
-    expect(ttl).toContain('      elody:hiddenValueFrom [ elody:entityType "script" ; elody:relationType "refScript" ; elody:key "relationValues.refLanguage.key" ; elody:inherited true ] ;');
+    expect(ttl).toMatch(/elody:hiddenValueFrom \[ elody:entityType "script" ; elody:relationType "refScript" ; elody:key "relationValues\.refLanguage\.key" ; elody:inherited true \]/);
     expect(ttl).toContain('elody:copyValueFromParent [ elody:labelKey "bulk-operations.copy-title-from-work" ; elody:key "original_headtitle" ; elody:relationType "refWork" ]');
   });
 });

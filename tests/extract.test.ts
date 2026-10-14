@@ -307,7 +307,7 @@ describe("extract: vlacc constructs", () => {
     expect(ttl).toContain("elody:form ui:GetFullWorkCreateForm , ui:GetBasicWorkCreateForm");
     expect(ttl).toContain('elody:copyFromParent [ elody:autoCopy true ; elody:copyKey [ sh:order 1 ; elody:key "ref_languages" ; elody:fromKey "ref_work_languages" ] ] ;');
     expect(ttl).toContain("dash:hidden true");
-    expect(ttl).toMatch(/elody:validationRule "has_required_relation" ;\s+  elody:validationRelationType "refWork" ;\s+  elody:validationAmount 1 ;/);
+    expect(ttl).toMatch(/elody:validationRule "has_required_relation" ;\s+elody:validationRelationType "refWork" ;\s+elody:validationAmount 1/);
   });
 });
 

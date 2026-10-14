@@ -2446,6 +2446,11 @@ export class Extractor {
   }
 
   private property(p: Property): string {
+    return compactNode(this.propertyLines(p));
+  }
+
+  /** the property shape's lines, one term each: `    [ sh:path em:x ;` ... `    last ]` */
+  private propertyLines(p: Property): string[] {
     const lines = [`    [ sh:path em:${p.key} ;`];
     lines.push(`    sh:order ${p.order} ;`);
     if (p.group) lines.push(`    sh:group ${p.group} ;`);
@@ -2553,7 +2558,7 @@ export class Extractor {
       if (!p.readsValue) lines.push(`    elody:readsValue false ;`);
     }
     lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " ]");
-    return compactNode(lines);
+    return lines;
   }
 
   private lookupNode(lookup: Lookup): string {
@@ -3575,6 +3580,46 @@ export class Extractor {
 
   /** The property shape of one form field. */
   private formFieldNode(field: FormField, i: number): string {
+    return compactNode(this.formFieldLines(field, i)).replace(/^    \[/, "      [");
+  }
+
+  /** the terms of a node's lines, without the brackets, the indent and the separators */
+  private termsOf(lines: string[]): string[] {
+    return lines.map((line) => line.trim().replace(/^\[\s*/, "").replace(/ [;\]]$/, "")).filter(Boolean);
+  }
+
+  /**
+   * The fields of a form, a tab or a fields fragment as `elody:fields ( ... )`: each the type's property (em:key), or
+   * an override of it, when inheriting the property's input-defining terms as a group and the single terms one by one
+   * gives back exactly the field; else undefined, and the fields stay a shape of their own.
+   */
+  private fieldsList(fields: FormField[], properties: Property[], pad: string, owner: string): string[] | undefined {
+    // the order is the position in the list: fields ordered otherwise (an upload among them) keep their shape
+    if (!fields.every((field, i) => (field.order ?? i + 1) === i + 1)) return undefined;
+    const INPUT = ["sh:datatype", "shui:editor", "elody:clientInputField", "sh:class"];
+    const SINGLE = ["elody:labelKey", "elody:unit", "elody:valueLabelKey", "elody:relationType", "sh:maxCount"];
+    const predicate = (term: string) => term.split(" ")[0];
+    const items: string[] = [];
+    let inherits = false;
+    for (const [i, field] of fields.entries()) {
+      const own = this.termsOf(this.formFieldLines(field, i)).filter((t) => !/^sh:(path|order) /.test(t));
+      const property = properties.find((p) => p.key === field.key && !p.alias) ?? properties.find((p) => p.key === field.key);
+      const inherited = property ? this.termsOf(this.propertyLines(property)).filter((t) => INPUT.includes(predicate(t)) || SINGLE.includes(predicate(t))) : [];
+      // the override: what the field says that it would not inherit
+      const override = own.filter((t) => !inherited.includes(t));
+      const overridePredicates = new Set(override.map(predicate));
+      const inheritsInput = !INPUT.some((p) => overridePredicates.has(p));
+      const merged = [...override, ...inherited.filter((t) => (INPUT.includes(predicate(t)) ? inheritsInput : !overridePredicates.has(predicate(t))))];
+      if (merged.length !== own.length || !merged.every((t) => own.includes(t))) return undefined;
+      if (override.length < own.length) inherits = true;
+      items.push(override.length ? `${pad}  [ sh:path em:${field.key} ; ${override.join(" ; ")} ]` : `${pad}  em:${field.key}`);
+    }
+    // the type the fields take their input from, named when anything is inherited
+    return [...(inherits ? [`${pad}elody:fieldsFrom ${owner} ;`] : []), `${pad}elody:fields (`, ...items, `${pad}) ;`];
+  }
+
+  /** the form field shape's lines, one term each */
+  private formFieldLines(field: FormField, i: number): string[] {
         const s = [`      [ sh:path em:${field.key} ;`];
     s.push(`      sh:order ${field.order ?? i + 1} ;`);
     if (field.alias) s.push(`      elody:alias ${q(field.alias)} ;`);
@@ -3619,7 +3664,7 @@ export class Extractor {
     if (field.clientField) s.push(`      elody:clientInputField ${q(field.clientField)} ;`);
     if (field.label && field.label !== conventionalLabelKey(field.key) && this.keyLabels.get(field.key) !== field.label) s.push(`      elody:labelKey ${q(field.label)} ;`);
     s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
-    return compactNode(s).replace(/^    \[/, "      [");
+    return s;
   }
 
   private writeEntity(entity: Entity, formNodes: Set<string>): string {
@@ -3765,8 +3810,14 @@ export class Extractor {
     const panelIds = new Set<string>();
     // the fragments the file holds for other types
     for (const fragment of entity.fieldsFragments) {
-      const shapes = fragment.fields.map((field, i) => this.formFieldNode(field, i));
       const spreadLines = [...(fragment.spreads ?? []).map((n) => `    elody:fieldsSpread ${q(n)} ;`), ...(fragment.spreadsAfter ?? []).map((n) => `    elody:fieldsSpreadAfter ${q(n)} ;`)];
+      const fragmentList = fragment.fields.length ? this.fieldsList(fragment.fields, entity.app ? [] : entity.properties, "    ", node) : undefined;
+      if (fragmentList) {
+        fragmentList[fragmentList.length - 1] = fragmentList[fragmentList.length - 1].replace(/ ;$/, " ] ;");
+        out.push(`  elody:fieldsFragment`, `    [ elody:fragmentName ${q(fragment.name)} ;`, ...spreadLines, ...fragmentList);
+        continue;
+      }
+      const shapes = fragment.fields.map((field, i) => this.formFieldNode(field, i));
       out.push(`  elody:fieldsFragment`, `    [ elody:fragmentName ${q(fragment.name)} ;`, ...spreadLines, `    elody:shape`, ...(shapes.length ? [`      [ sh:property`, shapes.join(" ,\n").replace(/^/gm, "  ") + " ] ] ;"] : ["      [ ] ] ;"]));
     }
     for (const fragment of entity.elementsFragments) {
@@ -3932,8 +3983,12 @@ export class Extractor {
       }
       if (f.infoLabel !== undefined) lines.push(`  elody:infoLabel ${q(f.infoLabel)} ;`);
       if (f.modalStyle) lines.push(`  elody:modalStyle ${f.modalStyle} ;`);
-      const shapeFields = f.fields.map((field, i) => this.formFieldNode(field, i));
-      lines.push(`  elody:shape`, ...(shapeFields.length ? [`    [ sh:property`, shapeFields.join(" ,\n") + " ] ;"] : ["    [ ] ;"]));
+      const fieldsList = f.fields.length ? this.fieldsList(f.fields, entity.app ? [] : entity.properties, "  ", node) : undefined;
+      if (fieldsList) lines.push(...fieldsList);
+      else {
+        const shapeFields = f.fields.map((field, i) => this.formFieldNode(field, i));
+        lines.push(`  elody:shape`, ...(shapeFields.length ? [`    [ sh:property`, shapeFields.join(" ,\n") + " ] ;"] : ["    [ ] ;"]));
+      }
       const uploadNode = (u: Upload, pad: string) =>
         [`${pad}elody:upload [ sh:order ${u.order} ; elody:uploadFlow ${u.flow} ;`, ...u.fields.map((x, k) => `${pad}  ${k === 0 ? "elody:uploadField " : "  "}[ sh:order ${k + 1} ; elody:alias ${q(x.alias)}${x.label !== undefined ? ` ; rdfs:label ${q(x.label)}` : ""}${x.size ? ` ; elody:uploadSize ${x.size}` : ""} ; elody:uploadKind ${x.kind} ; elody:uploadInputField ${q(x.inputType)}${x.required ? " ; elody:uploadRequired true" : ""}${x.dryRun !== undefined ? ` ; elody:dryRun ${x.dryRun}` : ""}${x.addTypeToEndpoint !== undefined ? ` ; elody:addTypeToEndpoint ${x.addTypeToEndpoint}` : ""}${x.extractTypeFromKey ? ` ; elody:extractTypeFromKey ${q(x.extractTypeFromKey)}` : ""}${x.templateCsvs ? ` ; elody:templateCsvs ( ${x.templateCsvs.map(q).join(" ")} )` : ""}${x.infoLabelUrl ? ` ; elody:infoLabelUrl ${q(x.infoLabelUrl)}` : ""}${x.extraMediafileType ? ` ; elody:extraMediafileType ${q(x.extraMediafileType)}` : ""} ]${k < u.fields.length - 1 ? " ," : " ] ;"}`)].join("\n");
       const actionNode = (a: FormAction, pad: string) => {
@@ -3947,8 +4002,12 @@ export class Extractor {
       for (const [t, tab] of f.tabs.entries()) {
         const tabLines = [`  elody:tab [ sh:order ${t + 1} ; elody:alias ${q(tab.alias ?? "formTab")} ;`];
         for (const spread of tab.fieldsSpreads) tabLines.push(`    elody:fieldsSpread ${q(spread)} ;`);
-        const tabFields = tab.fields.map((field, i) => this.formFieldNode(field, i));
-        if (tabFields.length) tabLines.push(`    elody:shape [ sh:property`, tabFields.join(" ,\n").replace(/^/gm, "  ") + " ] ;");
+        const tabList = tab.fields.length ? this.fieldsList(tab.fields, entity.app ? [] : entity.properties, "    ", node) : undefined;
+        if (tabList) tabLines.push(...tabList);
+        else {
+          const tabFields = tab.fields.map((field, i) => this.formFieldNode(field, i));
+          if (tabFields.length) tabLines.push(`    elody:shape [ sh:property`, tabFields.join(" ,\n").replace(/^/gm, "  ") + " ] ;");
+        }
         if (tab.upload) tabLines.push(uploadNode(tab.upload, "    "));
         for (const a of tab.actions) tabLines.push(actionNode(a, "    "));
         if (tab.submit) tabLines.push(`    elody:formAction [ sh:order 99 ; elody:alias ${q(tab.submit.alias ?? "createAction")} ; rdfs:label ${q(tab.submit.label ?? "")}${tab.submit.icon ? ` ; elody:icon ${q(tab.submit.icon)}` : ""}${tab.submit.submitAction ? ` ; elody:submitAction ${q(tab.submit.submitAction)}` : ""}${tab.submit.actionQuery ? ` ; elody:actionQuery ${q(tab.submit.actionQuery)}` : ""}${tab.submit.creationType ? ` ; elody:creationType ${q(tab.submit.creationType)}` : ""}${tab.submit.showsFormErrors ? " ; elody:showsFormErrors true" : ""} ] ;`);

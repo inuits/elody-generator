@@ -6,6 +6,7 @@
  */
 import { Parser, type Quad, type Term } from "n3";
 import { expandExternalSources, type SparqlSourceJson } from "./externalSources.js";
+import { expandFormFields } from "./formFields.js";
 import { Scorer } from "./score.js";
 import * as M from "./model.js";
 import { Ontology, defaultOntology } from "./ontology.js";
@@ -33,7 +34,8 @@ export async function readUiDeclaration(ttl: string, ontology: Ontology = defaul
   // the platform's context presets (elody:ReadModeNoneSelectedContext, ...): named nodes of the vocabulary a declaration references
   const presets = ontology.reading.subjectsWith(rdf("type"), elody("BulkOperationContext")).flatMap((subject) => ontology.reading.quadsOf(subject));
   // properties whose values a linked-data source holds, spelled out in declaration terms first
-  const reading = new Reading([...quads, ...expandExternalSources(quads), ...presets]);
+  // a form's fields as a list of the type's properties (elody:fields), spelled out as the shape the parser reads
+  const reading = new Reading([...quads, ...expandExternalSources(quads), ...expandFormFields(quads), ...presets]);
   const editors = await scoreEditors(reading);
   const parse = new Parse(reading, ontology, editors);
   const entities = [...reading.subjectsOfType(elody("EntityUi")), ...reading.subjectsOfType(elody("App"))].map((subject) => parse.entity(subject));
