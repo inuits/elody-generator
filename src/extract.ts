@@ -357,7 +357,7 @@ type WindowFragment = { name: string; panels: Panel[] };
 type ElementsFragment = { name: string; elements: Element[] };
 type ValuesFragment = { name: string; cardName?: string; fields: string[]; aliases: string[]; valuesFields: string[]; cardShows?: string[]; contextMenu?: Entity["contextMenu"] };
 
-type ListQuery = { node?: string; name: string; filtersOnly?: boolean; bareResults?: boolean; rootKind?: "entity"; rootType?: string; rootCollection?: string; facets?: boolean; filtersSpreads?: string[]; filtersName?: string; filtersType?: string; relationValues?: boolean; readsHost?: boolean; hostOptional?: boolean; results: { type: string; fragments: string[]; listingNode?: string; cardMenuSpread?: string; bare?: boolean }[]; filters: Filter[] };
+type ListQuery = { node?: string; name: string; filtersOnly?: boolean; bareResults?: boolean; rootField?: string; rootValues?: string[]; rootKind?: "entity"; rootType?: string; rootCollection?: string; facets?: boolean; filtersSpreads?: string[]; filtersName?: string; filtersType?: string; relationValues?: boolean; readsHost?: boolean; hostOptional?: boolean; results: { type: string; fragments: string[]; listingNode?: string; cardMenuSpread?: string; bare?: boolean }[]; filters: Filter[] };
 type Picker = ListQuery;
 
 type Entity = {
@@ -405,6 +405,9 @@ type Entity = {
   interface?: boolean;
   /** a listing rendered inline in a list query's results (elody:emit "inline"), not a file */
   inline?: boolean;
+  /** elody:detailAlone: the detail fragment alone; elody:partial: it adds fields to windows and panels another fragment declares */
+  detailAlone?: boolean;
+  partial?: boolean;
   /** the fragments the file holds for the subtypes to spread */
   fieldsFragments: FieldsFragment[];
   elementsFragments: ElementsFragment[];
@@ -502,7 +505,8 @@ export class Extractor {
     if (!query) return [];
     const entities = fields(query.selectionSet).find((f) => f.name.value === "Entities");
     // one entity by id and type: the per-type selections sit under Entity itself
-    const single = entities ? undefined : fields(query.selectionSet).find((f) => f.name.value === "Entity");
+    // one entity by id and type, or a root field of the client's own (elody:rootField): the per-type selections sit under it
+    const single = entities ? undefined : (fields(query.selectionSet).find((f) => f.name.value === "Entity") ?? fields(query.selectionSet)[0]);
     const selections = (entities ? child(entities, "results") : single)?.selectionSet?.selections ?? [];
     const inline = selections.filter((s): s is InlineFragmentNode => s.kind === Kind.INLINE_FRAGMENT);
     // bare results: fields beyond the head without a type condition (a map overlay reading id and a few values)
@@ -542,6 +546,8 @@ export class Extractor {
   /** the form sources found in any file: an action naming one references it as a source, not a form */
   private readonly formSourceNames = new Set<string>();
   private readonly queriesWithResults = new Set<string>();
+  /** the layouts of an overview page: the type name they are declared under, to the fragment that carries the detail alone */
+  private readonly detailOnlyFragments = new Map<string, string>();
   /** every node minted so far: a list query, a picker, a form or a custom operations set never share a name */
   private readonly nodes = new Set<string>();
 
@@ -562,6 +568,7 @@ export class Extractor {
 
   /** the name of the type's detail fragment: full<X>, or the client's own casing of it (declared as elody:detailName) */
   private detailFragmentName(name: string): string | undefined {
+    if (this.detailOnlyFragments.has(name)) return this.detailOnlyFragments.get(name);
     return this.fragmentOfKind(name, `full${name}`, /^full[A-Z]/);
   }
 
@@ -655,6 +662,7 @@ export class Extractor {
   }
 
   private anchorName(name: string): string | undefined {
+    if (this.detailOnlyFragments.has(name)) return this.detailOnlyFragments.get(name);
     const low = name.charAt(0).toLowerCase() + name.slice(1);
     return [`minimal${name}`, `filtersFor${name}`, `${low}BulkOperations`, `${low}SortOptions`].find((n) => this.fragment(n));
   }
@@ -729,7 +737,16 @@ export class Extractor {
       bulkDocuments: [],
     };
     const where = name;
-    if (!minimal) entity.interface = true;
+    if (this.detailOnlyFragments.has(name)) entity.detailAlone = true;
+    else if (!minimal) entity.interface = true;
+    // a partial layout: columns without a size, windows without a label, panels with nothing but their fields
+    if (entity.detailAlone && full) {
+      const columns = fields(child(full, "entityView")?.selectionSet).filter((f) => f.name.value === "column");
+      const windows = columns.flatMap((c) => fields(child(c, "elements")?.selectionSet)).filter((f) => f.name.value === "windowElement");
+      const panels = windows.flatMap((w) => fields(w.selectionSet).filter((f) => f.name.value === "panels"));
+      if (columns.length && columns.every((c) => !child(c, "size")) && windows.every((w) => !child(w, "label")) && panels.length && panels.every((p) => !child(p, "panelHeaderContent") && !child(p, "isCollapsed")))
+        entity.partial = true;
+    }
     // the shared base card the listing spreads (in its core when split): its absence is declared
     if (minimal && !this.inlineSet.has(name) && ![...spreads(minimal.selectionSet), ...spreads(core?.selectionSet)].includes("minimalBaseEntity")) entity.withoutBaseEntity = true;
     if (this.inlineSet.has(name)) entity.inline = true;
@@ -1743,9 +1760,12 @@ export class Extractor {
     const filters = filtersName ? this.operation(filtersName) : undefined;
     const { block, filtersType } = this.advancedFiltersOf(filters);
     const singleRoot = query && !fields(query.selectionSet).some((f) => f.name.value === "Entities") ? fields(query.selectionSet).find((f) => f.name.value === "Entity") : undefined;
+    // a root field of the client's own reading entities by id (elody:rootField), with the values read on every result (elody:rootValues)
+    const customRoot = query && !singleRoot && !fields(query.selectionSet).some((f) => f.name.value === "Entities") ? fields(query.selectionSet)[0] : undefined;
+    const rootValues = customRoot ? fields(child(customRoot, "intialValues")?.selectionSet).map((f) => alias(f)) : [];
     const rootTypeArg = singleRoot ? argument(singleRoot, "type") : undefined;
     const rootCollectionArg = singleRoot ? argument(singleRoot, "collection") : undefined;
-    entity.listQueries.push({ node, name, bareResults: results.some((r) => r.bare) || undefined, rootKind: singleRoot ? "entity" : undefined, rootType: rootTypeArg?.kind === Kind.STRING ? rootTypeArg.value : undefined, rootCollection: rootCollectionArg?.kind === Kind.ENUM ? rootCollectionArg.value : undefined, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, readsHost: results.length ? this.queryReadsHost(query) || undefined : undefined, hostOptional: results.length && this.queryHostOptional(query) ? true : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [], facets: query && child(fields(query.selectionSet)[0], "facets") ? true : undefined, filtersSpreads: block ? spreads(block.selectionSet) : [] });
+    entity.listQueries.push({ node, name, bareResults: results.some((r) => r.bare) || undefined, rootField: customRoot?.name.value, rootValues: customRoot && rootValues.length ? rootValues : undefined, rootKind: singleRoot ? "entity" : undefined, rootType: rootTypeArg?.kind === Kind.STRING ? rootTypeArg.value : undefined, rootCollection: rootCollectionArg?.kind === Kind.ENUM ? rootCollectionArg.value : undefined, filtersName, filtersType, relationValues: results.length ? this.resultsRelationValues(query) || undefined : undefined, readsHost: results.length ? this.queryReadsHost(query) || undefined : undefined, hostOptional: results.length && this.queryHostOptional(query) ? true : undefined, results, filters: block ? this.filters(block, `${where} ${filtersName}`) : [], facets: query && child(fields(query.selectionSet)[0], "facets") ? true : undefined, filtersSpreads: block ? spreads(block.selectionSet) : [] });
     if (filtersName && !filters) this.note(`${where}: filters document ${filtersName} is not in these files; the list query declares no filters and the name stays`);
     return node;
   }
@@ -2766,9 +2786,29 @@ export class Extractor {
       const sortField = top === "EntityTypeSortOptions" ? child(fields(query.selectionSet)[0], "sortOptions") : undefined;
       const sortOptionsField = sortField ? child(sortField, "options") : undefined;
       const sortEntries = sortOptionsField ? list(argument(sortOptionsField, "input")).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT) : [];
-      const declarable = top === "Entities" || top === "EntityTypeFilters" || top === "CustomBulkOperations" || sortEntries.length > 0 || top === "GetDynamicForm" || top === "GetRepetitiveForm" || top === "BulkOperations";
+      // an overview page of the client's own: a root field reading entities by id, each type laid out by fragments carrying a detail alone
+      const overviewSpreads = [...new Set((fields(query.selectionSet)[0]?.selectionSet?.selections ?? []).filter((s): s is InlineFragmentNode => s.kind === Kind.INLINE_FRAGMENT).flatMap((on) => spreads(on.selectionSet)))];
+      const overview =
+        !["Entities", "Entity", "EntityTypeFilters", "CustomBulkOperations", "BulkOperations", "GetDynamicForm", "GetRepetitiveForm", "EntityTypeSortOptions"].includes(top ?? "") &&
+        overviewSpreads.length > 0 &&
+        overviewSpreads.every((name) => child(this.fragment(name), "entityView"));
+      const declarable = top === "Entities" || top === "EntityTypeFilters" || top === "CustomBulkOperations" || sortEntries.length > 0 || top === "GetDynamicForm" || top === "GetRepetitiveForm" || top === "BulkOperations" || overview;
       if (!declarable) {
         this.note(`${d.file.replace(/^.*\//, "")}: nothing references the query ${d.name} and it has no term; it stays hand-written`);
+        continue;
+      }
+      if (overview) {
+        const layouts = overviewSpreads.map((name) => {
+          const typeName = name.charAt(0).toUpperCase() + name.slice(1);
+          this.detailOnlyFragments.set(typeName, name);
+          const layout = this.entity(typeName);
+          added.push(layout);
+          return layout;
+        });
+        const lead = layouts[0];
+        const node = this.listQuery(d.name, undefined, `${lead.documentName} overview`, lead);
+        if (!lead.entityListQueries.includes(node)) lead.entityListQueries.push(node);
+        this.note(`${lead.documentName} overview: nothing references the query ${d.name}; declared as an overview on its root field ${top} of the client's own, its layouts as details alone`);
         continue;
       }
       const owner = ownerOf(d.file);
@@ -3442,6 +3482,8 @@ export class Extractor {
     if (entity.cardName) out.push(`  elody:cardName ${q(entity.cardName)} ;`);
     if (entity.withoutBaseEntity) out.push(`  elody:withoutBaseEntity true ;`);
     if (entity.detailSpreadsListing) out.push(`  elody:detailSpreadsListing true ;`);
+    if (entity.detailAlone) out.push(`  elody:detailAlone true ;`);
+    if (entity.partial) out.push(`  elody:partial true ;`);
     if (entity.detailName) out.push(`  elody:detailName ${q(entity.detailName)} ;`);
     if (entity.bulkFragmentName) out.push(`  elody:bulkFragmentName ${q(entity.bulkFragmentName)} ;`);
     if (entity.sortFragmentName) out.push(`  elody:sortFragmentName ${q(entity.sortFragmentName)} ;`);
@@ -3737,6 +3779,8 @@ export class Extractor {
       if (lq.hostOptional) lines.push(`  elody:hostOptional true ;`);
       if (lq.facets) lines.push(`  elody:facets true ;`);
       if (lq.bareResults) lines.push(`  elody:bareResults true ;`);
+      if (lq.rootField) lines.push(`  elody:rootField ${q(lq.rootField)} ;`);
+      if (lq.rootValues?.length) lines.push(`  elody:rootValues ( ${lq.rootValues.map(q).join(" ")} ) ;`);
       for (const s of lq.filtersSpreads ?? []) lines.push(`  elody:filtersSpread ${q(s)} ;`);
       if (lq.results.length)
         lines.push(

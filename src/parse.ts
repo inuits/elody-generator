@@ -834,6 +834,8 @@ class Parse {
       cardName: r.value(subject, elody("cardName")) || undefined,
       withoutBaseEntity: this.optionalFlag(subject, elody("withoutBaseEntity")) || undefined,
       detailSpreadsListing: this.optionalFlag(subject, elody("detailSpreadsListing")) || undefined,
+      detailAlone: this.optionalFlag(subject, elody("detailAlone")) || undefined,
+      partial: this.optionalFlag(subject, elody("partial")) || undefined,
       detailName: r.value(subject, elody("detailName")) || undefined,
       bulkFragmentName: r.value(subject, elody("bulkFragmentName")) || undefined,
       sortFragmentName: r.value(subject, elody("sortFragmentName")) || undefined,
@@ -1698,6 +1700,8 @@ class Parse {
       rootKind: r.node(node, elody("queryRoot")) === elody("SingleEntityRoot") ? "entity" : undefined,
       rootType: r.value(node, elody("rootType")) || undefined,
       rootCollection: r.value(node, elody("rootCollection")) || undefined,
+      rootField: r.value(node, elody("rootField")) || undefined,
+      rootValues: r.node(node, elody("rootValues")) ? r.list(r.node(node, elody("rootValues"))!) : undefined,
     };
   }
 

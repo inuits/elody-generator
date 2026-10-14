@@ -516,6 +516,9 @@ export type UiPicker = {
   /** elody:rootType, elody:rootCollection: the type and collection fixed in a single-entity read */
   rootType?: string;
   rootCollection?: string;
+  /** elody:rootField: a root field of the client's own reading entities by id; elody:rootValues: the values read on every result outside the type conditions */
+  rootField?: string;
+  rootValues?: string[];
 };
 
 export type UiPanel = {
@@ -743,6 +746,9 @@ export type UiEntity = {
   withoutBaseEntity?: boolean;
   /** elody:detailSpreadsListing: the detail fragment spreads the listing instead of reading values of its own */
   detailSpreadsListing?: boolean;
+  /** elody:detailAlone: the detail fragment alone, no listing; elody:partial: it adds fields to windows and panels another fragment declares */
+  detailAlone?: boolean;
+  partial?: boolean;
   /** elody:detailName: the detail fragment's own name when the client does not call it full<X> */
   detailName?: string;
   /** elody:bulkFragmentName: the bulk operations fragment's own name when the client does not call it <x>BulkOperations */

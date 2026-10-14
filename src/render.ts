@@ -990,6 +990,21 @@ export function renderListQuery(picker: M.UiPicker): string {
     .join("\n");
 
   // one entity by id and type (elody:queryRoot elody:SingleEntityRoot): the per-type selections under Entity
+  // a root field of the client's own schema reading entities by id (elody:rootField): id, uuid, type, the values read on
+  // every result (elody:rootValues), then the per-type selections
+  if (picker.rootField)
+    return [
+      `  query ${picker.queryName}($id: String!) {`,
+      `    ${picker.rootField}(id: $id) {`,
+      "      id",
+      "      uuid",
+      "      type",
+      ...(picker.rootValues?.length ? ["      intialValues {", ...picker.rootValues.map((value) => `        ${value}`), "      }"] : []),
+      results.replace(/^ {2}/gm, ""),
+      "    }",
+      "  }",
+    ].join("\n");
+
   if (picker.rootKind === "entity") {
     // a type fixed in the document (elody:rootType, a secret's read) takes only the id and reads id alone
     if (picker.rootType)
@@ -1120,6 +1135,8 @@ export function elementRenderer(entity: M.UiEntity): ElementRenderer {
       ...(panel.displayConditionKey ? [`${pad(depth + 2)}displayCondition {`, `${pad(depth + 4)}key(input: "${panel.displayConditionKey}")`, `${pad(depth + 2)}}`] : []),
       ...(panel.bulkDataSource ? [`${pad(depth + 2)}bulkData(bulkDataSource: "${panel.bulkDataSource}")`] : []),
     ];
+    // a partial detail (elody:partial) adds fields to a panel another fragment declares: the alias and the fields alone
+    if (entity.partial) lines.splice(1);
     // the panel's items: its fields in order, each element at its sh:order position among them
     const items: (string | M.UiElement)[] = [...panel.fields];
     for (const element of [...panel.elements].sort((a, b) => a.order - b.order)) items.splice(Math.min(Math.max(element.order - 1, 0), items.length), 0, element);
@@ -1530,8 +1547,8 @@ export function renderEntityFile(entity: M.UiEntity, declaration: string, all: M
   const { head, values, relation, modes, card } = listingParts(entity, 4);
   // the shared base card, spread last unless the client leaves it out (elody:withoutBaseEntity)
   const baseEntity = entity.withoutBaseEntity ? [] : ["    ...minimalBaseEntity"];
-  if (entity.interface) {
-    // an interface the subtypes share: no listing fragment of its own
+  if (entity.interface || entity.detailAlone) {
+    // an interface the subtypes share, or a detail alone (elody:detailAlone): no listing fragment of its own
   } else if (entity.listingCore) {
     // the values and the card in a core other listings of the type reuse; the listing spreads it and adds the view modes
     fragments.push([`  fragment minimal${type}Core on ${onType} {`, ...head, ...values, ...card, ...baseEntity, "  }"].join("\n"));

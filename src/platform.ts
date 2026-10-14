@@ -71,7 +71,8 @@ export const PLATFORM_DOCUMENTS = new Set([...Object.keys(CONSTANTS), "GetMenu",
 
 /** The main declaration of each GraphQL type: not an app, an inline listing, a shared file or another card of the type. */
 export function mainEntities(all: M.UiEntity[]): M.UiEntity[] {
-  const candidates = all.filter((e) => !e.app && !e.cardName && !e.fragmentsOnly && e.emit !== "inline");
+  // a layout of an overview page (elody:detailAlone) is no type's main declaration either
+  const candidates = all.filter((e) => !e.app && !e.cardName && !e.fragmentsOnly && !e.detailAlone && e.emit !== "inline");
   const seen = new Set<string>();
   const main: M.UiEntity[] = [];
   for (const entity of candidates) {
