@@ -32,6 +32,10 @@ export function normaliseIri(iri: string): string {
   return iri;
 }
 
+/** The conventional label key of a metadata key: metadata.labels.<key>, the key in kebab-case (defaultBranch, default_branch -> default-branch), the v2 schema's properties.<key>.value reduced to its key. */
+export const conventionalLabelKey = (key: string): string =>
+  `metadata.labels.${key.replace(/^properties\./, "").replace(/\.value$/, "").replace(/([a-z0-9])([A-Z])/g, "$1-$2").replace(/_/g, "-").toLowerCase()}`;
+
 export const localName = (iri: string): string => {
   let cut = Math.max(iri.lastIndexOf("#"), iri.lastIndexOf("/"));
   if (cut === -1) cut = iri.lastIndexOf(":"); // URNs: urn:ex:title → title

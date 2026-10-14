@@ -10,7 +10,7 @@ import { Scorer } from "./score.js";
 import * as M from "./model.js";
 import { Ontology, defaultOntology } from "./ontology.js";
 import { Reading, type Literal, type Warning } from "./reading.js";
-import { DASH, ELODY_LEGACY, compact, dash, elody, localName, rdf, rdfs, sh, shui } from "./vocab.js";
+import { DASH, ELODY_LEGACY, compact, conventionalLabelKey, dash, elody, localName, rdf, rdfs, sh, shui } from "./vocab.js";
 
 /** Label texts per language and translation key, from sh:name / rdfs:label literals. */
 export type Translations = Record<string, Record<string, string>>;
@@ -953,7 +953,8 @@ class Parse {
       sortLabelKey: r.value(node, elody("sortLabelKey")) || undefined,
       sortOrder: typeof sortOrder === "number" ? sortOrder : undefined,
       path: r.node(node, sh("path")),
-      label: this.propertyLabel(node, key, `ui.${this.type}.${key}`),
+      // no label key and no label text: the convention, metadata.labels.<key> (elody:defaultRule)
+      label: this.propertyLabel(node, key, `ui.${this.type}.${key}`) ?? conventionalLabelKey(key),
       order: r.order(node),
       colSpan: typeof colSpan === "number" ? colSpan : undefined,
       unit: this.enumValue(node, elody("unit"), elody("Unit")),
@@ -1523,7 +1524,8 @@ class Parse {
     return {
       key,
       alias: r.value(node, elody("alias")) || undefined,
-      label: this.propertyLabel(node, key, `ui.${this.type}.${key}`),
+      // no label key and no label text: the convention, metadata.labels.<key> (elody:defaultRule)
+      label: this.propertyLabel(node, key, `ui.${this.type}.${key}`) ?? conventionalLabelKey(key),
       order: r.order(node),
       inputType,
       required,

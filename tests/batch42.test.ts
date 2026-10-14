@@ -65,8 +65,8 @@ describe("hierarchy lists and tagging rich text", () => {
     expect(ttl).toContain("        [ a elody:HierarchyListElement ;");
     expect(ttl).toContain('        elody:hierarchyLevel [ sh:order 1 ; elody:key "refPoint" ; elody:entityType "point" ] ;\n        elody:listQuery ui:GetEntityForHierarchy ;');
     expect(ttl).toContain("  elody:queryRoot elody:SingleEntityRoot ;");
-    expect(ttl).toContain('    elody:cardCustomValue "Point" ;');
-    expect(ttl).toContain("    elody:cardCopyToClipboard true ;");
+    expect(ttl).toContain('elody:cardCustomValue "Point"');
+    expect(ttl).toContain("elody:cardCopyToClipboard true");
     expect(ttl).toContain("    elody:taggingQuery ui:GetTagEntities ;");
     expect(ttl).toContain('    elody:transliteration [ elody:enabledByProperty "enableTransliteration" ; elody:transliterationItem [ sh:order 1 ; elody:alias "latin" ; elody:labelKey "Latin" ; elody:mappingKey "ArabicToLatin" ] ] ;');
     expect(ttl).toMatch(/elody:taggable \[ sh:order 1 ; elody:entityType "word" ; elody:relationType "refWords" ; elody:form ui:GetWordCreateForm ; elody:replaceCharacters \[ sh:order 1 ; elody:regex "\/<br>\/g" ; elody:replacement " " \] ; elody:attributeKeys \( "lemma" \) ; elody:tagConfigurationByEntity \[ elody:entityType "epi_doc_tag" ; elody:relationType "refEpiDocTag" ; elody:tagKey "tag" ; elody:colorKey "color" \] \] ;/);

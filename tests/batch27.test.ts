@@ -65,7 +65,7 @@ describe("graph element", () => {
     ];
     const { ttl, notes } = extractDeclaration(files, { namespace: "urn:ui:" });
     expect(notes.filter((n) => n.includes("no term") || n.includes("not rendered") || n.includes("holds nothing"))).toEqual([]);
-    expect(ttl).toMatch(/\[ a elody:GraphElement ;\n\s+rdfs:label "graph-labels.results" ;\n\s+sh:order 1 ;\n\s+elody:collapsed false ;\n\s+elody:alias "results" ;\n\s+elody:graphType elody:BarGraph ;\n\s+elody:datasource "answers" ;\n\s+elody:datasetLabels \( "basic=Aandeel \(%\)" "weighted=Gewogen aandeel \(%\)" \) ;\n\s+elody:timeUnit elody:Hour ;\n\s+elody:datapoints 0 \]/);
+    expect(ttl).toMatch(/\[ a elody:GraphElement ;\n\s+rdfs:label "graph-labels.results" ;\n\s+sh:order 1 ;\n\s+elody:alias "results" ;\n\s+elody:graphType elody:BarGraph ;\n\s+elody:datasource "answers" ;\n\s+elody:datasetLabels \( "basic=Aandeel \(%\)" "weighted=Gewogen aandeel \(%\)" \) ;\n\s+elody:timeUnit elody:Hour ;\n\s+elody:datapoints 0 \]/);
     expect(ttl).toContain('elody:datasetLabels (  ) ;');
   });
 });

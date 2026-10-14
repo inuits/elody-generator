@@ -116,13 +116,13 @@ describe("card, panel, form, menu and sort-option extras", () => {
     expect(notes.filter((n) => n.includes("no term") || n.includes("declared as a plain submit") || n.includes("not a keyValue") || n.includes("does not parse"))).toEqual([]);
     expect(ttl).toContain("elody:idField true ;");
     expect(ttl).toContain("elody:idValue true ;");
-    expect(ttl).toContain('elody:cardAlias "title" ;');
+    expect(ttl).toContain('elody:cardAlias "title"');
     expect(ttl).toContain('elody:cardLineClamp "3" ;');
     expect(ttl).toContain('elody:panelLineClamp "2" ;\n    elody:panelAlias "heading" ;\n    elody:validationMessage "validation.title-error" ;\n    elody:virtualKeyboardLayouts ( "Arabic" ) ;');
     expect(ttl).toContain("elody:highlightIfPrimaryThumbnail true ;");
     expect(ttl).toContain('elody:filterAggregation "size" ;');
     expect(ttl).toContain('elody:valueTranslationKey "access-levels.$value" ;');
-    expect(ttl).toContain("elody:cardValidates false ;");
+    expect(ttl).toContain("elody:cardValidates false");
     expect(ttl).toContain("elody:panelWidget true ;");
     expect(ttl).toContain("elody:panelShowsUnit false ;");
     expect(ttl).toContain('elody:permitted "read:url:field" ;\n    elody:linkText "metadata.labels.download-link" ;\n    elody:copyToClipboard true ;\n    elody:nonEditable true ;');
@@ -134,9 +134,9 @@ describe("card, panel, form, menu and sort-option extras", () => {
     expect(ttl).toContain('elody:repetitionKey "options" ;\n  elody:displayConditionKey "refOmnibus" ;');
     expect(ttl).toMatch(/ui:NoteUi-bare\n(?:.*\n)*?  elody:editableDefault true ;/);
     expect(ttl).not.toMatch(/ui:NoteUi-bare\n(?:.*\n)*?  elody:panelKind/);
-    expect(ttl).toContain('sh:defaultValue "active" ;');
+    expect(ttl).toMatch(/sh:defaultValue "active" [;\]]/);
     expect(ttl).toContain("elody:noWidget true ;");
-    expect(ttl).toContain('elody:virtualKeyboardLayouts ( "Arabic" "Cyrillic" ) ;');
+    expect(ttl).toMatch(/elody:virtualKeyboardLayouts \( "Arabic" "Cyrillic" \) [;\]]/);
     expect(ttl).toContain('elody:pickerSearch [ elody:pickerSearchMode "Search" ; elody:keys ( "vlacc:1|properties.name.value" ) ; elody:acceptedTypes "group" ] ;');
     expect(ttl).toContain('elody:submitAction "ocr" ;');
   });

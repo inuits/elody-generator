@@ -69,6 +69,6 @@ describe("field, filter and element extras", () => {
     expect(ttl).toContain('    elody:panelAlias "reading_field" ;');
     expect(ttl).toContain('    shui:viewer shui:HTMLViewer ;\n    elody:extensions ( elody:StarterKitExtension ) ;\n    elody:showLineNumbers false ;');
     expect(ttl).toContain('      elody:hiddenValueFrom [ elody:entityType "script" ; elody:relationType "refScript" ; elody:key "relationValues.refLanguage.key" ; elody:inherited true ] ;');
-    expect(ttl).toContain('      elody:copyValueFromParent [ elody:labelKey "bulk-operations.copy-title-from-work" ; elody:key "original_headtitle" ; elody:relationType "refWork" ] ;');
+    expect(ttl).toContain('elody:copyValueFromParent [ elody:labelKey "bulk-operations.copy-title-from-work" ; elody:key "original_headtitle" ; elody:relationType "refWork" ]');
   });
 });

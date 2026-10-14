@@ -64,7 +64,8 @@ describe("property labels", () => {
 
   it("do not read rdfs:label on the predicate unless it is configured (the default is sh:name)", async () => {
     const { property } = await second(person("sh:path ex:givenName", 'ex:givenName rdfs:label "Given name"@en .'));
-    expect(property.label).toBeUndefined(); // rendered as the local name
+    // nothing names the label: the conventional key of the local name (elody:defaultRule), not the predicate's rdfs:label
+    expect(property.label).toBe("metadata.labels.given-name");
   });
 
   it("use shui:labelPreference on the property shape itself, instead of sh:name", async () => {

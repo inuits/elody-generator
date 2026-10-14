@@ -10,6 +10,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { declarationFiles, loadDeclaration } from "./declarationFiles.js";
 import { readReference, renderReference } from "./reference.js";
+import { expandDeclaration } from "./expand.js";
 import { basename, join, dirname } from "path";
 import { compareClient, formatCompareReport, readQueryFiles } from "./compare.js";
 import { extractDeclaration, extractDeclarationFiles } from "./extract.js";
@@ -24,7 +25,8 @@ const usage = `usage:
   elody-ui migrate  FILE [--out FILE] [--translations DIR]
   elody-ui compare  DECLARATION CLIENT_SRC [--scope FILE] [--json FILE] [--name NAME]
   elody-ui extract  CLIENT_SRC --out FILE [--namespace IRI]
-  elody-ui reference --out DIR [--declarations DIR] [--base PATH]`;
+  elody-ui reference --out DIR [--declarations DIR] [--base PATH]
+  elody-ui expand   FILE|DIR [--out FILE]   # every default written out`;
 
 function option(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(name);
@@ -129,6 +131,17 @@ export async function main(argv: string[]): Promise<number> {
     writeFileSync(out, result.ttl);
     console.log(`${out}: ${result.types.length} type(s) extracted, ${result.notes.length} note(s)`);
     for (const note of result.notes) console.error(`note: ${note}`);
+    return 0;
+  }
+
+  if (command === "expand") {
+    const [file] = rest.filter((argument, index) => !argument.startsWith("--") && !rest[index - 1]?.startsWith("--"));
+    if (!file) throw new Error(usage);
+    const result = expandDeclaration(loadDeclaration(file));
+    const out = option(rest, "--out");
+    if (out) writeFileSync(out, result.ttl);
+    else process.stdout.write(result.ttl);
+    console.error(`${result.added} default(s) written out`);
     return 0;
   }
 

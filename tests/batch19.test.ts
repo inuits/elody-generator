@@ -101,7 +101,7 @@ describe("per-page reads and per-panel fields", () => {
     expect(ttl).toContain("elody:listingFormatter false");
     expect(ttl).toContain("elody:detailFormatter false ;");
     expect(ttl).toContain("elody:detailContainsRelation false ;");
-    expect(ttl).toContain('elody:valueLabelKey "title" ;\n    elody:listingValueLabelKey "" ;');
+    expect(ttl).toMatch(/elody:valueLabelKey "title" ;\s+elody:listingValueLabelKey "" [;\]]/);
     expect(ttl).not.toContain("elody:detailFormatters false");
     expect(ttl).toContain("elody:viewModesOnDetail true ;");
     expect(ttl).toContain('elody:bulkDataSource "technical_metadata" ;');

@@ -95,6 +95,9 @@ type ShapeProperty = {
   nodeKind?: string;
   oneOf?: string[];
   message?: string;
+  /** sh:defaultValue on the entry: the constant that applies when the term is left out; elody:defaultRule: how a value is derived */
+  defaultValue?: string;
+  defaultRule?: string;
   /** the # comment above the entry in the shapes file */
   note?: string;
 };
@@ -227,6 +230,8 @@ export function readReference(options: { declarations?: string } = {}): Referenc
         nodeKind: literal(shapesQuads, node, `${SH}nodeKind`),
         oneOf: inList ? rdfList(shapesQuads, inList) : undefined,
         message: literal(shapesQuads, node, `${SH}message`),
+        defaultValue: ((q) => (q ? (q.object.termType === "NamedNode" ? curie(q.object.value) : q.object.value) : undefined))(shapesQuads.find((q) => q.subject.value === node && q.predicate.value === `${SH}defaultValue`)),
+        defaultRule: literal(shapesQuads, node, `${ELODY}defaultRule`),
         note: notes.properties.get(`${name}|${curie(path)}`),
       };
     });
@@ -404,17 +409,20 @@ function renderSection(section: Section, reference: Reference, byShape: Map<stri
   }
   if (section.shape?.messages.length) out.push(...section.shape.messages.map((m) => `::: info Constraint\n${esc(m)}\n:::`), "");
   const usage = reference.clients > 0;
-  out.push(`| Term | Type | How many | Meaning |${usage ? " Used by |" : ""}`, `|---|---|---|---|${usage ? "---|" : ""}`);
+  // a Default column when a term of the section has a default (sh:defaultValue) or a rule (elody:defaultRule)
+  const defaults = (section.shape?.properties ?? []).some((p) => p.defaultValue !== undefined || p.defaultRule);
+  out.push(`| Term | Type | How many |${defaults ? " Default |" : ""} Meaning |${usage ? " Used by |" : ""}`, `|---|---|---|${defaults ? "---|" : ""}---|${usage ? "---|" : ""}`);
   const used = (name: string) => (usage ? ` ${reference.usage.get(name) ? `${reference.usage.get(name)} of ${reference.clients}` : "—"} |` : "");
+  const dflt = (property?: ShapeProperty) => (defaults ? ` ${property?.defaultValue !== undefined ? code(property.defaultValue) : property?.defaultRule ? esc(property.defaultRule) : ""} |` : "");
   const listed = new Set<string>();
   for (const property of section.shape?.properties ?? []) {
     const name = curie(property.path);
     listed.add(property.path);
-    out.push(`| ${code(name)} | ${typeOfProperty(property, reference, byShape, byClass, section.page)} | ${cardinality(property)} | ${meaning(property, reference)} |${used(name)}`);
+    out.push(`| ${code(name)} | ${typeOfProperty(property, reference, byShape, byClass, section.page)} | ${cardinality(property)} |${dflt(property)} ${meaning(property, reference)} |${used(name)}`);
   }
   // the vocabulary's terms on these classes the shape does not constrain: listed too, unchecked
   const vocabOnly = [...reference.terms.values()].filter((t) => (t.kind === "datatype" || t.kind === "object") && !listed.has(t.iri) && t.domain.some((d) => section.classes.includes(d))).sort((a, b) => a.name.localeCompare(b.name));
-  for (const term of vocabOnly) out.push(`| ${code(term.name)} | ${typeOfRange(term.range, reference, byClass, section.page)} | unchecked | ${esc(term.comment ?? "")} |${used(term.name)}`);
+  for (const term of vocabOnly) out.push(`| ${code(term.name)} | ${typeOfRange(term.range, reference, byClass, section.page)} | unchecked |${dflt()} ${esc(term.comment ?? "")} |${used(term.name)}`);
   out.push("");
   return out;
 }

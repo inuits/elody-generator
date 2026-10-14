@@ -193,7 +193,8 @@ ui:P a elody:Panel ; elody:alias "p" ; rdfs:label "p" ; elody:field em:title , e
     const { ttl, notes } = extractDeclaration(files, { namespace: "urn:ui:" });
     expect(notes.filter((n) => n.includes("no term") || n.includes("not rendered"))).toEqual([]);
     expect(ttl).toContain("elody:mapFeatureField em:id , em:name ;");
-    expect(ttl).toMatch(/\[ a elody:SingleMediaFileElement ;\n\s+rdfs:label "element-labels.media-element" ;\n\s+sh:order 1 ;\n\s+elody:collapsed false \]/);
+    // collapsed false is the default (sh:defaultValue in the meta-shapes): the writer leaves it out
+    expect(ttl).toMatch(/\[ a elody:SingleMediaFileElement ;\n\s+rdfs:label "element-labels.media-element" ;\n\s+sh:order 1 \]/);
     expect(ttl).toMatch(/elody:mapType elody:WktMap ;\n\s+elody:center "gps_coordinates" ;\n\s+elody:wktKey "map_location" ;\n\s+elody:config \[ elody:key "overlayWkt" ; elody:value \[ elody:config \[ elody:key "query" ; elody:value "GetAreaRefSitesWkt" \] , \[ elody:key "entityType" ; elody:value "site" \] \] \] \]/);
     expect(ttl).toMatch(/elody:cropCoordinatesKey "coordinates" [;\]]/);
     expect(ttl).toContain('elody:viewMode\n    [ sh:order 1 ; elody:mode elody:ListView ] ,\n    [ sh:order 2 ; elody:mode elody:MapView ; elody:config [ elody:key "mapType" ; elody:value elody:WktMap ] , [ elody:key "mapView" ; elody:value elody:SatelliteView ] , [ elody:key "useFilters" ; elody:value false ] ]');

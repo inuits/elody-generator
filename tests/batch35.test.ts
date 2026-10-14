@@ -42,6 +42,6 @@ describe("the card's menu after its fields", () => {
     ];
     const { ttl } = extractDeclaration(files, { namespace: "urn:ui:" });
     expect(ttl).toMatch(/\[ elody:menuAfterFields true ;/);
-    expect(ttl).toMatch(/elody:filterOperator "and" ;\n\s+elody:filterKind elody:TypeFilter/);
+    expect(ttl).toMatch(/elody:filterOperator "and" ;\s+elody:filterKind elody:TypeFilter/);
   });
 });

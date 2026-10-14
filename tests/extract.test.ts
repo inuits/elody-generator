@@ -167,11 +167,12 @@ describe("extract: askforceone constructs", () => {
     );
     expect(notes, ttl).toEqual([]);
     // the card's order: tenant, title (the alias of key), level; the detail-only key and relation title follow
-    const paths = [...ttl.matchAll(/sh:path em:(\w+) ;\n(?:.*\n)*?.*sh:order (\d+) ;/g)].map((m) => `${m[1]}:${m[2]}`);
+    // a property shape is one line when it fits (the compact writer), else one predicate per line
+    const paths = [...ttl.matchAll(/sh:path em:(\w+) ;(?:[^\]]|\n)*?sh:order (\d+)/g)].map((m) => `${m[1]}:${m[2]}`);
     expect(paths.slice(0, 3)).toEqual(["tenant:1", "key:2", "level:3"]);
     // the relation read under title on the detail page keeps title as its path; the listing's title is the alias of key
-    expect(ttl).toMatch(/sh:path em:title ;\n(?:.*\n)*?    elody:relationType "isIn" ;\n(?:.*\n)*?    elody:detailOnly true/);
-    expect(ttl).toMatch(/sh:path em:key ;\n(?:.*\n)*?    elody:alias "title" ;\n(?:.*\n)*?    elody:listingOnly true/);
+    expect(ttl).toMatch(/sh:path em:title ;(?:[^\]]|\n)*?elody:relationType "isIn" ;(?:[^\]]|\n)*?elody:detailOnly true/);
+    expect(ttl).toMatch(/sh:path em:key ;(?:[^\]]|\n)*?elody:alias "title" ;(?:[^\]]|\n)*?elody:listingOnly true/);
     expect(ttl).toContain("elody:readsPermissions true");
     expect(ttl).toContain('elody:validationRule "regex" ;\n    elody:validationValue "^[a-z]+$"');
     expect(ttl).toContain('elody:validationRule "customValue" ;\n    elody:validationValue "min_value:1"');
@@ -398,7 +399,7 @@ describe("extract: results selected inline", () => {
     expect(ttl).toContain('elody:relationKey "refAuthors" ;\n    elody:readsHost true ;');
     expect(ttl).toContain('elody:cardField "relationRootData" ;\n    elody:cardEditable true ;');
     expect(ttl).toContain('elody:clientInputField "rolesTypeField"');
-    expect(ttl).toMatch(/ui:CorporationInGetAuthorsUi\n(?:.*\n)*?    elody:readsValue false/);
+    expect(ttl).toMatch(/ui:CorporationInGetAuthorsUi\n(?:.*\n)*?.*elody:readsValue false/);
     expect(ttl).toMatch(/ui:CorporationInGetAuthorsUi\n(?:.*\n)*?  elody:contextMenu\n    \[ elody:includeBasicActions true ;\n    elody:menuInButtons true ;/);
     expect(ttl).toContain('elody:alias "doLinkAction" ;\n      elody:actionForm "doLinkAction" ;');
   });

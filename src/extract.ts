@@ -16,7 +16,7 @@ import { PLATFORM_DOCUMENTS } from "./platform.js";
 import type { ArgumentNode, FieldNode, FragmentDefinitionNode, InlineFragmentNode, ObjectValueNode, OperationDefinitionNode, SelectionNode, SelectionSetNode, ValueNode } from "graphql";
 import { readDefinitions, type Definition, type QueryFile } from "./compare.js";
 import { Ontology, defaultOntology } from "./ontology.js";
-import { elody } from "./vocab.js";
+import { conventionalLabelKey, elody } from "./vocab.js";
 
 export type ExtractOptions = {
   /** the namespace of the minted nodes (ui:) */
@@ -55,6 +55,13 @@ const objectField = (object: ObjectValueNode, name: string): ValueNode | undefin
 
 const q = (value: string) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r/g, "\\r").replace(/\n/g, "\\n")}"`;
 const localName = (iri: string) => iri.slice(Math.max(iri.lastIndexOf("#"), iri.lastIndexOf("/")) + 1);
+
+/** A short node on one line (`    [ a ; b ]`) when it fits in the width, else one predicate per line as given. */
+const compactNode = (lines: string[], width = 160): string => {
+  const parts = lines.map((line, index) => (index === 0 ? line.trim().replace(/^\[\s*/, "") : line.trim())).map((part) => part.replace(/ ;$/, "").replace(/ \]$/, ""));
+  const one = `    [ ${parts.filter(Boolean).join(" ; ")} ]`;
+  return one.length <= width ? one : lines.join("\n");
+};
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
 // -- the model the proposal is written from ------------------------------------
@@ -2394,7 +2401,6 @@ export class Extractor {
 
   private property(p: Property): string {
     const lines = [`    [ sh:path em:${p.key} ;`];
-    if (p.labelKey && !p.alias) lines.push(`    sh:name ${q(p.labelKey.split(".").pop() ?? p.key)}@en ;`);
     lines.push(`    sh:order ${p.order} ;`);
     if (p.group) lines.push(`    sh:group ${p.group} ;`);
     if (p.alias) lines.push(`    elody:alias ${q(p.alias)} ;`);
@@ -2486,7 +2492,8 @@ export class Extractor {
       if (source) lines.push(`    elody:source ${source} ;`);
     }
     if (p.index !== undefined) lines.push(`    elody:index ${p.index} ;`);
-    if (p.labelKey) lines.push(`    elody:labelKey ${q(p.labelKey)} ;`);
+    // the conventional label key is the default (elody:defaultRule): written only when it differs
+    if (p.labelKey && p.labelKey !== conventionalLabelKey(p.key)) lines.push(`    elody:labelKey ${q(p.labelKey)} ;`);
     if (p.unit) lines.push(`    elody:unit ${p.unit} ;`);
     if (p.colSpan !== undefined) lines.push(`    elody:colSpan ${p.colSpan} ;`);
     if (p.sortable) lines.push(`    elody:sortable true ;`);
@@ -2498,7 +2505,7 @@ export class Extractor {
     if (p.inListing && !p.inDetail && p.readsValue) lines.push(`    elody:listingOnly true ;`);
     if (!p.readsValue) lines.push(`    elody:readsValue false ;`);
     lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " ]");
-    return lines.join("\n");
+    return compactNode(lines);
   }
 
   private lookupNode(lookup: Lookup): string {
@@ -2577,7 +2584,7 @@ export class Extractor {
     lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " ]");
     lines[0] = `    [ ${lines[1].trim()}`;
     lines.splice(1, 1);
-    return lines.join("\n");
+    return compactNode(lines);
   }
 
   private writeOperation(op: Operation, stubs: Set<string>, forms: Set<string>): string {
@@ -3270,7 +3277,7 @@ export class Extractor {
     const l = [`${pad}[ a elody:ListElement ;`, ...(element.label !== undefined ? [`${pad}rdfs:label ${q(element.label)} ;`] : []), `${pad}sh:order ${order} ;`];
     if (element.alias) l.push(`${pad}elody:alias ${q(element.alias)} ;`);
     if (element.mediaKind) l.push(`${pad}elody:mediaKind ${element.mediaKind} ;`);
-    l.push(`${pad}elody:collapsed ${element.collapsed} ;`);
+    if (element.collapsed) l.push(`${pad}elody:collapsed true ;`);
     for (const type of element.entityTypes) l.push(`${pad}elody:entityTypes ${q(type)} ;`);
     if (element.relationType) l.push(`${pad}elody:relationType ${q(element.relationType)} ;`);
     if (element.customQueryRelationType) l.push(`${pad}elody:customQueryRelationType ${q(element.customQueryRelationType)} ;`);
@@ -3321,7 +3328,7 @@ export class Extractor {
         panelIds.add(id);
         const p: string[] = [`${id}`, `  a elody:Panel ;`, ...(panel.header === false ? [] : [`  rdfs:label ${q(panel.label ?? "")} ;`]), `  sh:order 1 ;`, `  elody:alias ${q(panel.alias)} ;`];
         if (panel.header === false) p.push(`  elody:panelHeader false ;`);
-        p.push(`  elody:collapsed ${panel.collapsed} ;`);
+        if (panel.collapsed) p.push(`  elody:collapsed true ;`);
         if (!panel.editable) p.push(`  dash:readOnly true ;`);
         if (panel.editableDefault) p.push(`  elody:editableDefault true ;`);
         if (panel.multipleColumns !== undefined) p.push(`  elody:multipleColumns ${panel.multipleColumns} ;`);
@@ -3370,7 +3377,7 @@ export class Extractor {
     if (element.kind === "hierarchy") {
       const h = [`      [ a elody:HierarchyListElement ;`, ...(element.label !== undefined ? [`      rdfs:label ${q(element.label)} ;`] : []), `      sh:order ${e + 1} ;`];
       if (element.alias) h.push(`      elody:alias ${q(element.alias)} ;`);
-      h.push(`      elody:collapsed ${element.collapsed} ;`);
+      if (element.collapsed) h.push(`      elody:collapsed true ;`);
       for (const [i, level] of element.levels.entries()) h.push(`      elody:hierarchyLevel [ sh:order ${i + 1} ; elody:key ${q(level.key)} ; elody:entityType ${q(level.entityType)} ] ;`);
       if (element.listQuery) h.push(`      elody:listQuery ui:${element.listQuery} ;`);
       for (const c of element.can ?? []) h.push(`      elody:can ${q(c)} ;`);
@@ -3380,13 +3387,13 @@ export class Extractor {
       return h.join("\n");
     }
     if (element.kind === "shaclShape") {
-      const s = [`      [ a elody:ShaclShapeElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ;`];
+      const s = [`      [ a elody:ShaclShapeElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, ...(element.collapsed ? [`      elody:collapsed true ;`] : [])];
       if (element.fieldsKey) s.push(`      elody:fieldsKey ${q(element.fieldsKey)} ;`);
       s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
       return s.join("\n");
     }
     if (element.kind === "markdown") {
-      const s = [`      [ a elody:MarkdownElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ;`];
+      const s = [`      [ a elody:MarkdownElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, ...(element.collapsed ? [`      elody:collapsed true ;`] : [])];
       if (element.metadataKey) s.push(`      elody:metadataKey ${q(element.metadataKey)} ;`);
       s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
       return s.join("\n");
@@ -3394,9 +3401,9 @@ export class Extractor {
     if (element.kind === "entityViewer")
       return [`      [ a elody:EntityViewerElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, element.relationType ? `      elody:relationType ${q(element.relationType)} ]` : `      elody:metadataKey ${q(element.metadataKey ?? "")} ]`].join("\n");
     if (element.kind === "singleMedia")
-      return [`      [ a elody:SingleMediaFileElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ]`].join("\n");
+      return [`      [ a elody:SingleMediaFileElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1}${element.collapsed ? " ;" : " ]"}`, ...(element.collapsed ? [`      elody:collapsed true ]`] : [])].join("\n");
     if (element.kind === "graph") {
-      const s = [`      [ a elody:GraphElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ;`];
+      const s = [`      [ a elody:GraphElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, ...(element.collapsed ? [`      elody:collapsed true ;`] : [])];
       if (element.alias) s.push(`      elody:alias ${q(element.alias)} ;`);
       if (element.graphType) s.push(`      elody:graphType ${element.graphType} ;`);
       if (element.datasource) s.push(`      elody:datasource ${q(element.datasource)} ;`);
@@ -3430,7 +3437,7 @@ export class Extractor {
       return s.join("\n");
     }
     if (element.kind === "map") {
-      const s = [`      [ a elody:MapElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, `      elody:collapsed ${element.collapsed} ;`];
+      const s = [`      [ a elody:MapElement ;`, `      rdfs:label ${q(element.label ?? "")} ;`, `      sh:order ${e + 1} ;`, ...(element.collapsed ? [`      elody:collapsed true ;`] : [])];
       if (element.mapType) s.push(`      elody:mapType ${element.mapType} ;`);
       if (element.center) s.push(`      elody:center ${q(element.center)} ;`);
       if (element.wktKey) s.push(`      elody:wktKey ${q(element.wktKey)} ;`);
@@ -3444,7 +3451,6 @@ export class Extractor {
   /** The property shape of one form field. */
   private formFieldNode(field: FormField, i: number): string {
         const s = [`      [ sh:path em:${field.key} ;`];
-    if (field.label) s.push(`      sh:name ${q(field.label.split(".").pop() ?? field.key)}@en ;`);
     s.push(`      sh:order ${field.order ?? i + 1} ;`);
     if (field.alias) s.push(`      elody:alias ${q(field.alias)} ;`);
     if (field.datatype) s.push(`      sh:datatype ${field.datatype} ;`);
@@ -3486,9 +3492,9 @@ export class Extractor {
     }
     if (field.editor && !field.noWidget) s.push(`      shui:editor ${field.editor} ;`);
     if (field.clientField) s.push(`      elody:clientInputField ${q(field.clientField)} ;`);
-    if (field.label) s.push(`      elody:labelKey ${q(field.label)} ;`);
+    if (field.label && field.label !== conventionalLabelKey(field.key)) s.push(`      elody:labelKey ${q(field.label)} ;`);
     s[s.length - 1] = s[s.length - 1].replace(/ ;$/, " ]");
-    return s.join("\n");
+    return compactNode(s).replace(/^    \[/, "      [");
   }
 
   private writeEntity(entity: Entity, formNodes: Set<string>): string {
