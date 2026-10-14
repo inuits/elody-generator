@@ -30,8 +30,10 @@ export type ParseResult = {
 
 export async function readUiDeclaration(ttl: string, ontology: Ontology = defaultOntology()): Promise<ParseResult> {
   const quads = new Parser().parse(ttl);
+  // the platform's context presets (elody:ReadModeNoneSelectedContext, ...): named nodes of the vocabulary a declaration references
+  const presets = ontology.reading.subjectsWith(rdf("type"), elody("BulkOperationContext")).flatMap((subject) => ontology.reading.quadsOf(subject));
   // properties whose values a linked-data source holds, spelled out in declaration terms first
-  const reading = new Reading([...quads, ...expandExternalSources(quads)]);
+  const reading = new Reading([...quads, ...expandExternalSources(quads), ...presets]);
   const editors = await scoreEditors(reading);
   const parse = new Parse(reading, ontology, editors);
   const entities = [...reading.subjectsOfType(elody("EntityUi")), ...reading.subjectsOfType(elody("App"))].map((subject) => parse.entity(subject));
@@ -765,6 +767,26 @@ class Parse {
     const parsed = nodes.map((node) => ({ node, property: this.property(node) }));
     const ordered = this.specOrder(parsed.map((p) => ({ ...p, label: p.property.key })));
     const properties = ordered.map((p) => p.property);
+    // the compact form's lists (elody:listingFields, elody:detailFields, elody:cardFields): the flags per property follow; an explicit flag wins
+    const fieldList = (term: string) => {
+      const head = r.node(subject, elody(term));
+      return head ? new Set(r.list(head)) : undefined;
+    };
+    const listingFields = fieldList("listingFields");
+    const detailFields = fieldList("detailFields");
+    const cardFields = fieldList("cardFields");
+    for (const { node, property } of ordered) {
+      const path = property.path ?? "";
+      if (listingFields && detailFields) {
+        const inListing = listingFields.has(path);
+        const inDetail = detailFields.has(path);
+        if (!r.has(node, elody("detailOnly"))) property.detailOnly = !inListing;
+        if (!r.has(node, elody("listingOnly"))) property.listingOnly = inListing && !inDetail;
+        if (!r.has(node, elody("readsValue"))) property.readsValue = inListing || inDetail;
+      }
+      if (cardFields && !r.has(node, elody("teaser"))) property.teaser = cardFields.has(path);
+      if (listingFields || cardFields) property.teaser = property.teaser && !property.detailOnly;
+    }
     const pathToKey = new Map(properties.filter((p) => p.path).map((p) => [p.path!, p.key]));
     // sh:group → the keys of its properties, in the spec's order within the group
     this.groupFields = new Map();

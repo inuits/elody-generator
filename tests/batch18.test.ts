@@ -125,7 +125,7 @@ describe("card, panel, form, menu and sort-option extras", () => {
     expect(ttl).toContain("elody:cardValidates false");
     expect(ttl).toContain("elody:panelWidget true ;");
     expect(ttl).toContain("elody:panelShowsUnit false ;");
-    expect(ttl).toContain('elody:permitted "read:url:field" ;\n    elody:linkText "metadata.labels.download-link" ;\n    elody:copyToClipboard true ;\n    elody:nonEditable true ;');
+    expect(ttl).toMatch(/elody:permitted "read:url:field" ;\s+elody:linkText "metadata.labels.download-link" ;\s+elody:copyToClipboard true ;\s+elody:nonEditable true [;\]]/);
     expect(ttl).toContain('elody:tooltipKey "tooltip.metadata.title" ;');
     expect(ttl).toContain('elody:sortPage [ elody:routeName "SingleEntity" ; elody:routeEntityType "note" ] ;');
     expect(ttl).toContain('elody:showAsButton true ;\n      elody:can "update:note" ]');

@@ -236,7 +236,7 @@ describe("batch 45: the last client-side leftovers round-trip", () => {
     expect(ttl).toContain('elody:conditionVariable "work_type" ;');
     expect(ttl).toContain('elody:rootType "token" ;');
     expect(ttl).toContain('elody:rootCollection "tokens" ;');
-    expect(ttl).toContain("elody:unit elody:DatetimeDefault ;");
+    expect(ttl).toMatch(/elody:unit elody:DatetimeDefault [;\]]/);
     expect(ttl).toContain('elody:asksBack "parentKey" ;');
     expect(ttl).toContain("elody:useOldWayToFetchOptions false ;");
     expect(ttl).toContain('elody:validationFields ( "dateOfCreation" "dateOfPublication" ) ;');

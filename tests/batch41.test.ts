@@ -64,10 +64,10 @@ describe("field, filter and element extras", () => {
     expect(notes.filter((n) => /no term/.test(n))).toEqual([]);
     expect(ttl).toContain("    elody:optionsLimit 30 ;");
     expect(ttl).toContain('    elody:masked true ;\n    elody:revealQuery "GetTokenSecret" ;');
-    expect(ttl).toContain('    elody:infoPanel [ elody:infoTitle "metadata.labels.editorial-conventions" ; elody:infoContent "<ul>\\n  <li>Line one</li>\\n</ul>" ] ;\n    shui:viewer shui:HTMLViewer ;');
+    expect(ttl).toMatch(/elody:infoPanel \[ elody:infoTitle "metadata.labels.editorial-conventions" ; elody:infoContent "<ul>\\n  <li>Line one<\/li>\\n<\/ul>" \] ;\s+shui:viewer shui:HTMLViewer [;\]]/);
     expect(ttl).toMatch(/elody:displayConditionKey "is_omnibus" ;\n\s+elody:displayConditionValue "true" ;/);
     expect(ttl).toContain('    elody:panelAlias "reading_field" ;');
-    expect(ttl).toContain('    shui:viewer shui:HTMLViewer ;\n    elody:extensions ( elody:StarterKitExtension ) ;\n    elody:showLineNumbers false ;');
+    expect(ttl).toMatch(/shui:viewer shui:HTMLViewer ;\s+elody:extensions \( elody:StarterKitExtension \) ;\s+elody:showLineNumbers false [;\]]/);
     expect(ttl).toContain('      elody:hiddenValueFrom [ elody:entityType "script" ; elody:relationType "refScript" ; elody:key "relationValues.refLanguage.key" ; elody:inherited true ] ;');
     expect(ttl).toContain('elody:copyValueFromParent [ elody:labelKey "bulk-operations.copy-title-from-work" ; elody:key "original_headtitle" ; elody:relationType "refWork" ]');
   });

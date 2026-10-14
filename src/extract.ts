@@ -56,6 +56,14 @@ const objectField = (object: ObjectValueNode, name: string): ValueNode | undefin
 const q = (value: string) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r/g, "\\r").replace(/\n/g, "\\n")}"`;
 const localName = (iri: string) => iri.slice(Math.max(iri.lastIndexOf("#"), iri.lastIndexOf("/")) + 1);
 
+/** The platform's bulk operation contexts named in the vocabulary: a matching context is written as the reference. */
+const CONTEXT_PRESETS: { name: string; mode?: string; selection: string; tooltip: string }[] = [
+  { name: "elody:ReadModeNoneSelectedContext", mode: "elody:ReadMode", selection: "elody:NoneSelected", tooltip: "tooltip.bulkOperationsActionBar.readmode-noneselected" },
+  { name: "elody:NoneSelectedContext", mode: undefined, selection: "elody:NoneSelected", tooltip: "tooltip.bulkOperationsActionBar.readmode-noneselected" },
+  { name: "elody:ReadModeSomeSelectedContext", mode: "elody:ReadMode", selection: "elody:SomeSelected", tooltip: "tooltip.bulkOperationsActionBar.readmode-someselected" },
+  { name: "elody:SomeSelectedContext", mode: "elody:ReadMode", selection: "elody:SomeSelected", tooltip: "tooltip.bulkOperationsActionBar.someselected" },
+];
+
 /** A short node on one line (`    [ a ; b ]`) when it fits in the width, else one predicate per line as given. */
 const compactNode = (lines: string[], width = 160): string => {
   const parts = lines.map((line, index) => (index === 0 ? line.trim().replace(/^\[\s*/, "") : line.trim())).map((part) => part.replace(/ ;$/, "").replace(/ \]$/, ""));
@@ -2330,6 +2338,7 @@ export class Extractor {
     const stubsFile = platform?.filePath ? declarationFileFor(platform.filePath) : "_shared.ui.ttl";
     const files = new Map<string, string>();
     const formNodes = new Set<string>();
+    this.collectSharedOperations(entities);
     // a node is declared once: the first file that declares it keeps it (a flow declared on its type and named by the menu, a stub)
     const declared = new Set<string>();
     const once = (text: string): string => {
@@ -2347,6 +2356,9 @@ export class Extractor {
       for (const entity of group) out.push(once(this.writeEntity(entity, formNodes)), "");
       files.set(file, out.join("\n"));
     }
+    // the operations several types share, once, in the shared file
+    const shared = this.sharedOperationNodes();
+    if (shared.length) files.set("_shared.ui.ttl", [files.get("_shared.ui.ttl") ?? [...this.prefixes(options), "# The bulk operations several types declare identically, named once and referenced from each.", ""].join("\n"), ...shared.map((node) => `${node}\n`)].join("\n"));
     const stubs = [...this.stubs].filter((stub) => !formNodes.has(stub) && !declared.has(`ui:${stub}`));
     if (stubs.length) {
       const out = [files.get(stubsFile) ?? [...this.prefixes(options), ""].join("\n")];
@@ -2393,10 +2405,36 @@ export class Extractor {
     }
     out.push("");
     const formNodes = new Set<string>();
+    this.collectSharedOperations(entities);
     for (const entity of entities) out.push(this.writeEntity(entity, formNodes), "");
+    for (const node of this.sharedOperationNodes()) out.push(node, "");
     for (const stub of this.stubs)
       if (!formNodes.has(stub)) out.push(`# a document declared elsewhere (the platform document, or hand-written)`, `ui:${stub}`, `  elody:queryName ${q(stub)} .`, "");
     return out.join("\n");
+  }
+
+  /** the flags of the properties being written follow from the type's lists (elody:listingFields, ...): left out */
+  private flagsByLists = false;
+
+  /** The three lists of the compact form, when they are shorter than the flags on the properties and no two shapes of one key differ. */
+  private fieldLists(properties: Property[]): string[] | undefined {
+    const shape = (p: Property) => `${p.inListing}|${p.inDetail}|${p.readsValue}|${p.teaser}`;
+    const byKey = new Map<string, Set<string>>();
+    for (const p of properties) (byKey.get(p.key) ?? byKey.set(p.key, new Set()).get(p.key)!).add(shape(p));
+    if ([...byKey.values()].some((shapes) => shapes.size > 1)) return undefined;
+    // a value read in the listing but not read at all (a spread provides it) has no list form: the flags say it
+    if (properties.some((p) => p.inListing && !p.readsValue)) return undefined;
+    const flags = properties.reduce((n, p) => n + (!p.inListing ? 1 : 0) + (p.inListing && !p.inDetail && p.readsValue ? 1 : 0) + (!p.readsValue ? 1 : 0) + (!p.teaser && p.inListing ? 1 : 0), 0);
+    const needRead = properties.some((p) => !p.inListing || (p.inListing && !p.inDetail && p.readsValue) || !p.readsValue);
+    const needCard = properties.some((p) => !p.teaser && p.inListing);
+    const lines = (needRead ? 2 : 0) + (needCard ? 1 : 0);
+    if (!lines || flags <= lines) return undefined;
+    const keys = (f: (p: Property) => boolean) => [...new Set(properties.filter(f).map((p) => `em:${p.key}`))].join(" ");
+    const out: string[] = [];
+    // the detail list: every value read that is not read in the listing alone (a value a shared fragment reads is read, and not listing-only)
+    if (needRead) out.push(`  elody:listingFields ( ${keys((p) => p.inListing)} ) ;`, `  elody:detailFields ( ${keys((p) => p.readsValue && !(p.inListing && !p.inDetail))} ) ;`);
+    if (needCard) out.push(`  elody:cardFields ( ${keys((p) => p.teaser && p.inListing)} ) ;`);
+    return out;
   }
 
   private property(p: Property): string {
@@ -2500,10 +2538,12 @@ export class Extractor {
     if (p.sortLabelKey) lines.push(`    elody:sortLabelKey ${q(p.sortLabelKey)} ;`);
     if (p.sortOrder !== undefined) lines.push(`    elody:sortOrder ${p.sortOrder} ;`);
     if (p.sortDirection) lines.push(`    elody:defaultSortDirection ${p.sortDirection} ;`);
-    if (!p.teaser && p.inListing) lines.push(`    elody:teaser false ;`);
-    if (!p.inListing) lines.push(`    elody:detailOnly true ;`);
-    if (p.inListing && !p.inDetail && p.readsValue) lines.push(`    elody:listingOnly true ;`);
-    if (!p.readsValue) lines.push(`    elody:readsValue false ;`);
+    if (!this.flagsByLists) {
+      if (!p.teaser && p.inListing) lines.push(`    elody:teaser false ;`);
+      if (!p.inListing) lines.push(`    elody:detailOnly true ;`);
+      if (p.inListing && !p.inDetail && p.readsValue) lines.push(`    elody:listingOnly true ;`);
+      if (!p.readsValue) lines.push(`    elody:readsValue false ;`);
+    }
     lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " ]");
     return compactNode(lines);
   }
@@ -2587,6 +2627,52 @@ export class Extractor {
     return compactNode(lines);
   }
 
+  /** operations identical across types, declared once as named nodes (ui:<Label>Operation): the operation's text to its name */
+  private readonly sharedOperations = new Map<string, string>();
+
+  /** The operations several types declare identically (label, order, context, modal, ...): named once, referenced from each. */
+  private collectSharedOperations(entities: Entity[]): void {
+    const counts = new Map<string, number>();
+    for (const entity of entities) {
+      const sets = [entity.operations, ...entity.customOperations.map((c) => c.operations), ...entity.bulkDocuments.map((d) => d.operations)].filter((ops): ops is Operation[] => Array.isArray(ops));
+      for (const ops of sets) {
+        ops.forEach((op, i) => (op.order = i + 1));
+        for (const op of ops) {
+          const text = this.writeOperation(op, new Set(), new Set());
+          counts.set(text, (counts.get(text) ?? 0) + 1);
+        }
+      }
+    }
+    const used = new Set<string>();
+    for (const [text, n] of counts) {
+      if (n < 2) continue;
+      const label = /rdfs:label "(?:bulk-operations\.)?([^"]+)"/.exec(text)?.[1] ?? "operation";
+      const base = `${label.split(/[^A-Za-z0-9]+/).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join("")}Operation`;
+      let name = base;
+      for (let i = 2; used.has(name); i += 1) name = `${base}${i}`;
+      used.add(name);
+      this.sharedOperations.set(text, name);
+    }
+  }
+
+  /** The operation inline, or a reference to its shared node; the side effects (stubs for forms) happen either way. */
+  private operationRef(op: Operation, stubs: Set<string>, forms: Set<string>): string {
+    const text = this.writeOperation(op, stubs, forms);
+    const name = this.sharedOperations.get(text);
+    return name ? `    ui:${name}` : text;
+  }
+
+  /** The shared operations as named nodes, each once. */
+  private sharedOperationNodes(): string[] {
+    const nodes: string[] = [];
+    for (const [text, name] of this.sharedOperations) {
+      const lines = text.split("\n").map((line, i) => (i === 0 ? `  ${line.replace(/^\s*\[\s*/, "")}` : line.replace(/^  /, "")));
+      lines[lines.length - 1] = lines[lines.length - 1].replace(/ \]$/, " .");
+      nodes.push([`ui:${name}`, `  a elody:BulkOperation ;`, ...lines].join("\n"));
+    }
+    return nodes;
+  }
+
   private writeOperation(op: Operation, stubs: Set<string>, forms: Set<string>): string {
     const lines: string[] = [];
     if (op.label) lines.push(`    rdfs:label ${q(op.label)} ;`);
@@ -2596,7 +2682,10 @@ export class Extractor {
     if (op.primary !== undefined) lines.push(`    elody:primary ${op.primary} ;`);
     for (const can of op.can) lines.push(`    elody:can ${q(can)} ;`);
     for (const value of op.allowCondition ?? []) lines.push(`    elody:allowCondition ${q(value)} ;`);
-    if (op.context)
+    const preset = op.context && CONTEXT_PRESETS.find((p) => p.mode === op.context!.mode && p.selection === (op.context!.selection ?? "elody:NoneSelected") && p.tooltip === (op.context!.tooltip ?? "") && op.context!.requiresSameType === undefined && op.context!.minSelectedItems === undefined && op.context!.maxSelectedItems === undefined && !(op.context!.matches ?? []).length);
+    // the platform's contexts are named nodes of the vocabulary (elody:ReadModeNoneSelectedContext, ...)
+    if (op.context && preset) lines.push(`    elody:context ${preset.name} ;`);
+    else if (op.context)
       lines.push(
         `    elody:context`,
         `      [ ${op.context.mode ? `elody:activeViewMode ${op.context.mode} ; ` : ""}elody:selection ${op.context.selection ?? "elody:NoneSelected"} ;`,
@@ -3542,7 +3631,7 @@ export class Extractor {
             .map((t) => {
               const ops = t.operations ?? [];
               ops.forEach((op, i) => (op.order = i + 1));
-              return `[ elody:platformDocument ${q(t.document)} ; elody:graphqlType ${q(t.graphqlType)}${t.fragment ? ` ; elody:fragmentName ${q(t.fragment)}` : ""}${t.excluded ? " ; elody:excluded true" : ""}${t.bare ? " ; elody:bare true" : ""}${ops.length ? ` ;\n      elody:operation ${ops.map((op) => this.writeOperation(op, this.stubs, formNodes).replace(/^/gm, "    ").trim()).join(" ,\n      ")}` : ""} ]`;
+              return `[ elody:platformDocument ${q(t.document)} ; elody:graphqlType ${q(t.graphqlType)}${t.fragment ? ` ; elody:fragmentName ${q(t.fragment)}` : ""}${t.excluded ? " ; elody:excluded true" : ""}${t.bare ? " ; elody:bare true" : ""}${ops.length ? ` ;\n      elody:operation ${ops.map((op) => this.operationRef(op, this.stubs, formNodes).replace(/^/gm, "    ").trim()).join(" ,\n      ")}` : ""} ]`;
             })
             .join(" ,\n    ")} ;`,
         );
@@ -3600,7 +3689,12 @@ export class Extractor {
       if (!entity.inline) this.note(`${name}: no initial values; a placeholder property is declared`);
       properties.push({ key: "title", order: 1, inListing: true, inDetail: true, readsValue: !entity.inline, teaser: !entity.inline, sortable: false, single: true, required: false, readOnly: false, labelRole: true });
     }
+    // the compact form: what is read and shown as three lists on the type when that is shorter than the flags on the properties
+    const lists = this.fieldLists(properties);
+    this.flagsByLists = lists !== undefined;
+    if (lists) out.push(...lists);
     if (properties.length) out.push(`  sh:property`, properties.map((p) => this.property(p)).join(" ,\n") + " ;");
+    this.flagsByLists = false;
 
     // the detail layout
     const panelNodes: string[] = [];
@@ -3814,7 +3908,7 @@ export class Extractor {
     if (entity.operations) {
       const ops = entity.operations;
       ops.forEach((op, i) => (op.order = i + 1));
-      if (ops.length) out.push(`  elody:bulkOperation`, ops.map((op) => this.writeOperation(op, this.stubs, formNodes)).join(" ,\n") + " ;");
+      if (ops.length) out.push(`  elody:bulkOperation`, ops.map((op) => this.operationRef(op, this.stubs, formNodes)).join(" ,\n") + " ;");
       else out.push(`  elody:bulkOperations true ;`);
     }
     if (entity.customOperations.length) {
@@ -3823,7 +3917,7 @@ export class Extractor {
         const ops = custom.operations;
         ops.forEach((op, i) => (op.order = i + 1));
         const lines = [`ui:${custom.name}`, `  elody:queryName ${q(custom.name)} ;`, ...(custom.conditionVariable ? [`  elody:conditionVariable ${q(custom.conditionVariable)} ;`] : [])];
-        if (ops.length) lines.push(`  elody:operation`, ops.map((op) => this.writeOperation(op, this.stubs, formNodes)).join(" ,\n") + " .");
+        if (ops.length) lines.push(`  elody:operation`, ops.map((op) => this.operationRef(op, this.stubs, formNodes)).join(" ,\n") + " .");
         else lines[lines.length - 1] = lines[lines.length - 1].replace(/ ;$/, " .");
         extra.push(lines.join("\n"));
       }

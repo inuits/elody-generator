@@ -269,7 +269,7 @@ describe("extract: vlacc constructs", () => {
     expect(ttl).toContain("elody:listingCore true");
     expect(ttl).toContain('elody:documentName "WorkInHomeScreen"');
     expect(ttl).toContain('elody:cardKey "typePill"');
-    expect(ttl).toContain('elody:source elody:RepeatableMetadataSource ;');
+    expect(ttl).toMatch(/elody:source elody:RepeatableMetadataSource [;\]]/);
     expect(ttl).toContain('elody:repeatableMetadataKey "isbn"');
     expect(ttl).toContain('elody:source elody:ParentRootSource');
     expect(ttl).toContain('elody:parentRelationType "refParentEntity"');
@@ -395,8 +395,8 @@ describe("extract: results selected inline", () => {
     expect(ttl).toContain('[ elody:graphqlType "Person" ; sh:order 1 ; elody:listing ui:PersonInGetAuthorsUi ]');
     expect(ttl).toContain('[ elody:graphqlType "Corporation" ; sh:order 2 ; elody:fragment "minimalCorporation" ; elody:listing ui:CorporationInGetAuthorsUi ]');
     expect(ttl).toMatch(/ui:PersonInGetAuthorsUi\n  a elody:EntityUi ;\n  elody:graphqlType "Person" ;\n  elody:documentName "PersonInGetAuthors" ;\n  elody:emit "inline" ;/);
-    expect(ttl).toContain('elody:source elody:RelationMetadataSource ;');
-    expect(ttl).toContain('elody:relationKey "refAuthors" ;\n    elody:readsHost true ;');
+    expect(ttl).toMatch(/elody:source elody:RelationMetadataSource [;\]]/);
+    expect(ttl).toMatch(/elody:relationKey "refAuthors" ;\s+elody:readsHost true [;\]]/);
     expect(ttl).toContain('elody:cardField "relationRootData" ;\n    elody:cardEditable true ;');
     expect(ttl).toContain('elody:clientInputField "rolesTypeField"');
     expect(ttl).toMatch(/ui:CorporationInGetAuthorsUi\n(?:.*\n)*?.*elody:readsValue false/);
