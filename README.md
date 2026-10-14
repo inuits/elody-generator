@@ -25,7 +25,7 @@ A UI declaration uses the W3C **SHACL 1.2 UI** vocabulary (`shui:`) and
   elody-common: `ui/elody-ui.ttl` (namespace `https://elody.eu/ns/ui#`, imports
   shui + dash) says what a declaration may say; `ui/elody-ui.shapes.ttl` says
   what a valid declaration looks like. It is a dependency
-  (`github:inuits/elody-ontology#v0.3.0`, pinned to the tag). The generator
+  (`github:inuits/elody-ontology#v0.4.0`, pinned to the tag). The generator
   reads it through `ELODY_ONTOLOGY` when set (to try an unreleased change in a
   checkout), else the installed `elody-ontology` package, else the checkout at
   the root of elody-common.
