@@ -11,7 +11,7 @@ backlog drives the work on the ontology and the generator.
 
 End result:
 
-1. `elody-declarations/clients/<client>/*.ui.ttl`: one declaration per client, valid
+1. `elody-declarations/clients/<client>/ui/`: one declaration per client, as files laid out like its queries, valid
    against the meta-shapes of `elody-ontology`.
 2. A comparison report per client and per document: equal, differs, or out of scope
    (with a gap reference).

@@ -6,6 +6,7 @@
  * untouched: nothing to read, nothing written.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
+import { declarationFiles, isDeclarationDir, loadDeclaration } from "./declarationFiles.js";
 import { dirname, join, relative } from "path";
 import type { UiEntity } from "./model.js";
 import { Ontology, defaultOntology } from "./ontology.js";
@@ -45,10 +46,10 @@ export const DECLARATION_DIR = "src/ui";
 export function findDeclaration(root: string): string | undefined {
   const dir = join(root, DECLARATION_DIR);
   if (!existsSync(dir)) return undefined;
-  const found = readdirSync(dir)
-    .filter((name) => name.endsWith(".ui.ttl"))
-    .sort();
-  return found.length ? join(DECLARATION_DIR, found[0]) : undefined;
+  // one file: that file; several, or files in subdirectories laid out like the queries: the directory as one graph
+  const found = declarationFiles(dir);
+  if (!found.length) return undefined;
+  return found.length === 1 && !found[0].includes("/") ? join(DECLARATION_DIR, found[0]) : DECLARATION_DIR;
 }
 
 export const fileTargetFor = (graphqlType: string): string =>
@@ -82,7 +83,7 @@ export async function generate(options: GenerateOptions): Promise<GenerateResult
   const declaration = options.declaration ?? findDeclaration(root);
   if (!declaration) return { entities: [], warnings: [], changed: [], clean: true };
 
-  const ttl = readFileSync(join(root, declaration), "utf-8");
+  const ttl = loadDeclaration(join(root, declaration));
   const { entities, warnings, translations, inputFields, sources } = await readUiDeclaration(ttl, ontology);
   const changed: string[] = [];
 

@@ -11,6 +11,7 @@
  * read and tidied, not committed as it comes.
  */
 import { Kind, parse, print } from "graphql";
+import { declarationFileFor } from "./declarationFiles.js";
 import { PLATFORM_DOCUMENTS } from "./platform.js";
 import type { ArgumentNode, FieldNode, FragmentDefinitionNode, InlineFragmentNode, ObjectValueNode, OperationDefinitionNode, SelectionNode, SelectionSetNode, ValueNode } from "graphql";
 import { readDefinitions, type Definition, type QueryFile } from "./compare.js";
@@ -28,6 +29,8 @@ export type ExtractOptions = {
 };
 
 export type ExtractResult = { ttl: string; notes: string[]; types: string[] };
+/** the declaration as files laid out like the client's queries (entities/work.ui.ttl, <client>.ui.ttl) */
+export type ExtractFilesResult = { files: Map<string, string>; notes: string[]; types: string[] };
 
 // -- AST helpers ---------------------------------------------------------------
 
@@ -2301,6 +2304,67 @@ export class Extractor {
 
   // -- writing ----------------------------------------------------------------
 
+  /** The client query file an entity was read from: its own, else its anchor fragment's, else none (a shared node). */
+  sourceFileOf(entity: Entity): string | undefined {
+    if (entity.filePath) return entity.filePath;
+    const anchor = this.anchorName(entity.documentName);
+    return anchor ? this.definitions.get(anchor)?.file : undefined;
+  }
+
+  /** The declaration as one file per client query file, laid out like the queries; stubs go with the platform file, else _shared.ui.ttl. */
+  writeFiles(entities: Entity[], options: ExtractOptions): Map<string, string> {
+    const groups = new Map<string, Entity[]>();
+    for (const entity of entities) {
+      const source = this.sourceFileOf(entity);
+      const file = source ? declarationFileFor(source) : "_shared.ui.ttl";
+      groups.set(file, [...(groups.get(file) ?? []), entity]);
+    }
+    const platform = entities.find((e) => e.app);
+    const stubsFile = platform?.filePath ? declarationFileFor(platform.filePath) : "_shared.ui.ttl";
+    const files = new Map<string, string>();
+    const formNodes = new Set<string>();
+    // a node is declared once: the first file that declares it keeps it (a flow declared on its type and named by the menu, a stub)
+    const declared = new Set<string>();
+    const once = (text: string): string => {
+      const kept: string[] = [];
+      for (const block of text.split("\n\n")) {
+        const subject = /(?:^|\n)(ui:[\w.-]+)\s*\n\s+\S/.exec(block)?.[1];
+        if (subject && declared.has(subject)) continue;
+        if (subject) declared.add(subject);
+        kept.push(block);
+      }
+      return kept.join("\n\n");
+    };
+    for (const [file, group] of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+      const out = [...this.prefixes(options), `# Extracted by elody-ui extract${options.source ? ` from ${options.source}` : ""}: a proposal in the current terms, to be read and tidied.`, ""];
+      for (const entity of group) out.push(once(this.writeEntity(entity, formNodes)), "");
+      files.set(file, out.join("\n"));
+    }
+    const stubs = [...this.stubs].filter((stub) => !formNodes.has(stub) && !declared.has(`ui:${stub}`));
+    if (stubs.length) {
+      const out = [files.get(stubsFile) ?? [...this.prefixes(options), ""].join("\n")];
+      for (const stub of stubs) out.push(`# a document declared elsewhere (the platform document, or hand-written)`, `ui:${stub}`, `  elody:queryName ${q(stub)} .`, "");
+      files.set(stubsFile, out.join("\n"));
+    }
+    return files;
+  }
+
+  private prefixes(options: ExtractOptions): string[] {
+    const em = options.keyNamespace ?? "https://elody.io/ns/metadata#";
+    const ui = options.namespace ?? "urn:elody:extract#";
+    return [
+      "@prefix elody:  <https://elody.eu/ns/ui#> .",
+      "@prefix sh:     <http://www.w3.org/ns/shacl#> .",
+      "@prefix shui:   <http://www.w3.org/ns/shacl-ui/> .",
+      "@prefix dash:   <http://datashapes.org/dash#> .",
+      "@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .",
+      "@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .",
+      `@prefix ui:     <${ui}> .`,
+      `@prefix em:     <${em}> .`,
+      "",
+    ];
+  }
+
   write(entities: Entity[], options: ExtractOptions): string {
     const em = options.keyNamespace ?? "https://elody.io/ns/metadata#";
     const ui = options.namespace ?? "urn:elody:extract#";
@@ -3803,6 +3867,18 @@ export class Extractor {
 
 /** A declaration proposal for every type the query files define. */
 export function extractDeclaration(files: QueryFile[], options: ExtractOptions = {}): ExtractResult {
+  const { extractor, entities, types } = extractEntities(files, options);
+  const ttl = extractor.write(entities, options);
+  return { ttl, notes: extractor.notes, types };
+}
+
+/** The declaration as files laid out like the client's queries. */
+export function extractDeclarationFiles(files: QueryFile[], options: ExtractOptions = {}): ExtractFilesResult {
+  const { extractor, entities, types } = extractEntities(files, options);
+  return { files: extractor.writeFiles(entities, options), notes: extractor.notes, types };
+}
+
+function extractEntities(files: QueryFile[], options: ExtractOptions): { extractor: Extractor; entities: Entity[]; types: string[] } {
   const ontology = options.ontology ?? defaultOntology();
   const { definitions, errors } = readDefinitions(files);
   const extractor = new Extractor(definitions, ontology);
@@ -3822,6 +3898,5 @@ export function extractDeclaration(files: QueryFile[], options: ExtractOptions =
   entities.push(...extractor.orphans(entities));
   // the listings synthesised for results selected inline, declared after the types that led to them
   for (let name = extractor.inlineNames.shift(); name !== undefined; name = extractor.inlineNames.shift()) entities.push(extractor.entity(name));
-  const ttl = extractor.write(entities, options);
-  return { ttl, notes: extractor.notes, types };
+  return { extractor, entities, types };
 }

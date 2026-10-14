@@ -46,17 +46,20 @@ A UI declaration uses the W3C **SHACL 1.2 UI** vocabulary (`shui:`) and
 ## Commands
 
 ```bash
-elody-ui generate [--root DIR]     # src/ui/*.ui.ttl -> src/queries/entities/*.queries.ts
+elody-ui generate [--root DIR]     # src/ui/ (one *.ui.ttl, or files laid out like the queries) -> src/queries/entities/*.queries.ts
 elody-ui check    [--root DIR]     # drift + meta-shapes; exit 1 on either
-elody-ui validate FILE.ui.ttl      # meta-shapes only
+elody-ui validate FILE.ui.ttl|DIR  # meta-shapes only
 elody-ui migrate  FILE.ui.ttl --out NEW.ui.ttl   # retired dialect -> 0.1
-elody-ui compare  FILE.ui.ttl CLIENT/src [--scope scope.json] [--json report.json]
+elody-ui compare  FILE.ui.ttl|DIR CLIENT/src [--scope scope.json] [--json report.json]
                                    # the generated GraphQL against the client's, per definition
-elody-ui extract  CLIENT/src --out FILE.ui.ttl [--namespace IRI]
+elody-ui extract  CLIENT/src --out FILE.ui.ttl|DIR [--namespace IRI]   # DIR: one file per query file (entities/<type>.ui.ttl, <client>.ui.ttl) + extract-notes.txt
                                    # a declaration proposal from the client's GraphQL (the reverse)
 ```
 
-A client **without** `src/ui/*.ui.ttl` is untouched by `generate` and passes
+A declaration is one file or a directory of files read as one graph, laid out
+like the queries (`entities/work.ui.ttl` for `queries/entities/work.queries.ts`,
+`<client>.ui.ttl` for the platform file); a node declared in two files is
+refused. A client **without** `src/ui/*.ui.ttl` is untouched by `generate` and passes
 `check`: nothing to read, nothing written. That is the per-client switch.
 Per entity, `elody:emit "file"` generates the whole document and `"regions"`
 splices generated blocks between `# >>> generated:<id>` / `# <<< generated:<id>`

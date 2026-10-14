@@ -13,6 +13,7 @@
  * scope file, which names the gap that explains why).
  */
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync } from "fs";
+import { isDeclarationDir, loadDeclaration } from "./declarationFiles.js";
 import { tmpdir } from "os";
 import { basename, dirname, join, relative } from "path";
 import { Kind, parse, print, visit } from "graphql";
@@ -526,10 +527,11 @@ export type CompareOptions = {
  */
 export async function compareClient(options: CompareOptions): Promise<CompareReport> {
   const root = mkdtempSync(join(tmpdir(), "elody-compare-"));
-  const ttl = readFileSync(options.declaration, "utf-8");
-  const declaration = join("src", "ui", basename(options.declaration));
-  mkdirSync(join(root, dirname(declaration)), { recursive: true });
-  cpSync(options.declaration, join(root, declaration));
+  // a file, or a directory of files read as one graph
+  const ttl = loadDeclaration(options.declaration);
+  const declaration = isDeclarationDir(options.declaration) ? join("src", "ui") : join("src", "ui", basename(options.declaration));
+  mkdirSync(join(root, isDeclarationDir(options.declaration) ? declaration : dirname(declaration)), { recursive: true });
+  cpSync(options.declaration, join(root, declaration), { recursive: true });
 
   const { entities } = await readUiDeclaration(ttl, options.ontology);
   for (const entity of entities) {
