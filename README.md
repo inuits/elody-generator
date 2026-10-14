@@ -25,7 +25,7 @@ A UI declaration uses the W3C **SHACL 1.2 UI** vocabulary (`shui:`) and
   elody-common: `ui/elody-ui.ttl` (namespace `https://elody.eu/ns/ui#`, imports
   shui + dash) says what a declaration may say; `ui/elody-ui.shapes.ttl` says
   what a valid declaration looks like. It is a dependency
-  (`github:inuits/elody-ontology#v0.4.0`, pinned to the tag). The generator
+  (`github:inuits/elody-ontology#v0.5.0`, pinned to the tag). The generator
   reads it through `ELODY_ONTOLOGY` when set (to try an unreleased change in a
   checkout), else the installed `elody-ontology` package, else the checkout at
   the root of elody-common.
@@ -116,6 +116,20 @@ generated again, every covered document compares equal and nothing differs.
 The proposal is a starting point to read and tidy, not a result to commit as
 it comes.
 
+The extractor writes the **compact form**: a short node on one line, and
+nothing the meta-shapes already state as a default. A property shape without
+`elody:labelKey` and without label text is labelled `metadata.labels.<key>`
+(the key in kebab-case, `elody:defaultRule`); `elody:collapsed` defaults to
+`false` (`sh:defaultValue`); `sh:name` is not written. What a type reads and
+shows is three lists (`elody:listingFields`, `elody:detailFields`,
+`elody:cardFields`) when that is shorter than a flag per property; a bulk
+operation's context is one of the platform's presets
+(`elody:ReadModeSomeSelectedContext`, ...) when it matches; an operation
+several types declare identically is one named node in `_shared.ui.ttl`,
+referenced from each. An explicit declaration is as valid and renders the
+same; `elody-ui expand` writes every default back for a tool that needs the
+explicit graph.
+
 ## Compatibility levels (epic #165964)
 
 - **L0** — plain SHACL Core renders. Every widget choice (create forms in the
@@ -183,14 +197,17 @@ Whatever Elody cannot render is listed as a gap on the field.
   is read with a warning; `elody-ui migrate --translations src/translations`
   rewrites it and fills `sh:name` per language from the client's bundles.
 
-## What a type reads and carries (ontology 0.3.0)
+## What a type reads and carries (ontology 0.5.0)
 
 - `elody:alias` on a property shape reads the value under another GraphQL
   field name (`title: keyValue(key: "email")`); several shapes may share one
   `sh:path` under different aliases. A panel shows the field once, described
   by the shape without an alias.
 - `elody:detailOnly true` keeps a field out of the listing fragment's initial
-  values and off the card; the detail fragment reads every property.
+  values and off the card; the detail fragment reads every property. The same
+  once per type: `elody:listingFields`, `elody:detailFields` and
+  `elody:cardFields` list what is read and shown, and the flags follow (an
+  explicit flag wins).
 - `elody:sortLabelKey` and `elody:sortOrder` give a sort option its own label
   and position; without them the sortable properties sort in their own order
   under their labels.
