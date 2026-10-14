@@ -13,8 +13,8 @@ import { formatIssue, validateDeclaration } from "../src/validate.js";
 
 describe("an interface and its shared fragments", () => {
   it("conforms, renders no listing but the shared fragments", async () => {
-    const { VOCABULARY_PATH } = await import("../src/ontology.js");
-    const fixture = readFileSync(join(VOCABULARY_PATH, "..", "..", "tests", "fixtures", "ui", "interface.ui.ttl"), "utf-8");
+    const { fixturesDir } = await import("../src/ontology.js");
+    const fixture = readFileSync(join(fixturesDir(), "interface.ui.ttl"), "utf-8");
     expect((await validateDeclaration(fixture)).issues.map(formatIssue)).toEqual([]);
     const { entities, warnings } = await readUiDeclaration(fixture);
     expect(warnings.map((w) => w.message)).toEqual([]);

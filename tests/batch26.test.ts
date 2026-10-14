@@ -13,8 +13,8 @@ import { formatIssue, validateDeclaration } from "../src/validate.js";
 
 describe("comments element", () => {
   it("conforms and renders the comments fixture", async () => {
-    const { VOCABULARY_PATH } = await import("../src/ontology.js");
-    const fixture = readFileSync(join(VOCABULARY_PATH, "..", "..", "tests", "fixtures", "ui", "comments.ui.ttl"), "utf-8");
+    const { fixturesDir } = await import("../src/ontology.js");
+    const fixture = readFileSync(join(fixturesDir(), "comments.ui.ttl"), "utf-8");
     expect((await validateDeclaration(fixture)).issues.map(formatIssue)).toEqual([]);
     const { entities, warnings } = await readUiDeclaration(fixture);
     expect(warnings.map((w) => w.message)).toEqual([]);

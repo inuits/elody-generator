@@ -208,8 +208,8 @@ describe("migrate", () => {
 
 describe("the 0.3.0 fixture of elody-ontology", () => {
   it("conforms here too", async () => {
-    const { VOCABULARY_PATH } = await import("../src/ontology.js");
-    const fixture = readFileSync(join(VOCABULARY_PATH, "..", "..", "tests", "fixtures", "ui", "aliases-and-defaults.ui.ttl"), "utf-8");
+    const { fixturesDir } = await import("../src/ontology.js");
+    const fixture = readFileSync(join(fixturesDir(), "aliases-and-defaults.ui.ttl"), "utf-8");
     const report = await validateDeclaration(fixture);
     expect(report.issues.map(formatIssue)).toEqual([]);
   });

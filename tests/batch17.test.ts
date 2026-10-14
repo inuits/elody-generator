@@ -12,8 +12,8 @@ import { renderEntityFile } from "../src/render.js";
 import { formatIssue, validateDeclaration } from "../src/validate.js";
 
 const fixture = async (name: string) => {
-  const { VOCABULARY_PATH } = await import("../src/ontology.js");
-  const ttl = readFileSync(join(VOCABULARY_PATH, "..", "..", "tests", "fixtures", "ui", name), "utf-8");
+  const { fixturesDir } = await import("../src/ontology.js");
+  const ttl = readFileSync(join(fixturesDir(), name), "utf-8");
   expect((await validateDeclaration(ttl)).issues.map(formatIssue)).toEqual([]);
   const { entities, warnings } = await readUiDeclaration(ttl);
   expect(warnings.map((w) => w.message)).toEqual([]);

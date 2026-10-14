@@ -50,6 +50,19 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+/**
+ * The ontology's fixtures (elody-ontology, tests/fixtures/ui): the published package ships the
+ * vocabulary alone, so the fixtures come from ELODY_ONTOLOGY, else the checkout next to this one,
+ * else the installed package (when it carries them).
+ */
+export function fixturesDir(): string {
+  const chosen = process.env.ELODY_ONTOLOGY;
+  const candidates = [...(chosen ? [chosen] : []), join(moduleRoot, "..", "elody-ontology"), join(moduleRoot, "node_modules", "elody-ontology")];
+  const found = candidates.find((dir) => existsSync(join(dir, "tests", "fixtures", "ui")));
+  if (!found) throw new Error("elody-ontology fixtures not found (looked for tests/fixtures/ui in ELODY_ONTOLOGY, ../elody-ontology and node_modules/elody-ontology)");
+  return join(found, "tests", "fixtures", "ui");
+}
+
 /** The vocabulary: what a declaration may say (elody-ontology, ui/). */
 export const VOCABULARY_PATH = join(vocabularyDir(), "elody-ui.ttl");
 /** The meta-shapes a declaration must conform to (elody-ontology, ui/). */

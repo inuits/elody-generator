@@ -14,8 +14,8 @@ import { formatIssue, validateDeclaration } from "../src/validate.js";
 
 describe("the client's bulk modal dialect", () => {
   it("renders formQuery (singular) and the client's own bulk fragment name", async () => {
-    const { VOCABULARY_PATH } = await import("../src/ontology.js");
-    const fixture = readFileSync(join(VOCABULARY_PATH, "..", "..", "tests", "fixtures", "ui", "legacy-dialect.ui.ttl"), "utf-8");
+    const { fixturesDir } = await import("../src/ontology.js");
+    const fixture = readFileSync(join(fixturesDir(), "legacy-dialect.ui.ttl"), "utf-8");
     expect((await validateDeclaration(fixture)).issues.map(formatIssue)).toEqual([]);
     const { entities, warnings } = await readUiDeclaration(fixture);
     expect(warnings.map((w) => w.message)).toEqual([]);

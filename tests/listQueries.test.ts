@@ -125,8 +125,8 @@ ${users}`;
 
 describe("the 0.3.0 fixture", () => {
   it("conforms with a list query and renders its documents", async () => {
-    const { VOCABULARY_PATH } = await import("../src/ontology.js");
-    const fixture = readFileSync(join(VOCABULARY_PATH, "..", "..", "tests", "fixtures", "ui", "aliases-and-defaults.ui.ttl"), "utf-8");
+    const { fixturesDir } = await import("../src/ontology.js");
+    const fixture = readFileSync(join(fixturesDir(), "aliases-and-defaults.ui.ttl"), "utf-8");
     expect((await validateDeclaration(fixture)).issues.map(formatIssue)).toEqual([]);
     const { entities } = await readUiDeclaration(fixture);
     const user = renderEntityFile(entities.find((entity) => entity.graphqlType === "User")!, "x");

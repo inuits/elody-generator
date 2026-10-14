@@ -13,8 +13,8 @@ import { formatIssue, validateDeclaration } from "../src/validate.js";
 
 describe("values on a relation of the host entity", () => {
   it("conforms and renders relationKey, the host uuid, the direction, the parent key and an editable card field", async () => {
-    const { VOCABULARY_PATH } = await import("../src/ontology.js");
-    const fixture = readFileSync(join(VOCABULARY_PATH, "..", "..", "tests", "fixtures", "ui", "inline-listing.ui.ttl"), "utf-8");
+    const { fixturesDir } = await import("../src/ontology.js");
+    const fixture = readFileSync(join(fixturesDir(), "inline-listing.ui.ttl"), "utf-8");
     expect((await validateDeclaration(fixture)).issues.map(formatIssue)).toEqual([]);
     const { entities, warnings } = await readUiDeclaration(fixture);
     expect(warnings.map((w) => w.message)).toEqual([]);

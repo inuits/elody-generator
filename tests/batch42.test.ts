@@ -13,8 +13,8 @@ import { formatIssue, validateDeclaration } from "../src/validate.js";
 
 describe("hierarchy lists and tagging rich text", () => {
   it("renders the hierarchy list, its single-entity query, the tagging and the transliteration", async () => {
-    const { VOCABULARY_PATH } = await import("../src/ontology.js");
-    const fixture = readFileSync(join(VOCABULARY_PATH, "..", "..", "tests", "fixtures", "ui", "hierarchy-tagging.ui.ttl"), "utf-8");
+    const { fixturesDir } = await import("../src/ontology.js");
+    const fixture = readFileSync(join(fixturesDir(), "hierarchy-tagging.ui.ttl"), "utf-8");
     expect((await validateDeclaration(fixture)).issues.map(formatIssue)).toEqual([]);
     const { entities, warnings } = await readUiDeclaration(fixture);
     expect(warnings.map((w) => w.message)).toEqual([]);

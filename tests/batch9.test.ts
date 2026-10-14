@@ -52,8 +52,8 @@ ${shared}`;
   });
 
   it("conforms and renders the fixture's two forms", async () => {
-    const { VOCABULARY_PATH } = await import("../src/ontology.js");
-    const fixture = readFileSync(join(VOCABULARY_PATH, "..", "..", "tests", "fixtures", "ui", "listing-core.ui.ttl"), "utf-8");
+    const { fixturesDir } = await import("../src/ontology.js");
+    const fixture = readFileSync(join(fixturesDir(), "listing-core.ui.ttl"), "utf-8");
     expect((await validateDeclaration(fixture)).issues.map(formatIssue)).toEqual([]);
     const { entities } = await readUiDeclaration(fixture);
     const work = renderEntityFile(entities[0], "x");

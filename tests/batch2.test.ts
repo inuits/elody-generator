@@ -201,8 +201,8 @@ describe("compare", () => {
 
 describe("the 0.3.0 fixture", () => {
   it("still conforms with the batch-2 terms", async () => {
-    const { VOCABULARY_PATH } = await import("../src/ontology.js");
-    const fixture = readFileSync(join(VOCABULARY_PATH, "..", "..", "tests", "fixtures", "ui", "aliases-and-defaults.ui.ttl"), "utf-8");
+    const { fixturesDir } = await import("../src/ontology.js");
+    const fixture = readFileSync(join(fixturesDir(), "aliases-and-defaults.ui.ttl"), "utf-8");
     const report = await validateDeclaration(fixture);
     expect(report.issues.map(formatIssue)).toEqual([]);
     const { entities, warnings } = await readUiDeclaration(fixture);

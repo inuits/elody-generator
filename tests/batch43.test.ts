@@ -11,8 +11,8 @@ import { formatIssue, validateDeclaration } from "../src/validate.js";
 
 describe("a relation count between bounds", () => {
   it("renders has_min_max_amount_of_relations", async () => {
-    const { VOCABULARY_PATH } = await import("../src/ontology.js");
-    const fixture = readFileSync(join(VOCABULARY_PATH, "..", "..", "tests", "fixtures", "ui", "field-extras.ui.ttl"), "utf-8");
+    const { fixturesDir } = await import("../src/ontology.js");
+    const fixture = readFileSync(join(fixturesDir(), "field-extras.ui.ttl"), "utf-8");
     expect((await validateDeclaration(fixture)).issues.map(formatIssue)).toEqual([]);
     const { entities } = await readUiDeclaration(fixture);
     const out = renderEntityFile(entities[0], "x", entities);
