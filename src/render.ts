@@ -49,6 +49,19 @@ function renderTaggingConfiguration(taggables: M.UiTaggable[], taggingQuery: str
   ];
 }
 
+/** A list element's deep fetch (elody:fetchDeepRelations): its strategy, the types reached, the routes followed and the depth. */
+function renderDeepRelations(deep: NonNullable<M.UiElement["fetchDeepRelations"]>, depth: number): string[] {
+  const routes = deep.routes.map((route) => `{ relation: "${route.relation}", key: [${route.keys.map((k) => `"${k}"`).join(", ")}], entityType: [${route.entityTypes.join(", ")}] }`);
+  return [
+    `${pad(depth)}fetchDeepRelations {`,
+    ...(deep.strategy ? [`${pad(depth + 2)}deepRelationsFetchStrategy(input: ${deep.strategy})`] : []),
+    ...(deep.entityTypes.length ? [`${pad(depth + 2)}entityTypes(input: [${deep.entityTypes.join(", ")}])`] : []),
+    ...(routes.length ? [`${pad(depth + 2)}routeConfig(input: [${routes.join(", ")}]) {`, `${pad(depth + 4)}relation`, `${pad(depth + 4)}key`, `${pad(depth + 4)}entityType`, `${pad(depth + 4)}overviewPage`, `${pad(depth + 2)}}`] : []),
+    ...(deep.recursions !== undefined ? [`${pad(depth + 2)}amountOfRecursions(input: ${deep.recursions})`] : []),
+    `${pad(depth)}}`,
+  ];
+}
+
 /** An info panel next to a field (elody:infoPanel): infoPanel(title: ..., content: ...) { title content }. */
 function infoPanelLines(info: { title?: string; content?: string }, depth: number): string[] {
   const args = [...(info.title !== undefined ? [`title: ${gqlString(info.title)}`] : []), ...(info.content !== undefined ? [`content: ${gqlString(info.content)}`] : [])];
@@ -331,6 +344,7 @@ function renderFilterOptions(options: NonNullable<M.UiFilter["options"]>, indent
     ...(options.key || options.keys?.length
       ? [
           `${pad(indent + 2)}{`,
+          ...(options.lookup ? [`${pad(indent + 4)}lookup: ${lookupLiteral(options.lookup)}`] : []),
           `${pad(indent + 4)}type: text`,
           `${pad(indent + 4)}key: [${(options.keys ?? [options.key]).map((k) => `"${k}"`).join(", ")}]`,
           `${pad(indent + 4)}value: "*"`,
@@ -348,6 +362,7 @@ function renderFilterOptions(options: NonNullable<M.UiFilter["options"]>, indent
         ? [`${pad(indent + 2)}{ type: type, value: ${input.bareValues ? input.value : `"${input.value}"`}${input.operator ? `, operator: ${input.operator}` : ""} }`]
         : [
       `${pad(indent + 2)}{`,
+      ...(input.lookup ? [`${pad(indent + 4)}lookup: ${lookupLiteral(input.lookup)}`] : []),
       `${pad(indent + 4)}type: ${input.kind}`,
       ...(input.key ? [`${pad(indent + 4)}key: ["${input.key}"]`] : []),
       `${pad(indent + 4)}value: ${Array.isArray(input.value) ? `[${input.value.map((v) => (input.bareValues ? v : `"${v}"`)).join(", ")}]` : input.bareValues ? input.value : `"${input.value}"`}`,
@@ -370,6 +385,7 @@ function renderFilterOptions(options: NonNullable<M.UiFilter["options"]>, indent
     `${pad(indent + 2)}match_exact`,
     ...(options.labelKey ? [`${pad(indent + 2)}metadata_key_as_label`] : []),
     ...(options.itemTypes?.length ? [`${pad(indent + 2)}item_types`] : []),
+    ...(options.lookup || options.inputs?.some((input) => input.lookup) ? [`${pad(indent + 2)}lookup {`, `${pad(indent + 4)}from`, `${pad(indent + 4)}local_field`, `${pad(indent + 4)}foreign_field`, `${pad(indent + 4)}as`, `${pad(indent + 2)}}`] : []),
     `${pad(indent)}}`,
   ];
   return { args, fields };
@@ -441,6 +457,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...lookupArgs,
       `${pad(indent + 4)}type: ${filter.kind}`,
       ...(filter.matchersType ? [`${pad(indent + 4)}matchersType: ${filter.matchersType}`] : []),
+      ...(filter.matcherLabels?.length ? [`${pad(indent + 4)}matcherLabels: [${filter.matcherLabels.map((m) => `{ matcher: ${m.matcher}, label: "${m.labelKey}" }`).join(", ")}]`] : []),
       ...(filter.parentKey ? [`${pad(indent + 4)}parentKey: "${filter.parentKey}"`] : []),
       ...(filter.keys ? [`${pad(indent + 4)}key: [${filter.keys.map((k) => `"${k}"`).join(", ")}]`] : filter.key ? [`${pad(indent + 4)}key: ${filter.keyAsList ? `["${filter.key}"]` : `"${filter.key}"`}`] : []),
       ...(filter.aggregation ? [`${pad(indent + 4)}aggregation: "${filter.aggregation}"`] : []),
@@ -468,6 +485,7 @@ export function renderFilterList(filters: M.UiFilter[], indent: number, spreads:
       ...lookupFields,
       `${pad(indent + 4)}type`,
       ...(filter.matchersType ? [`${pad(indent + 4)}matchersType`] : []),
+      ...(filter.matcherLabels?.length ? [`${pad(indent + 4)}matcherLabels {`, `${pad(indent + 6)}matcher`, `${pad(indent + 6)}label`, `${pad(indent + 4)}}`] : []),
       ...(filter.parentKey ? [`${pad(indent + 4)}parentKey`] : []),
       ...(filter.key || filter.keys ? [`${pad(indent + 4)}key`] : []),
       ...(filter.aggregation ? [`${pad(indent + 4)}aggregation`] : []),
@@ -1100,6 +1118,7 @@ export function elementRenderer(entity: M.UiEntity): ElementRenderer {
         `${pad(depth)}${alias}entityListElement {`,
         ...(element.label !== undefined ? [`${pad(depth + 2)}label(input: "${element.label}")`] : []),
         ...(element.displayCondition ? [`${pad(depth + 2)}displayCondition {`, `${pad(depth + 4)}key(input: "${element.displayCondition.key}")`, ...(element.displayCondition.value !== undefined ? [`${pad(depth + 4)}value(input: "${element.displayCondition.value}")`] : []), `${pad(depth + 2)}}`] : []),
+        ...(element.fetchDeepRelations ? renderDeepRelations(element.fetchDeepRelations, depth + 2) : []),
         ...(element.mediaKind ? [`${pad(depth + 2)}type(input: ${element.mediaKind})`] : []),
         `${pad(depth + 2)}isCollapsed(input: ${element.collapsed ?? false})`,
       ];

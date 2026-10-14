@@ -1104,6 +1104,7 @@ class Parse {
       operator: r.value(node, elody("filterOperator")) || undefined,
       showTime: this.optionalFlag(node, elody("showTime")),
       matchersType: r.value(node, elody("matchersType")) || undefined,
+      matcherLabels: r.nodes(node, elody("matcherLabel")).length ? r.byOrder(r.nodes(node, elody("matcherLabel"))).map((m) => ({ matcher: String(r.value(m, elody("matcher")) ?? ""), labelKey: String(r.value(m, elody("labelKey")) ?? ""), order: r.order(m) })) : undefined,
       lookup: r.node(node, elody("lookup")) ? this.lookup(r.node(node, elody("lookup"))!) : undefined,
       itemTypes: r.literals(node, elody("itemTypes")).length ? r.literals(node, elody("itemTypes")) : undefined,
       defaultMatcher: r.value(node, elody("defaultMatcher")) || undefined,
@@ -1115,6 +1116,7 @@ class Parse {
         ? {
             type: r.value(node, elody("optionsType")) || undefined,
             key: r.value(node, elody("optionsKey")) || undefined,
+            lookup: r.node(node, elody("optionsLookup")) ? this.lookup(r.node(node, elody("optionsLookup"))!) : undefined,
             matchExact: this.optionalFlag(node, elody("optionsMatchExact")),
             distinctBy: r.value(node, elody("optionsDistinctBy")) || undefined,
             operator: r.value(node, elody("optionsOperator")) || undefined,
@@ -1257,6 +1259,7 @@ class Parse {
       matchExact: this.optionalFlag(node, elody("inputMatchExact")),
       distinctBy: r.value(node, elody("inputDistinctBy")) || undefined,
       resolveDefaultValueToOptionIds: this.optionalFlag(node, elody("inputResolveDefaultValueToOptionIds")),
+      lookup: r.node(node, elody("lookup")) ? this.lookup(r.node(node, elody("lookup"))!) : undefined,
       operator: r.value(node, elody("inputOperator")) || undefined,
       bareValues: this.optionalFlag(node, elody("bareValues")),
       valueMappings: this.valueMappings(node),
@@ -1871,6 +1874,15 @@ class Parse {
       disableLibraryBar: r.literal(element, elody("disableLibraryBar")) === true,
       enableNavigation: this.optionalFlag(element, elody("enableNavigation")),
       displayCondition: r.value(element, elody("displayConditionKey")) ? { key: String(r.value(element, elody("displayConditionKey"))), value: r.value(element, elody("displayConditionValue")) || undefined } : undefined,
+      fetchDeepRelations: ((deep) =>
+        deep
+          ? {
+              strategy: r.value(deep, elody("strategy")) || undefined,
+              entityTypes: r.literals(deep, elody("entityTypes")),
+              recursions: typeof r.literal(deep, elody("recursions")) === "number" ? (r.literal(deep, elody("recursions")) as number) : undefined,
+              routes: r.byOrder(r.nodes(deep, elody("deepRoute"))).map((route) => ({ relation: String(r.value(route, elody("relation")) ?? ""), keys: r.node(route, elody("keys")) ? r.list(r.node(route, elody("keys"))!) : [], entityTypes: r.literals(route, elody("entityTypes")), order: r.order(route) })),
+            }
+          : undefined)(r.node(element, elody("fetchDeepRelations"))),
       libraryMode: r.value(element, elody("libraryMode")) || undefined,
       mediaKind: this.enumValue(element, elody("mediaKind"), elody("MediaElementKind")),
       customQueryFilters,

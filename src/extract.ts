@@ -186,6 +186,7 @@ type Element =
       enableNavigation?: boolean;
       libraryMode?: string;
   displayCondition?: { key: string; value?: string };
+  fetchDeepRelations?: { strategy?: string; entityTypes: string[]; recursions?: number; routes: { relation: string; keys: string[]; entityTypes: string[] }[] };
       collapsed: boolean;
       entityTypes: string[];
       relationType?: string;
@@ -257,6 +258,7 @@ type Filter = {
   options?: {
     type?: string;
     key?: string;
+    lookup?: Lookup;
     keys?: string[];
     itemTypes?: string[];
     labelKey?: string;
@@ -266,7 +268,7 @@ type Filter = {
     typeOperator?: string;
     typeBare?: boolean;
     /** the inputs beyond the search and the type, in order */
-    inputs?: { kind?: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; resolveDefaultValueToOptionIds?: boolean; operator?: string; bareValues?: boolean; valueMappings?: ValueMapping[] }[];
+    inputs?: { kind?: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; resolveDefaultValueToOptionIds?: boolean; operator?: string; lookup?: Lookup; bareValues?: boolean; valueMappings?: ValueMapping[] }[];
   };
   itemTypes?: string[];
   defaultMatcher?: string;
@@ -283,6 +285,7 @@ type Filter = {
   operator?: string;
   showTime?: boolean;
   matchersType?: string;
+  matcherLabels?: { matcher: string; labelKey: string }[];
   lookup?: Lookup;
 };
 
@@ -1600,7 +1603,7 @@ export class Extractor {
   }
 
   private list(element: FieldNode, where: string, entity: Entity): Element {
-    const known = ["label", "isCollapsed", "type", "entityTypes", "relationType", "searchInputType", "customQuery", "customQueryRelationType", "customQueryFilters", "customBulkOperations", "customQueryEntityPickerList", "customQueryEntityPickerListFilters", "viewMode", "can", "hideInHistory", "disableLibraryBar", "enableNavigation", "baseLibraryMode", "addEntitiesToForms", "cropMediafileCoordinatesKey", "actionsOnResult", "displayCondition"];
+    const known = ["label", "isCollapsed", "type", "entityTypes", "relationType", "searchInputType", "customQuery", "customQueryRelationType", "customQueryFilters", "customBulkOperations", "customQueryEntityPickerList", "customQueryEntityPickerListFilters", "viewMode", "can", "hideInHistory", "disableLibraryBar", "enableNavigation", "baseLibraryMode", "addEntitiesToForms", "cropMediafileCoordinatesKey", "actionsOnResult", "displayCondition", "fetchDeepRelations"];
     for (const field of fields(element.selectionSet))
       if (!known.includes(alias(field)) && !known.includes(field.name.value)) this.note(`${where}: list element ${alias(element)} field ${alias(field)} has no term; left out`);
     const types = child(element, "entityTypes");
@@ -1639,6 +1642,19 @@ export class Extractor {
       disableLibraryBar: input(child(element, "disableLibraryBar")) === "true",
       enableNavigation: input(child(element, "enableNavigation")) === undefined ? undefined : input(child(element, "enableNavigation")) === "true",
       displayCondition: child(element, "displayCondition") ? { key: input(child(child(element, "displayCondition")!, "key")) ?? "", value: input(child(child(element, "displayCondition")!, "value")) } : undefined,
+      fetchDeepRelations: ((deep) => {
+        if (!deep) return undefined;
+        for (const f of fields(deep.selectionSet)) if (!["deepRelationsFetchStrategy", "entityTypes", "routeConfig", "amountOfRecursions"].includes(f.name.value)) this.note(`${where}: list ${alias(element)} deep relations field ${f.name.value} has no term; left out`);
+        const routeField = child(deep, "routeConfig");
+        const types = child(deep, "entityTypes");
+        const recursions = input(child(deep, "amountOfRecursions"));
+        return {
+          strategy: input(child(deep, "deepRelationsFetchStrategy")),
+          entityTypes: list(types ? argument(types, "input") : undefined).map((v) => scalar(v) ?? ""),
+          recursions: recursions === undefined ? undefined : Number(recursions),
+          routes: list(routeField ? argument(routeField, "input") : undefined).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT).map((o) => ({ relation: scalar(objectField(o, "relation")) ?? "", keys: list(objectField(o, "key")).map((v) => scalar(v) ?? ""), entityTypes: list(objectField(o, "entityType")).map((v) => scalar(v) ?? "") })),
+        };
+      })(child(element, "fetchDeepRelations")),
       libraryMode: input(child(element, "baseLibraryMode")),
       collapsed: input(child(element, "isCollapsed")) === "true",
       entityTypes: list(types ? argument(types, "input") : undefined).map((v) => scalar(v) ?? ""),
@@ -1769,6 +1785,8 @@ export class Extractor {
       filter.operator = str(field, "operator");
       filter.showTime = str(field, "showTimeForDateFilter") === undefined ? undefined : str(field, "showTimeForDateFilter") === "true";
       filter.matchersType = str(field, "matchersType");
+      const matcherLabels = argument(field, "matcherLabels");
+      if (matcherLabels) filter.matcherLabels = list(matcherLabels).filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT).map((o) => ({ matcher: scalar(objectField(o, "matcher")) ?? "", labelKey: scalar(objectField(o, "label")) ?? "" }));
       const lookup = argument(field, "lookup");
       if (lookup?.kind === Kind.OBJECT)
         filter.lookup = this.lookupOf(lookup);
@@ -1787,6 +1805,7 @@ export class Extractor {
           filter.options = {
             type: typeValue,
             key: text ? scalar(list(objectField(text, "key"))[0]) : undefined,
+            lookup: text && objectField(text, "lookup")?.kind === Kind.OBJECT ? this.lookupOf(objectField(text, "lookup") as ObjectValueNode) : undefined,
             keys: text && list(objectField(text, "key")).length > 1 ? list(objectField(text, "key")).map((v) => scalar(v) ?? "") : undefined,
             itemTypes: text && objectField(text, "item_types") ? list(objectField(text, "item_types")).map((v) => scalar(v) ?? "") : undefined,
             labelKey: text ? scalar(objectField(text, "metadata_key_as_label")) : undefined,
@@ -1808,6 +1827,7 @@ export class Extractor {
                     distinctBy: scalar(objectField(o, "distinct_by")),
                     resolveDefaultValueToOptionIds: flag(o, "resolveDefaultValueToOptionIds"),
                     operator: scalar(objectField(o, "operator")),
+                  lookup: objectField(o, "lookup")?.kind === Kind.OBJECT ? this.lookupOf(objectField(o, "lookup") as ObjectValueNode) : undefined,
                   };
                 })
               : undefined,
@@ -1824,7 +1844,7 @@ export class Extractor {
           .filter((v): v is ObjectValueNode => v.kind === Kind.OBJECT)
           .map((option) => ({ label: scalar(objectField(option, "label")) ?? "", value: scalar(objectField(option, "value")) ?? "" }));
       for (const a of field.arguments ?? [])
-        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "aggregation", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator", "showTimeForDateFilter", "matchersType", "lookup", "options", "itemTypes", "defaultMatcher", "allowedMatchers", "facets", "limitConfig"].includes(a.name.value))
+        if (!["type", "key", "label", "isDisplayedByDefault", "parentKey", "aggregation", "advancedFilterInputForRetrievingOptions", "filterOptionsMapping", "selectionOption", "operator", "showTimeForDateFilter", "matchersType", "lookup", "options", "itemTypes", "defaultMatcher", "allowedMatchers", "facets", "limitConfig", "matcherLabels"].includes(a.name.value))
           this.note(`${where}: filter ${alias(field)} argument ${a.name.value} has no term; left out`);
       result.push(filter);
     }
@@ -2394,6 +2414,7 @@ export class Extractor {
     if (f.operator) lines.push(`    elody:filterOperator ${q(f.operator)} ;`);
     if (f.showTime !== undefined) lines.push(`    elody:showTime ${f.showTime} ;`);
     if (f.matchersType) lines.push(`    elody:matchersType ${q(f.matchersType)} ;`);
+    for (const [i, m] of (f.matcherLabels ?? []).entries()) lines.push(`    elody:matcherLabel [ sh:order ${i + 1} ; elody:matcher ${q(m.matcher)} ; elody:labelKey ${q(m.labelKey)} ] ;`);
     if (f.lookup)
       lines.push(`    elody:lookup ${this.lookupNode(f.lookup)} ;`);
     if (f.selectionSpread) lines.push(`    elody:selectionSpread ${q(f.selectionSpread)} ;`);
@@ -2410,6 +2431,7 @@ export class Extractor {
       if (f.options.operator) lines.push(`    elody:optionsOperator ${q(f.options.operator)} ;`);
       if (f.options.typeOperator) lines.push(`    elody:optionsTypeOperator ${q(f.options.typeOperator)} ;`);
       if (f.options.typeBare) lines.push(`    elody:optionsTypeBare true ;`);
+      if (f.options.lookup) lines.push(`    elody:optionsLookup ${this.lookupNode(f.options.lookup)} ;`);
       for (const [i, input] of (f.options.inputs ?? []).entries()) {
         const parts = [`sh:order ${i + 1}`, `elody:inputKind ${input.kind ?? "elody:TextFilter"}`, ...(input.key ? [`elody:key ${q(input.key)}`] : []), `elody:value ${Array.isArray(input.value) ? `( ${input.value.map(q).join(" ")} )` : q(input.value)}`];
         if (input.distinctBy) parts.push(`elody:inputDistinctBy ${q(input.distinctBy)}`);
@@ -2417,6 +2439,7 @@ export class Extractor {
         if (input.matchExact !== undefined) parts.push(`elody:inputMatchExact ${input.matchExact}`);
         if (input.operator) parts.push(`elody:inputOperator ${q(input.operator)}`);
         if (input.bareValues) parts.push(`elody:bareValues true`);
+        if (input.lookup) parts.push(`elody:lookup ${this.lookupNode(input.lookup)}`);
         for (const [j, m] of (input.valueMappings ?? []).entries()) parts.push(`elody:valueMapping [ sh:order ${j + 1} ; elody:value ( ${m.values.map(q).join(" ")} ) ; elody:mapping ${q(m.mapping)} ]`);
         lines.push(`    elody:optionsInput [ ${parts.join(" ; ")} ] ;`);
       }
@@ -3108,6 +3131,12 @@ export class Extractor {
     if (element.displayCondition) {
       l.push(`${pad}elody:displayConditionKey ${q(element.displayCondition.key)} ;`);
       if (element.displayCondition.value !== undefined) l.push(`${pad}elody:displayConditionValue ${q(element.displayCondition.value)} ;`);
+    }
+    if (element.fetchDeepRelations) {
+      const d = element.fetchDeepRelations;
+      const parts = [...(d.strategy ? [`elody:strategy ${q(d.strategy)}`] : []), ...d.entityTypes.map((t) => `elody:entityTypes ${q(t)}`), ...(d.recursions !== undefined ? [`elody:recursions ${d.recursions}`] : [])];
+      for (const [i, route] of d.routes.entries()) parts.push(`elody:deepRoute [ sh:order ${i + 1} ; elody:relation ${q(route.relation)}${route.keys.length ? ` ; elody:keys ( ${route.keys.map(q).join(" ")} )` : ""}${route.entityTypes.map((t) => ` ; elody:entityTypes ${q(t)}`).join("")} ]`);
+      l.push(`${pad}elody:fetchDeepRelations [ ${parts.join(" ; ")} ] ;`);
     }
     if (element.libraryMode) l.push(`${pad}elody:libraryMode ${q(element.libraryMode)} ;`);
     if (element.searchInput) l.push(`${pad}elody:searchInput ${element.searchInput} ;`);

@@ -165,6 +165,8 @@ export type UiFilter = {
   options?: {
     type?: string;
     key?: string;
+    /** elody:optionsLookup: the join the option search needs */
+    lookup?: UiLookup;
     /** elody:optionsKeys: several keys on the search; elody:optionsItemTypes, elody:optionsLabelKey on the search too */
     keys?: string[];
     itemTypes?: string[];
@@ -204,6 +206,8 @@ export type UiFilter = {
   showTime?: boolean;
   /** elody:matchersType: which matchers the filter offers */
   matchersType?: string;
+  /** elody:matcherLabel: the labels the filter shows for its matchers */
+  matcherLabels?: { matcher: string; labelKey: string; order: number }[];
   /** elody:lookup: the join the filter needs */
   lookup?: UiLookup;
   label?: string;
@@ -252,7 +256,7 @@ export type UiValueMapping = { values: string[]; mapping: string; order: number 
 /** elody:facet: a facet of a filter (facets), recursive */
 export type UiFacet = { kind?: string; value?: string; key?: string; lookups: UiLookup[]; facets: UiFacet[]; order: number };
 /** elody:optionsInput: a further input of a selection filter's option search; value a string or a list */
-export type UiOptionsInput = { kind: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; /** elody:inputResolveDefaultValueToOptionIds */ resolveDefaultValueToOptionIds?: boolean; operator?: string; order: number; /** elody:bareValues: the values are enum values, written unquoted */ bareValues?: boolean; valueMappings?: UiValueMapping[] };
+export type UiOptionsInput = { kind: string; key: string; value: string | string[]; matchExact?: boolean; distinctBy?: string; /** elody:lookup: the join this input needs */ lookup?: UiLookup; /** elody:inputResolveDefaultValueToOptionIds */ resolveDefaultValueToOptionIds?: boolean; operator?: string; order: number; /** elody:bareValues: the values are enum values, written unquoted */ bareValues?: boolean; valueMappings?: UiValueMapping[] };
 
 /** elody:matchMetadataValue: a metadata key and the value it must hold (matchMetadataValue) */
 export type UiMetadataMatch = { key: string; value: string };
@@ -594,6 +598,8 @@ export type UiElement = {
   libraryMode?: string;
   /** elody:displayConditionKey / elody:displayConditionValue: the element shows when the entity's key holds the value */
   displayCondition?: { key: string; value?: string };
+  /** elody:fetchDeepRelations: entities fetched through several relations */
+  fetchDeepRelations?: { strategy?: string; entityTypes: string[]; recursions?: number; routes: { relation: string; keys: string[]; entityTypes: string[]; order: number }[] };
   searchInputType?: string;
   customBulkOperations?: string;
   pickerList?: string;
