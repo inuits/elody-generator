@@ -67,7 +67,7 @@ describe("parent relations and an optional host", () => {
     expect(notes.filter((n) => n.includes("no term") || n.includes("left out") || n.includes("does not parse"))).toEqual([]);
     expect(out).toContain('elody:parentRelationType "refWork" ;');
     expect(out).toContain("elody:source elody:ParentRelationsSource ;");
-    expect(out).toContain('elody:parentRelation [ sh:order 1 ; elody:parentEntityType "zizo" ; elody:parentKey "vlacc:1|properties.ref_sub_zizos.value" ] ;\n    elody:parentRelation [ sh:order 2 ; elody:parentEntityType "zizo" ; elody:parentKey "vlacc:1|properties.ref_sub_zizos.value" ] ;');
+    expect(out).toMatch(/elody:parentRelation \[ sh:order 1 ; elody:parentEntityType "zizo" ; elody:parentKey "vlacc:1\|properties\.ref_sub_zizos\.value" \] ;\s+elody:parentRelation \[ sh:order 2 ; elody:parentEntityType "zizo" ; elody:parentKey "vlacc:1\|properties\.ref_sub_zizos\.value" \] ;/);
     expect(out).toContain("elody:readsHost true ;\n  elody:hostOptional true ;");
   });
 });

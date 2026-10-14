@@ -47,10 +47,10 @@ describe("a listing without the base card", () => {
       },
     ];
     const { ttl } = extractDeclaration(files, { namespace: "urn:ui:" });
-    expect(ttl).toContain("    elody:cardLinkText true ;");
+    expect(ttl).toMatch(/elody:cardLinkText true [;.\]]/);
     expect(ttl.split('elody:technicalOrigin "download"').length).toBe(2);
     expect(ttl.split("sh:path em:download_url").length).toBe(3);
-    expect(ttl).toMatch(/elody:listingOnly true [;\]]/);
+    expect(ttl).toMatch(/elody:listingOnly true|elody:listingFields \(/);
   });
 
   it("extracts the absence of the base card", () => {

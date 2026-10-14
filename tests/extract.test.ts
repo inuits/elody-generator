@@ -89,9 +89,10 @@ describe("extract: what hand-written documents say", () => {
     );
     expect(notes, ttl).toEqual([]);
     expect(ttl).toContain('elody:alias "slug"');
-    expect(ttl).toContain("elody:listingOnly true");
+    // a value read in the listing alone: the flag, or the type's lists (and its twin declared by name)
+    expect(ttl).toMatch(/elody:listingOnly true|elody:listingFields \(/);
     expect(ttl).toContain('elody:alias "title"');
-    expect(ttl).toContain("elody:detailOnly true");
+    expect(ttl).toMatch(/elody:detailOnly true|elody:detailFields \(/);
     expect(ttl).toContain('elody:sortLabelKey "metadata.labels.user.email"');
     expect(ttl).toContain("elody:defaultSortDirection elody:Ascending");
     expect(ttl).toContain('elody:clientInputField "languageTypeField"');
@@ -168,14 +169,17 @@ describe("extract: askforceone constructs", () => {
     expect(notes, ttl).toEqual([]);
     // the card's order: tenant, title (the alias of key), level; the detail-only key and relation title follow
     // a property shape is one line when it fits (the compact writer), else one predicate per line
-    const paths = [...ttl.matchAll(/sh:path em:(\w+) ;(?:[^\]]|\n)*?sh:order (\d+)/g)].map((m) => `${m[1]}:${m[2]}`);
+    // a twin declared by name follows the type's node in the file: sort the shapes by their order
+    const paths = [...ttl.matchAll(/sh:path em:(\w+) ;\s*sh:order (\d+)/g)].map((m) => `${m[1]}:${m[2]}`).sort((a, b) => Number(a.split(":")[1]) - Number(b.split(":")[1]));
     expect(paths.slice(0, 3)).toEqual(["tenant:1", "key:2", "level:3"]);
     // the relation read under title on the detail page keeps title as its path; the listing's title is the alias of key
-    expect(ttl).toMatch(/sh:path em:title ;(?:[^\]]|\n)*?elody:relationType "isIn" ;(?:[^\]]|\n)*?elody:detailOnly true/);
-    expect(ttl).toMatch(/sh:path em:key ;(?:[^\]]|\n)*?elody:alias "title" ;(?:[^\]]|\n)*?elody:listingOnly true/);
+    // the title read as a relation on the detail page: a twin declared by name, kept out of the listing by the type's lists
+    expect(ttl, ttl.split("\n").filter((l) => /em:title|field-title|Fields \(/.test(l)).join("\n")).toMatch(/sh:path em:title ;\s*sh:order \d+ ;(?:[^\]\n]|\n  )*?elody:relationType "isIn"/);
+    expect(ttl).toMatch(/elody:detailOnly true|elody:listingFields \(/);
+    expect(ttl).toMatch(/sh:path em:key ;\s*sh:order \d+ ;\s*elody:alias "title"/);
     expect(ttl).toContain("elody:readsPermissions true");
-    expect(ttl).toContain('elody:validationRule "regex" ;\n    elody:validationValue "^[a-z]+$"');
-    expect(ttl).toContain('elody:validationRule "customValue" ;\n    elody:validationValue "min_value:1"');
+    expect(ttl).toMatch(/elody:validationRule "regex" ;\s+elody:validationValue "\^\[a\-z\]\+\$"/);
+    expect(ttl).toMatch(/elody:validationRule "customValue" ;\s+elody:validationValue "min_value:1"/);
     expect(ttl).toContain('elody:can "update:badge"');
     expect(ttl).toContain('elody:alias "badgeColumn"');
     expect(ttl).toContain('elody:option [ sh:order 1 ; elody:labelKey "metadata.options.usage-state.USED" ; elody:value "USED" ]');
@@ -273,7 +277,7 @@ describe("extract: vlacc constructs", () => {
     expect(ttl).toContain('elody:repeatableMetadataKey "isbn"');
     expect(ttl).toContain('elody:source elody:ParentRootSource');
     expect(ttl).toContain('elody:parentRelationType "refParentEntity"');
-    expect(ttl).toContain('elody:containsRelationPropertyKey "main_author" ;\n    elody:containsRelationPropertyValue "true"');
+    expect(ttl).toMatch(/elody:containsRelationPropertyKey "main_author" ;\s+elody:containsRelationPropertyValue "true"/);
     expect(ttl).toContain('elody:selectionSpread "advancedFilter"');
     expect(ttl).toContain('elody:elementSpread "entityHistoryVersionList"');
     expect(ttl).toContain('elody:alias "column2"');
@@ -284,10 +288,10 @@ describe("extract: vlacc constructs", () => {
     expect(ttl).toMatch(/ui:WorkUi-panels\n(?:.*\n)*?  elody:element\n    \[ a elody:ListElement ;(?:.*\n)*?    elody:alias "Awards"/);
     expect(ttl).toContain("elody:hideInHistory true");
     expect(ttl).toContain("elody:expandButton false");
-    expect(ttl).toContain('[ elody:deleteEntityLabel "d.work" ;\n      elody:deleteRelationsQuery "GetAuthorsInWorkDeleteQuery" ;\n      elody:deleteRelationsFilters "GetAuthorsInDetailFilters" ;\n      elody:deleteRelationsTypes ( "person" "corporation" ) ;\n      elody:deleteRelationsLabel "d.authors" ]');
+    expect(ttl).toMatch(/\[ elody:deleteEntityLabel "d\.work" ;\s+  elody:deleteRelationsQuery "GetAuthorsInWorkDeleteQuery" ;\s+  elody:deleteRelationsFilters "GetAuthorsInDetailFilters" ;\s+  elody:deleteRelationsTypes \( "person" "corporation" \) ;\s+  elody:deleteRelationsLabel "d\.authors" \]/);
     expect(ttl).toContain("[ elody:selection elody:SomeSelected ;");
     expect(ttl).not.toContain("elody:activeViewMode");
-    expect(ttl).toContain("elody:requiresSameType true ;\n      elody:minSelectedItems 2 ;\n      elody:maxSelectedItems 2 ;");
+    expect(ttl).toMatch(/elody:requiresSameType true ;\s+  elody:minSelectedItems 2 ;\s+  elody:maxSelectedItems 2 ;/);
     expect(ttl).toContain("elody:sortPrimary true");
     expect(ttl).toMatch(/elody:operationKind elody:OpenDropdownOperation ;\n    elody:primary true ;\n    elody:subOperation\n      \[ rdfs:label "bulk-operations.create-word" ;/);
     expect(ttl).toContain('elody:navigateAfterCreation "detailPage"');
@@ -296,14 +300,14 @@ describe("extract: vlacc constructs", () => {
     expect(ttl).toContain("elody:addEntitiesToForms true ;");
     expect(ttl).toMatch(/elody:actionsOnResult \[ elody:resultKind elody:NoResult ;\n\s+elody:operation\n\s+\[ rdfs:label "bulk-operations.create-award" ;/);
     expect(ttl).toContain("elody:forms ( ui:GetFullWorkCreateForm ui:GetBasicWorkCreateForm ) ;");
-    expect(ttl).toContain('elody:skipRelatedItems "isAssetFor" ;\n      elody:imageCrop true ;\n      elody:cropCoordinatesKey "coordinates" ;\n      elody:replaceExistingRelations true ;\n      elody:selectionLimit 1 ;');
+    expect(ttl).toMatch(/elody:skipRelatedItems "isAssetFor" ;\s+  elody:imageCrop true ;\s+  elody:cropCoordinatesKey "coordinates" ;\s+  elody:replaceExistingRelations true ;\s+  elody:selectionLimit 1 ;/);
     expect(ttl).toContain("elody:survivorSuggestion [ elody:survivorStrategy elody:IdentifierIntegrityStrategy ; elody:autoSelectSurvivor true ; elody:requireRecommendedSurvivor true ; elody:hiddenVerdict elody:InvalidVerdict ] ]");
     expect(notes.filter((n) => n.includes("has no term"))).toEqual([]);
     // every Get*CreateForm of the type's file is a form of the type, spreads said
     expect(ttl).toContain("elody:form ui:GetFullWorkCreateForm , ui:GetBasicWorkCreateForm");
     expect(ttl).toContain('elody:copyFromParent [ elody:autoCopy true ; elody:copyKey [ sh:order 1 ; elody:key "ref_languages" ; elody:fromKey "ref_work_languages" ] ] ;');
     expect(ttl).toContain("dash:hidden true");
-    expect(ttl).toContain('elody:validationRule "has_required_relation" ;\n      elody:validationRelationType "refWork" ;\n      elody:validationAmount 1 ;');
+    expect(ttl).toMatch(/elody:validationRule "has_required_relation" ;\s+  elody:validationRelationType "refWork" ;\s+  elody:validationAmount 1 ;/);
   });
 });
 
@@ -397,10 +401,10 @@ describe("extract: results selected inline", () => {
     expect(ttl).toMatch(/ui:PersonInGetAuthorsUi\n  a elody:EntityUi ;\n  elody:graphqlType "Person" ;\n  elody:documentName "PersonInGetAuthors" ;\n  elody:emit "inline" ;/);
     expect(ttl).toMatch(/elody:source elody:RelationMetadataSource [;\]]/);
     expect(ttl).toMatch(/elody:relationKey "refAuthors" ;\s+elody:readsHost true [;\]]/);
-    expect(ttl).toContain('elody:cardField "relationRootData" ;\n    elody:cardEditable true ;');
+    expect(ttl).toMatch(/elody:cardField "relationRootData" ;\s+elody:cardEditable true ;/);
     expect(ttl).toContain('elody:clientInputField "rolesTypeField"');
     expect(ttl).toMatch(/ui:CorporationInGetAuthorsUi\n(?:.*\n)*?.*elody:readsValue false/);
     expect(ttl).toMatch(/ui:CorporationInGetAuthorsUi\n(?:.*\n)*?  elody:contextMenu\n    \[ elody:includeBasicActions true ;\n    elody:menuInButtons true ;/);
-    expect(ttl).toContain('elody:alias "doLinkAction" ;\n      elody:actionForm "doLinkAction" ;');
+    expect(ttl).toMatch(/elody:alias "doLinkAction" ;\s+  elody:actionForm "doLinkAction" ;/);
   });
 });

@@ -775,19 +775,21 @@ class Parse {
       const head = r.node(subject, elody(term));
       return head ? new Set(r.list(head)) : undefined;
     };
-    const listed = (list: Set<string>, property: M.UiProperty) => list.has(property.path ?? "");
+    // an item is a sh:path IRI, matching the shapes of that path, or the node of a shape declared by name (sh:property ui:X), matching that shape alone
+    const named = (node: string) => !node.startsWith("_:") && !node.startsWith("n3-");
+    const listed = (list: Set<string>, property: M.UiProperty, node: string) => list.has(node) || (!named(node) && list.has(property.path ?? ""));
     const listingFields = fieldList("listingFields");
     const detailFields = fieldList("detailFields");
     const cardFields = fieldList("cardFields");
     for (const { node, property } of ordered) {
       if (listingFields && detailFields) {
-        const inListing = listed(listingFields, property);
-        const inDetail = listed(detailFields, property);
+        const inListing = listed(listingFields, property, node);
+        const inDetail = listed(detailFields, property, node);
         if (!r.has(node, elody("detailOnly"))) property.detailOnly = !inListing;
         if (!r.has(node, elody("listingOnly"))) property.listingOnly = inListing && !inDetail;
         if (!r.has(node, elody("readsValue"))) property.readsValue = inListing || inDetail;
       }
-      if (cardFields && !r.has(node, elody("teaser"))) property.teaser = listed(cardFields, property);
+      if (cardFields && !r.has(node, elody("teaser"))) property.teaser = listed(cardFields, property, node);
       if (listingFields || cardFields) property.teaser = property.teaser && !property.detailOnly;
     }
     const pathToKey = new Map(properties.filter((p) => p.path).map((p) => [p.path!, p.key]));

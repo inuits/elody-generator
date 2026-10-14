@@ -2420,15 +2420,16 @@ export class Extractor {
 
   /** the flags of the properties being written follow from the type's lists (elody:listingFields, ...): left out */
   private flagsByLists = false;
+  /** the twin shapes of the entity being written (two shapes of one key): declared by name, so a list can tell them apart */
+  private twinNodes = new Map<Property, string>();
+  private namedShapes: string[] = [];
 
   /** The three lists of the compact form, when they are shorter than the flags on the properties and no two shapes of one key differ. */
   private fieldLists(properties: Property[]): string[] | undefined {
     const shape = (p: Property) => `${p.inListing}|${p.inDetail}|${p.readsValue}|${p.teaser}`;
     const byKey = new Map<string, Set<string>>();
     for (const p of properties) (byKey.get(p.key) ?? byKey.set(p.key, new Set()).get(p.key)!).add(shape(p));
-    // two shapes of one key read differently (an alias twin): a list by path cannot tell them apart, and an alias is unique per
-    // fragment only (the listing's "title" may be the detail's key "title"): the flags say it
-    if ([...byKey.values()].some((shapes) => shapes.size > 1)) return undefined;
+    // two shapes of one key (an alias twin) are declared by name and listed by their node, so the lists tell them apart
     // a value read in the listing but not read at all (a spread provides it) has no list form: the flags say it
     if (properties.some((p) => p.inListing && !p.readsValue)) return undefined;
     const flags = properties.reduce((n, p) => n + (!p.inListing ? 1 : 0) + (p.inListing && !p.inDetail && p.readsValue ? 1 : 0) + (!p.readsValue ? 1 : 0) + (!p.teaser && p.inListing ? 1 : 0), 0);
@@ -2436,7 +2437,7 @@ export class Extractor {
     const needCard = properties.some((p) => !p.teaser && p.inListing);
     const lines = (needRead ? 2 : 0) + (needCard ? 1 : 0);
     if (!lines || flags <= lines) return undefined;
-    const keys = (f: (p: Property) => boolean) => [...new Set(properties.filter(f).map((p) => `em:${p.key}`))].join(" ");
+    const keys = (f: (p: Property) => boolean) => [...new Set(properties.filter(f).map((p) => this.twinNodes.get(p) ?? `em:${p.key}`))].join(" ");
     const out: string[] = [];
     // the detail list: every value read that is not read in the listing alone (a value a shared fragment reads is read, and not listing-only)
     if (needRead) out.push(`  elody:listingFields ( ${keys((p) => p.inListing)} ) ;`, `  elody:detailFields ( ${keys((p) => p.readsValue && !(p.inListing && !p.inDetail))} ) ;`);
@@ -3719,6 +3720,22 @@ export class Extractor {
 
     // properties, numbered in their order
     const properties = entity.properties;
+    // two shapes of one key: named nodes (ui:<Type>Ui-field-<alias>) next to the type, so a list can name one and not the other
+    this.twinNodes = new Map();
+    this.namedShapes = [];
+    const perKey = new Map<string, Property[]>();
+    for (const p of properties) (perKey.get(p.key) ?? perKey.set(p.key, []).get(p.key)!).push(p);
+    const taken = new Set<string>();
+    for (const twins of perKey.values())
+      if (twins.length > 1)
+        for (const p of twins) {
+          // twins may share the alias too (the same value read from another source): the name stays unique
+          const base = `${node}-field-${(p.alias ?? p.key).replace(/[^A-Za-z0-9_-]/g, "-")}`;
+          let name = base;
+          for (let i = 2; taken.has(name); i += 1) name = `${base}-${i}`;
+          taken.add(name);
+          this.twinNodes.set(p, name);
+        }
     properties.forEach((p, index) => (p.order = index + 1));
     if (!properties.length && !entity.app) {
       if (!entity.inline) this.note(`${name}: no initial values; a placeholder property is declared`);
@@ -3728,7 +3745,19 @@ export class Extractor {
     const lists = this.fieldLists(properties);
     this.flagsByLists = lists !== undefined;
     if (lists) out.push(...lists);
-    if (properties.length) out.push(`  sh:property`, properties.map((p) => this.property(p)).join(" ,\n") + " ;");
+    if (properties.length)
+      out.push(
+        `  sh:property`,
+        properties
+          .map((p) => {
+            const name = this.twinNodes.get(p);
+            if (!name) return this.property(p);
+            const inner = this.property(p).trim().replace(/^\[\s*/, "").replace(/\s*\]$/, "");
+            this.namedShapes.push(`${name} a sh:PropertyShape ;\n  ${inner.replace(/\n    /g, "\n  ")} .`);
+            return `    ${name}`;
+          })
+          .join(" ,\n") + " ;",
+      );
     this.flagsByLists = false;
 
     // the detail layout
@@ -3996,7 +4025,7 @@ export class Extractor {
     }
 
     out[out.length - 1] = out[out.length - 1].replace(/ ;$/, " .");
-    return [out.join("\n"), ...panelNodes, ...extra].join("\n\n");
+    return [out.join("\n"), ...this.namedShapes, ...panelNodes, ...extra].join("\n\n");
   }
 }
 
