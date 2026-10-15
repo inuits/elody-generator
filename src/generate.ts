@@ -15,6 +15,8 @@ import type { Warning } from "./reading.js";
 import {
   lowerFirst,
   renderEntityFile,
+  setDialect,
+  type Dialect,
   renderInputFieldsModule,
   renderInitialValues,
   renderSortOptions,
@@ -29,6 +31,8 @@ export type GenerateOptions = {
   declaration?: string;
   check?: boolean;
   ontology?: Ontology;
+  /** the GraphQL dialect rendered; default: the keyAsLabel input of base-graphql >= 0.10.30 */
+  dialect?: Dialect;
   log?: (line: string) => void;
 };
 
@@ -79,6 +83,7 @@ export const TRANSLATIONS_DIR = "src/translations";
 
 export async function generate(options: GenerateOptions): Promise<GenerateResult> {
   const { root, check = false, log = () => {} } = options;
+  setDialect(options.dialect ?? {});
   const ontology = options.ontology ?? defaultOntology();
   const declaration = options.declaration ?? findDeclaration(root);
   if (!declaration) return { entities: [], warnings: [], changed: [], clean: true };

@@ -59,7 +59,7 @@ describe("extract: what hand-written documents say", () => {
     intialValues {
       email: keyValue(key: "email", source: metadata)
       first_name: keyValue(key: "first_name", source: metadata)
-      language: keyValue(key: "hasLanguage", source: relations, metadataKeyAsLabel: "title")
+      language: keyValue(key: "hasLanguage", source: relations, keyAsLabel: { origin: metadata, key: "title" })
       title: keyValue(key: "email", source: metadata)
     }
     relationValues
@@ -120,7 +120,7 @@ describe("extract: askforceone constructs", () => {
     intialValues {
       title: keyValue(key: "key", source: metadata)
       level: keyValue(key: "level", source: metadata)
-      tenant: keyValue(key: "isIn", source: relations, metadataKeyAsLabel: "name")
+      tenant: keyValue(key: "isIn", source: relations, keyAsLabel: { origin: metadata, key: "name" })
     }
     teaserMetadata {
       tenant: metaData { label(input: "metadata.labels.tenant") key(input: "tenant") }
@@ -134,7 +134,7 @@ describe("extract: askforceone constructs", () => {
       canUpdate
       canDelete
       key: keyValue(key: "key", source: metadata)
-      title: keyValue(key: "isIn", source: relations, metadataKeyAsLabel: "name")
+      title: keyValue(key: "isIn", source: relations, keyAsLabel: { origin: metadata, key: "name" })
       level: keyValue(key: "level", source: metadata)
     }
     relationValues
@@ -201,7 +201,7 @@ describe("extract: vlacc constructs", () => {
       title: keyValue(key: "title", source: metadata)
       isbns: keyValue(key: "isbn_group", source: repeatableMetadata, repeatableMetadataKey: "isbn")
       navigate_to_id: keyValue(key: "id", source: parentRoot, parentRelations: [{ relationType: "refParentEntity" }])
-      refAuthors: keyValue(key: "refAuthors", source: relations, metadataKeyAsLabel: "name", containsRelationPropertyKey: "main_author", containsRelationPropertyValue: "true")
+      refAuthors: keyValue(key: "refAuthors", source: relations, keyAsLabel: { origin: metadata, key: "name" }, containsRelationPropertyKey: "main_author", containsRelationPropertyValue: "true")
     }
     teaserMetadata {
       ...typePillsTeaserMetadata
@@ -321,7 +321,7 @@ describe("extract: an interface and the fragments its file holds", () => {
     original_headtitle: metaData { label(input: "metadata.labels.headtitle") key(input: "original_headtitle") inputField(type: baseTextField) { ...inputfield validation(input: { value: required }) { ...validation } } }
   }
   fragment workTitleDataIntialValues on IntialValues {
-    refUniformTitles: keyValue(key: "refUniformTitles", source: relations, metadataKeyAsLabel: "title")
+    refUniformTitles: keyValue(key: "refUniformTitles", source: relations, keyAsLabel: { origin: metadata, key: "title" })
     parallel_title_group: keyValue(key: "parallel_title_group", source: metadata)
   }
   fragment workTitleDataTeaserMetadata on teaserMetadata {

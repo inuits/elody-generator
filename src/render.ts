@@ -8,6 +8,20 @@ import type * as M from "./model.js";
 import { renderPlatformDocuments } from "./platform.js";
 
 const pad = (depth: number) => " ".repeat(depth);
+/**
+ * The GraphQL dialect rendered. base-graphql 0.10.30 (2026-10-09) merged the keyValue arguments
+ * metadataKeyAsLabel and rootKeyAsLabel into one input, keyAsLabel: { origin, key }; a client pinned
+ * below that version still takes the two arguments (the legacy dialect).
+ */
+export type Dialect = { keyAsLabel?: "input" | "legacy" };
+let dialect: Dialect = {};
+export function setDialect(next: Dialect): void {
+  dialect = next;
+}
+export function keyAsLabelArgument(origin: "metadata" | "root", key: string): string {
+  return dialect.keyAsLabel === "legacy" ? `, ${origin === "root" ? "rootKeyAsLabel" : "metadataKeyAsLabel"}: "${key}"` : `, keyAsLabel: { origin: ${origin}, key: "${key}" }`;
+}
+
 export const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
 const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 /** How a related entity is labelled when the declaration does not say (elody:valueLabelKey). */
@@ -111,10 +125,10 @@ export function renderInitialValues(entity: M.UiEntity, indent: number, withForm
       const rootLabelKey = listing && property.listingValueLabelRootKey !== undefined ? property.listingValueLabelRootKey : property.valueLabelRootKey;
       const valueLabelKey = listing && property.listingValueLabelKey !== undefined ? property.listingValueLabelKey : property.valueLabelKey;
       const labelKey = rootLabelKey
-        ? `, rootKeyAsLabel: "${rootLabelKey}"`
+        ? keyAsLabelArgument("root", rootLabelKey)
         : valueLabelKey === "" || (listing && property.listingValueLabelRootKey === "" && property.listingValueLabelKey === undefined)
           ? ""
-          : `, metadataKeyAsLabel: "${valueLabelKey ?? DEFAULT_VALUE_LABEL_KEY}"`;
+          : keyAsLabelArgument("metadata", valueLabelKey ?? DEFAULT_VALUE_LABEL_KEY);
       // what the value is read with beyond its key: the key inside a repeatable group, the parent's relation, a relation property
       const extras = [
         property.repeatableMetadataKey !== undefined ? `, repeatableMetadataKey: "${property.repeatableMetadataKey}"` : "",

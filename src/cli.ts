@@ -1,6 +1,6 @@
 /**
- * elody-ui generate [--root DIR] [--declaration FILE]
- * elody-ui check    [--root DIR] [--declaration FILE]   drift + meta-shapes + retired terms
+ * elody-ui generate [--root DIR] [--declaration FILE] [--key-as-label input|legacy]
+ * elody-ui check    [--root DIR] [--declaration FILE] [--key-as-label input|legacy]   drift + meta-shapes + retired terms
  * elody-ui validate FILE                                 meta-shapes only
  * elody-ui migrate  FILE [--out FILE] [--translations DIR]  retired dialect -> 0.1; label texts from the client bundles
  * elody-ui compare  DECLARATION CLIENT_SRC [--scope FILE] [--json FILE] [--name NAME]
@@ -15,12 +15,13 @@ import { basename, join, dirname } from "path";
 import { compareClient, formatCompareReport, readQueryFiles } from "./compare.js";
 import { extractDeclaration, extractDeclarationFiles } from "./extract.js";
 import { findDeclaration, generate } from "./generate.js";
+import type { Dialect } from "./render.js";
 import { migrateDeclaration } from "./migrate.js";
 import { formatIssue, validateDeclaration } from "./validate.js";
 
 const usage = `usage:
-  elody-ui generate [--root DIR] [--declaration FILE]
-  elody-ui check    [--root DIR] [--declaration FILE]
+  elody-ui generate [--root DIR] [--declaration FILE] [--key-as-label input|legacy]
+  elody-ui check    [--root DIR] [--declaration FILE] [--key-as-label input|legacy]
   elody-ui validate FILE
   elody-ui migrate  FILE [--out FILE] [--translations DIR]
   elody-ui compare  DECLARATION CLIENT_SRC [--scope FILE] [--json FILE] [--name NAME]
@@ -36,9 +37,16 @@ function option(argv: string[], name: string): string | undefined {
 export async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   const root = option(rest, "--root") ?? process.cwd();
+  // base-graphql >= 0.10.30 takes keyAsLabel: { origin, key }; a client pinned below it takes the two legacy arguments
+  const keyAsLabel = option(rest, "--key-as-label");
+  if (keyAsLabel && keyAsLabel !== "input" && keyAsLabel !== "legacy") {
+    console.error(`--key-as-label: "input" or "legacy", not "${keyAsLabel}"`);
+    return 2;
+  }
+  const dialect: Dialect = { keyAsLabel: keyAsLabel === "legacy" ? "legacy" : "input" };
 
   if (command === "generate") {
-    const result = await generate({ root, declaration: option(rest, "--declaration"), log: console.log });
+    const result = await generate({ root, declaration: option(rest, "--declaration"), log: console.log, dialect });
     if (!result.declaration) console.log("no src/ui/*.ui.ttl declaration: nothing to generate");
     for (const warning of result.warnings) console.warn(`warning: ${warning.message}`);
     return 0;
@@ -50,7 +58,7 @@ export async function main(argv: string[]): Promise<number> {
       console.log("no src/ui/*.ui.ttl declaration: nothing to check");
       return 0;
     }
-    const result = await generate({ root, declaration, check: true, log: console.error });
+    const result = await generate({ root, declaration, check: true, log: console.error, dialect });
     let ok = result.clean;
     for (const warning of result.warnings) console.warn(`warning: ${warning.message}`);
     const report = await validateDeclaration(loadDeclaration(join(root, declaration)));

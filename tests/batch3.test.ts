@@ -50,7 +50,7 @@ describe("elody:clientInputField", () => {
   it("edits the property with the client's field on the detail page and mints nothing", async () => {
     const file = await render(entity(`sh:property ${label} , ${language} ; ${window("ui:Info")}`, info()));
     const full = fragment(file, "fullKeyword");
-    expect(full).toContain('language: keyValue(key: "hasLanguage", source: relations, metadataKeyAsLabel: "title")');
+    expect(full).toContain('language: keyValue(key: "hasLanguage", source: relations, keyAsLabel: { origin: metadata, key: "title" })');
     expect(full).toContain("language: metaData {\n                label(input: \"metadata.labels.language\")\n                key(input: \"language\")\n                inputField(type: languageTypeField) {");
     expect(file.endsWith("// inputFields: ")).toBe(true);
   });

@@ -34,7 +34,7 @@ describe("an inverse path is the mirrored Elody relation", () => {
     expect(department.key).toBe("isMemberFor");
     expect(department.relationType).toBe("isMemberFor");
     expect(renderInitialValues(entities[0], 0)).toContain(
-      'isMemberFor: keyValue(key: "isMemberFor", source: relations, metadataKeyAsLabel: "label|title|name")',
+      'isMemberFor: keyValue(key: "isMemberFor", source: relations, keyAsLabel: { origin: metadata, key: "label|title|name" })',
     );
   });
 
@@ -110,7 +110,7 @@ ui:T a elody:EntityUi ; elody:graphqlType "BaseEntity" ; elody:documentName "Spe
 
   it("elody:valueLabelKey picks the related entity's label metadata", async () => {
     const { entities } = await readUiDeclaration(declaration("[ sh:inversePath ex:member ]", '; elody:valueLabelKey "department_name"'));
-    expect(renderInitialValues(entities[0], 0)).toContain('metadataKeyAsLabel: "department_name"');
+    expect(renderInitialValues(entities[0], 0)).toContain('keyAsLabel: { origin: metadata, key: "department_name" }');
   });
 
   it("a forward sh:class property is read from the relations too (hasDepartment)", async () => {
@@ -118,7 +118,7 @@ ui:T a elody:EntityUi ; elody:graphqlType "BaseEntity" ; elody:documentName "Spe
     const field = entities[0].properties.find((p) => p.key === "department")!;
     expect(field.relationType).toBe("hasDepartment");
     expect(renderEntityFile(entities[0], "x.ui.ttl")).toContain(
-      'department: keyValue(key: "hasDepartment", source: relations, metadataKeyAsLabel: "label|title|name")',
+      'department: keyValue(key: "hasDepartment", source: relations, keyAsLabel: { origin: metadata, key: "label|title|name" })',
     );
   });
 });

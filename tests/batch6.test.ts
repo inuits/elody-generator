@@ -52,7 +52,7 @@ describe("vlacc structure", () => {
     );
     expect(file).toContain('isbns: keyValue(key: "isbn_group", source: repeatableMetadata, repeatableMetadataKey: "isbn")');
     expect(file).toContain('navigate_to_id: keyValue(key: "id", source: parentRoot, parentRelations: [{ relationType: "refParentEntity" }])');
-    expect(file).toContain('refAuthors: keyValue(key: "refAuthors", source: relations, metadataKeyAsLabel: "name", containsRelationPropertyKey: "main_author", containsRelationPropertyValue: "true")');
+    expect(file).toContain('refAuthors: keyValue(key: "refAuthors", source: relations, keyAsLabel: { origin: metadata, key: "name" }, containsRelationPropertyKey: "main_author", containsRelationPropertyValue: "true")');
   });
 
   it("renders a filter's selection set as the shared fragment, keeping the fields with arguments", async () => {

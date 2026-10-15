@@ -30,7 +30,7 @@ describe("a relation count between bounds", () => {
     ...minimalBaseEntity
   }
   fragment fullWork on Work {
-    intialValues { title: keyValue(key: "title", source: metadata) refLabelGenres: keyValue(key: "refLabelGenres", source: relations, metadataKeyAsLabel: "title") }
+    intialValues { title: keyValue(key: "title", source: metadata) refLabelGenres: keyValue(key: "refLabelGenres", source: relations, keyAsLabel: { origin: metadata, key: "title" }) }
     entityView { column { size(size: seventy) elements { windowElement { label(input: "Info") info: panels { label(input: "panel-labels.info") panelType(input: metadata) isEditable(input: true) isCollapsed(input: false)
       refLabelGenres: metaData { label(input: "metadata.labels.genres") key(input: "refLabelGenres") inputField(type: genresTypeField) { ...inputfield validation(input: { value: has_min_max_amount_of_relations has_min_max_amount_of_relations: { relationType: "refLabelGenres" min: 0 max: 1 } }) { ...validation } } } } } } } }
   }

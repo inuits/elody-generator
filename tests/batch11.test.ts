@@ -26,7 +26,7 @@ describe("an interface and its shared fragments", () => {
     expect(work).toContain("fragment workBulkOperations on Work {");
     expect(work).toContain('  fragment basicCreateWorkFields on FormFields {\n    original_headtitle: metaData {\n      label(input: "metadata.labels.headtitle")\n      key(input: "original_headtitle")\n      inputField(type: baseTextField) {\n        ...inputfield\n        validation(input: { value: required }) {');
     expect(work).toContain('  fragment workTitleDataWindowElement on EntityViewElements {\n    titleData: windowElement {\n      label(input: "window-element-labels.title-data")\n      titleData: panels {');
-    expect(work).toContain('  fragment workTitleDataIntialValues on IntialValues {\n    refUniformTitles: keyValue(key: "refUniformTitles", source: relations, metadataKeyAsLabel: "title")\n    parallel_title_group: keyValue(key: "parallel_title_group", source: metadata)\n  }');
+    expect(work).toContain('  fragment workTitleDataIntialValues on IntialValues {\n    refUniformTitles: keyValue(key: "refUniformTitles", source: relations, keyAsLabel: { origin: metadata, key: "title" })\n    parallel_title_group: keyValue(key: "parallel_title_group", source: metadata)\n  }');
     // a picker on a bulk operation's modal and a list query the type names for its delete flow
     expect(work).toContain('customQueryEntityPickerList: "GetEntityPickerListForSubjectsInWork"\n              customQueryEntityPickerListFilters: "GetEntityPickerFiltersForSubjectsInWork"');
     expect(work).toContain("query GetEntityPickerFiltersForSubjectsInWork($entityType: String!)");

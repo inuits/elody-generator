@@ -47,6 +47,7 @@ A UI declaration uses the W3C **SHACL 1.2 UI** vocabulary (`shui:`) and
 
 ```bash
 elody-ui generate [--root DIR]     # src/ui/ (one *.ui.ttl, or files laid out like the queries) -> src/queries/entities/*.queries.ts
+                  [--key-as-label legacy]  # the two metadataKeyAsLabel/rootKeyAsLabel arguments for a client pinned below base-graphql 0.10.30 (default: the keyAsLabel input)
 elody-ui check    [--root DIR]     # drift + meta-shapes; exit 1 on either
 elody-ui validate FILE.ui.ttl|DIR  # meta-shapes only
 elody-ui migrate  FILE.ui.ttl --out NEW.ui.ttl   # retired dialect -> 0.1

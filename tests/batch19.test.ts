@@ -23,14 +23,14 @@ describe("per-page reads and per-panel fields", () => {
     const listing = area.slice(area.indexOf("fragment minimalArea"), area.indexOf("fragment fullArea"));
     const detail = area.slice(area.indexOf("fragment fullArea"));
     // the relation labelled otherwise per page, the formatter and the contains filter on one page only
-    expect(listing).toContain('refRegion: keyValue(key: "refRegion", source: relations, metadataKeyAsLabel: "name")');
+    expect(listing).toContain('refRegion: keyValue(key: "refRegion", source: relations, keyAsLabel: { origin: metadata, key: "name" })');
     expect(detail).toContain('refRegion: keyValue(key: "refRegion", source: relations, formatter: "link|region")');
-    expect(listing).toContain('refMediafiles: keyValue(key: "refMediafiles", source: relations, rootKeyAsLabel: "display_filename")');
-    expect(detail).toContain('refMediafiles: keyValue(key: "refMediafiles", source: relations, rootKeyAsLabel: "filename")');
+    expect(listing).toContain('refMediafiles: keyValue(key: "refMediafiles", source: relations, keyAsLabel: { origin: root, key: "display_filename" })');
+    expect(detail).toContain('refMediafiles: keyValue(key: "refMediafiles", source: relations, keyAsLabel: { origin: root, key: "filename" })');
     expect(listing).toContain('status: keyValue(key: "status", source: metadata, formatter: "pill")');
     expect(detail).toContain('status: keyValue(key: "status", source: metadata)');
-    expect(listing).toContain('refAuthors: keyValue(key: "refAuthors", source: relations, metadataKeyAsLabel: "name", containsRelationPropertyKey: "main_author", containsRelationPropertyValue: "true")');
-    expect(detail).toContain('refAuthors: keyValue(key: "refAuthors", source: relations, metadataKeyAsLabel: "name")');
+    expect(listing).toContain('refAuthors: keyValue(key: "refAuthors", source: relations, keyAsLabel: { origin: metadata, key: "name" }, containsRelationPropertyKey: "main_author", containsRelationPropertyValue: "true")');
+    expect(detail).toContain('refAuthors: keyValue(key: "refAuthors", source: relations, keyAsLabel: { origin: metadata, key: "name" })');
     // the view modes on the detail page too
     expect(detail).toContain("    allowedViewModes {");
     // the panels: the first shows vlacc_number plainly without a widget, the second under its own label and alias
@@ -46,7 +46,7 @@ describe("per-page reads and per-panel fields", () => {
     // the window's own menu and the fragments spread among its panels; a value read for a technical origin
     expect(detail).toMatch(/windowElement \{\n\s+label\(input: "w"\)\n\s+contextMenuActions \{\n\s+refreshData: doCustomAction \{\n\s+action\(input: EndpointCall\)/);
     expect(detail).toMatch(/\.\.\.areaIdsGroupPanel\n\s+\}\n\s+entityViewerElement/);
-    expect(detail).toContain('download_url: keyValue(key: "hasMediafile", source: relations, rootKeyAsLabel: "original_file_location", technicalOrigin: "download")');
+    expect(detail).toContain('download_url: keyValue(key: "hasMediafile", source: relations, keyAsLabel: { origin: root, key: "original_file_location" }, technicalOrigin: "download")');
   });
 
   it("extracts the per-page and per-panel differences back", () => {
@@ -57,10 +57,10 @@ describe("per-page reads and per-panel fields", () => {
   fragment minimalArea on Area {
     intialValues {
       name: keyValue(key: "name", source: metadata)
-      refRegion: keyValue(key: "refRegion", source: relations, metadataKeyAsLabel: "name")
-      refMediafiles: keyValue(key: "refMediafiles", source: relations, rootKeyAsLabel: "display_filename")
+      refRegion: keyValue(key: "refRegion", source: relations, keyAsLabel: { origin: metadata, key: "name" })
+      refMediafiles: keyValue(key: "refMediafiles", source: relations, keyAsLabel: { origin: root, key: "display_filename" })
       status: keyValue(key: "status", source: metadata, formatter: "pill")
-      refAuthors: keyValue(key: "refAuthors", source: relations, metadataKeyAsLabel: "name", containsRelationPropertyKey: "main_author", containsRelationPropertyValue: "true")
+      refAuthors: keyValue(key: "refAuthors", source: relations, keyAsLabel: { origin: metadata, key: "name" }, containsRelationPropertyKey: "main_author", containsRelationPropertyValue: "true")
       category: keyValue(key: "hasCategory", source: relations)
     }
     teaserMetadata { name: metaData { label(input: "metadata.labels.name") key(input: "name") } }
@@ -70,12 +70,12 @@ describe("per-page reads and per-panel fields", () => {
     intialValues {
       name: keyValue(key: "name", source: metadata)
       refRegion: keyValue(key: "refRegion", source: relations, formatter: "link|region")
-      refMediafiles: keyValue(key: "refMediafiles", source: relations, rootKeyAsLabel: "filename")
+      refMediafiles: keyValue(key: "refMediafiles", source: relations, keyAsLabel: { origin: root, key: "filename" })
       status: keyValue(key: "status", source: metadata)
-      refAuthors: keyValue(key: "refAuthors", source: relations, metadataKeyAsLabel: "name")
-      category: keyValue(key: "hasCategory", source: relations, metadataKeyAsLabel: "title")
+      refAuthors: keyValue(key: "refAuthors", source: relations, keyAsLabel: { origin: metadata, key: "name" })
+      category: keyValue(key: "hasCategory", source: relations, keyAsLabel: { origin: metadata, key: "title" })
       vlacc_number: keyValue(key: "vlacc_number", source: metadata)
-      download_url: keyValue(key: "hasMediafile", source: relations, rootKeyAsLabel: "original_file_location", technicalOrigin: "download")
+      download_url: keyValue(key: "hasMediafile", source: relations, keyAsLabel: { origin: root, key: "original_file_location" }, technicalOrigin: "download")
     }
     allowedViewModes { viewModes(input: [{ viewMode: ViewModesList }]) { ...viewModes } }
     entityView { column { elements {

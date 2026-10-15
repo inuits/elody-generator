@@ -30,7 +30,7 @@ describe("a listing without the base card", () => {
         path: "queries/entities/download.queries.ts",
         source: `import { gql } from "graphql-modules";\nexport const download = gql\`
   fragment minimalDownload on Download {
-    intialValues { title: keyValue(key: "title", source: metadata) download_url: keyValue(key: "hasMediafile", source: relations, rootKeyAsLabel: "original_file_location") }
+    intialValues { title: keyValue(key: "title", source: metadata) download_url: keyValue(key: "hasMediafile", source: relations, keyAsLabel: { origin: root, key: "original_file_location" }) }
     teaserMetadata {
       title: metaData { label(input: "metadata.labels.title") key(input: "title") }
       download_url: metaData { label(input: "metadata.labels.url") key(input: "download_url") linkText(input: "metadata.labels.download-link") }
@@ -38,7 +38,7 @@ describe("a listing without the base card", () => {
     ...minimalBaseEntity
   }
   fragment fullDownload on Download {
-    intialValues { title: keyValue(key: "title", source: metadata) download_url: keyValue(key: "hasMediafile", source: relations, rootKeyAsLabel: "original_file_location", technicalOrigin: "download") }
+    intialValues { title: keyValue(key: "title", source: metadata) download_url: keyValue(key: "hasMediafile", source: relations, keyAsLabel: { origin: root, key: "original_file_location" }, technicalOrigin: "download") }
     entityView { column { size(size: thirty) elements { windowElement { label(input: "Info")
       info: panels { label(input: "panel-labels.info") panelType(input: metadata) isEditable(input: false) isCollapsed(input: false)
         download_url: metaData { label(input: "metadata.labels.url") key(input: "download_url") linkText(input: "metadata.labels.download-link") } } } } } }

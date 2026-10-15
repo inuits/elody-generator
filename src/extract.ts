@@ -52,6 +52,13 @@ const str = (field: FieldNode, name: string) => scalar(argument(field, name));
 const input = (field: FieldNode | undefined) => (field ? scalar(argument(field, "input")) : undefined);
 const list = (value: ValueNode | undefined): ValueNode[] => (value?.kind === Kind.LIST ? [...value.values] : value ? [value] : []);
 const objectField = (object: ObjectValueNode, name: string): ValueNode | undefined => object.fields.find((f) => f.name.value === name)?.value;
+/** keyAsLabel: { origin, key } (base-graphql 0.10.30), else the legacy metadataKeyAsLabel / rootKeyAsLabel argument */
+const keyAsLabelOf = (field: FieldNode): { origin?: string; key?: string } => {
+  const value = argument(field, "keyAsLabel");
+  return value?.kind === Kind.OBJECT ? { origin: scalar(objectField(value, "origin")), key: scalar(objectField(value, "key")) } : {};
+};
+const rootKeyAsLabel = (field: FieldNode): string | undefined => str(field, "rootKeyAsLabel") ?? (keyAsLabelOf(field).origin === "root" ? keyAsLabelOf(field).key : undefined);
+const metadataKeyAsLabel = (field: FieldNode): string | undefined => str(field, "metadataKeyAsLabel") ?? (keyAsLabelOf(field).origin === "metadata" ? keyAsLabelOf(field).key : undefined);
 
 const q = (value: string) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r/g, "\\r").replace(/\n/g, "\\n")}"`;
 const localName = (iri: string) => iri.slice(Math.max(iri.lastIndexOf("#"), iri.lastIndexOf("/")) + 1);
@@ -800,8 +807,8 @@ export class Extractor {
           alias: undefined,
           source: source && source !== "metadata" && source !== "relations" ? source : undefined,
           relationType: source === "relations" ? key : undefined,
-          valueLabelKey: source === "relations" && !str(field, "rootKeyAsLabel") ? (str(field, "metadataKeyAsLabel") ?? "") : undefined,
-          valueLabelRootKey: str(field, "rootKeyAsLabel"),
+          valueLabelKey: source === "relations" && !rootKeyAsLabel(field) ? (metadataKeyAsLabel(field) ?? "") : undefined,
+          valueLabelRootKey: rootKeyAsLabel(field),
           index: str(field, "index") !== undefined ? Number(str(field, "index")) : undefined,
           inListing: false,
           inDetail: false,
@@ -823,8 +830,8 @@ export class Extractor {
       if (origin) property.technicalOrigin = origin;
       if (listing && property.inDetail) {
         // the listing reads the value the detail page created: what it reads otherwise is said per page
-        const listingLabelKey = source === "relations" && !str(field, "rootKeyAsLabel") ? (str(field, "metadataKeyAsLabel") ?? "") : undefined;
-        const listingRootKey = str(field, "rootKeyAsLabel");
+        const listingLabelKey = source === "relations" && !rootKeyAsLabel(field) ? (metadataKeyAsLabel(field) ?? "") : undefined;
+        const listingRootKey = rootKeyAsLabel(field);
         if (source === "relations" && listingRootKey !== property.valueLabelRootKey) property.listingValueLabelRootKey = listingRootKey ?? "";
         if (source === "relations" && listingLabelKey !== property.valueLabelKey && (listingLabelKey !== undefined || property.valueLabelKey !== undefined) && !(listingRootKey && property.valueLabelKey === undefined))
           property.listingValueLabelKey = listingLabelKey ?? "";
@@ -3277,8 +3284,8 @@ export class Extractor {
         key: source === "relations" ? a : key,
         source: source && source !== "metadata" && source !== "relations" ? source : undefined,
         relationType: source === "relations" ? key : undefined,
-        valueLabelKey: source === "relations" && !str(field, "rootKeyAsLabel") ? (str(field, "metadataKeyAsLabel") ?? "") : undefined,
-        valueLabelRootKey: str(field, "rootKeyAsLabel"),
+        valueLabelKey: source === "relations" && !rootKeyAsLabel(field) ? (metadataKeyAsLabel(field) ?? "") : undefined,
+        valueLabelRootKey: rootKeyAsLabel(field),
         index: str(field, "index") !== undefined ? Number(str(field, "index")) : undefined,
         formatter: str(field, "formatter"),
         relationKey: str(field, "relationKey"),

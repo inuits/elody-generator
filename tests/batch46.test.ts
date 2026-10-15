@@ -47,7 +47,7 @@ export const overviewFiles = [
   fragment overviewBook on Entity {
     intialValues {
       title: keyValue(key: "title", source: metadata)
-      refAuthors: keyValue(key: "refAuthors", source: relations, metadataKeyAsLabel: "name")
+      refAuthors: keyValue(key: "refAuthors", source: relations, keyAsLabel: { origin: metadata, key: "name" })
     }
     relationValues
     entityView { column { size(size: hundred) elements {

@@ -17,8 +17,9 @@ import { isDeclarationDir, loadDeclaration } from "./declarationFiles.js";
 import { tmpdir } from "os";
 import { basename, dirname, join, relative } from "path";
 import { Kind, parse, print, visit } from "graphql";
-import type { ASTNode, DocumentNode, FieldNode, FragmentDefinitionNode, OperationDefinitionNode, SelectionNode, SelectionSetNode } from "graphql";
+import type { ArgumentNode, ASTNode, DocumentNode, FieldNode, FragmentDefinitionNode, OperationDefinitionNode, SelectionNode, SelectionSetNode } from "graphql";
 import { generate } from "./generate.js";
+import type { Dialect } from "./render.js";
 import type { Ontology } from "./ontology.js";
 import { readUiDeclaration } from "./parse.js";
 import { fileTargetFor } from "./generate.js";
@@ -267,13 +268,38 @@ export function mergeSameFields<T extends ASTNode>(node: T): T {
   }) as T;
 }
 
+/**
+ * base-graphql 0.10.30 merged metadataKeyAsLabel / rootKeyAsLabel into keyAsLabel: { origin, key }:
+ * a client on either form says the same thing. The resolver read the root key first.
+ */
+function keyAsLabelInput(args: readonly ArgumentNode[]): readonly ArgumentNode[] {
+  const legacy = args.filter((a) => (a.name.value === "metadataKeyAsLabel" || a.name.value === "rootKeyAsLabel") && a.value.kind === Kind.STRING);
+  if (!legacy.length) return args;
+  const chosen = legacy.find((a) => a.name.value === "rootKeyAsLabel") ?? legacy[0];
+  const input: ArgumentNode = {
+    kind: Kind.ARGUMENT,
+    name: { kind: Kind.NAME, value: "keyAsLabel" },
+    value: {
+      kind: Kind.OBJECT,
+      fields: [
+        { kind: Kind.OBJECT_FIELD, name: { kind: Kind.NAME, value: "key" }, value: chosen.value },
+        { kind: Kind.OBJECT_FIELD, name: { kind: Kind.NAME, value: "origin" }, value: { kind: Kind.ENUM, value: chosen.name.value === "rootKeyAsLabel" ? "root" : "metadata" } },
+      ],
+    },
+  };
+  return [...args.filter((a) => !legacy.includes(a)), input];
+}
+
 export function normalizeNode<T extends ASTNode>(node: T): T {
   return visit(mergeSameFields(node), {
     Field: {
       enter: (field) =>
         field.name.value === "__typename" ? null : field.alias && field.alias.value === field.name.value ? { ...field, alias: undefined } : undefined,
       // arguments are named: their order does not count
-      leave: (field) => (field.arguments && field.arguments.length > 1 ? { ...field, arguments: [...field.arguments].sort(byName) } : undefined),
+      leave: (field) => {
+        const args = keyAsLabelInput(field.arguments ?? []);
+        return args.length > 1 ? { ...field, arguments: [...args].sort(byName) } : args !== field.arguments ? { ...field, arguments: args } : undefined;
+      },
     },
     // an input object is a map: its field order does not count (the values of a list keep theirs)
     // a field given twice with the same value (a client's slip) counts once
@@ -518,6 +544,8 @@ export type CompareOptions = {
   clientSrc: string;
   scope?: Scope;
   ontology?: Ontology;
+  /** the dialect generated; equality does not depend on it, the generated files do */
+  dialect?: Dialect;
 };
 
 /**
@@ -542,7 +570,7 @@ export async function compareClient(options: CompareOptions): Promise<CompareRep
     mkdirSync(join(root, dirname(target)), { recursive: true });
     cpSync(source, join(root, target));
   }
-  await generate({ root, declaration, ontology: options.ontology });
+  await generate({ root, declaration, ontology: options.ontology, dialect: options.dialect });
 
   const client = readDefinitions(readQueryFiles(options.clientSrc));
   // a file out of scope with a gap does not count, parse errors included

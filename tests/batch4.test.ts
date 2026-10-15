@@ -42,7 +42,7 @@ describe("ugent-aicap", () => {
           [ sh:order 2 ; elody:alias "relation" ; elody:key "aicap:1|lookup.virtual_relations.ref_areas.identifiers" ; dash:hidden true ; sh:defaultValue "$entity.id" ; elody:filterKind elody:SelectionFilter ;
             elody:lookup [ elody:lookupFrom "areas_actual" ; elody:lookupLocalField "id" ; elody:lookupForeignField "properties.ref_mediafiles.value" ; elody:lookupAs "lookup.virtual_relations.ref_areas" ] ]`),
     );
-    expect(file).toContain('refMediafiles: keyValue(key: "refMediafiles", source: relations, rootKeyAsLabel: "display_filename")');
+    expect(file).toContain('refMediafiles: keyValue(key: "refMediafiles", source: relations, keyAsLabel: { origin: root, key: "display_filename" })');
     expect(file).toContain("fragment siteFilters on Site {");
     expect(file).toContain("        type: selection\n        matchersType: selectionForMetadata\n");
     expect(file).toContain('        lookup: {\n          from: "areas_actual"\n          local_field: "id"\n          foreign_field: "properties.ref_mediafiles.value"\n          as: "lookup.virtual_relations.ref_areas"\n        }');

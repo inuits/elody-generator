@@ -103,12 +103,12 @@ ex:DepartmentShape a sh:NodeShape ; sh:targetClass ex:Department ;
 
   it("start with the LabelRole property of the related class's node shape", async () => {
     const { entities } = await read(person("sh:path [ sh:inversePath ex:member ] ; sh:class ex:Department", department));
-    expect(renderInitialValues(entities[0], 0)).toContain('metadataKeyAsLabel: "deptName|label|title|name"');
+    expect(renderInitialValues(entities[0], 0)).toContain('keyAsLabel: { origin: metadata, key: "deptName|label|title|name" }');
   });
 
   it("then use the label properties (default rdfs:label), then Elody's title and name", async () => {
     const { entities } = await read(person("sh:path [ sh:inversePath ex:member ] ; sh:class ex:Department"));
-    expect(renderInitialValues(entities[0], 0)).toContain('metadataKeyAsLabel: "label|title|name"');
+    expect(renderInitialValues(entities[0], 0)).toContain('keyAsLabel: { origin: metadata, key: "label|title|name" }');
   });
 
   it("follow shui:labelPreference", async () => {
@@ -118,7 +118,7 @@ ex:DepartmentShape a sh:NodeShape ; sh:targetClass ex:Department ;
         "ex:config a shui:Configuration ; shui:labelPreference ( skos:prefLabel dcterms:title ) .",
       ),
     );
-    expect(renderInitialValues(entities[0], 0)).toContain('metadataKeyAsLabel: "prefLabel|title|name"');
+    expect(renderInitialValues(entities[0], 0)).toContain('keyAsLabel: { origin: metadata, key: "prefLabel|title|name" }');
   });
 });
 
