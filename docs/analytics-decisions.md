@@ -97,3 +97,71 @@ Result on vlacc: 491 filters, 86 document paths, 25 included.
   file: `EISDIR`; digipolis, ugent-aicap and vliz differ from their moved
   client checkouts) and are untouched here. `pnpm check:all`: every
   declaration conforms, vlacc 601 of 601 equal.
+
+## Step 3 — data profile
+
+- **Driver.** `mongodb` (6.10) is a dev dependency and an optional peer
+  dependency: only `analytics profile` needs it, loaded on demand, so the
+  published generator does not pull it in.
+- **Local only.** The profile refuses any host that is not `localhost`,
+  `127.0.0.1`, `::1` or `*.localhost`, and every `mongodb+srv` URI. The
+  container `elody-common-mongo-1` already held the production dump
+  (3,391,419 bibliographic + 671,442 other entities), so nothing was restored.
+- **Sample.** Per entity type, `$match` on the type, project the paths,
+  `$sample` 5000. Shares overall are weighted by each type's documents.
+  The time histogram and the entry-library candidates are counted exactly
+  (an aggregation over all documents in scope).
+- **Fill threshold per type.** "Drop below 5% filled" is read per type: a path
+  is dropped when no type has it in 5% of its sample. A dimension that belongs
+  to one type (AVI level on `easy_reading`, level on `zizo`) is filled in a
+  fraction of a percent of all documents and still worth keeping.
+- **Lists.** `ea:multiValued true` when more than 1% of the *filled*
+  documents hold a list.
+- **Update in place.** `--update` edits the overlay by line (the one-line
+  components the overlay command writes): ` ; ea:multiValued true` before the
+  `]`, a dropped component commented out under `# dropped by the profile:
+  <why>`, types without documents removed from `ea:entityTypes`. Applying it
+  twice changes nothing more. Without `--update` it prints what it would change.
+
+Result on vlacc: 7 dimensions dropped (`language`, `subject`,
+`properties.category`, `.roles`, `.status`, `.thread_tagged_groups`,
+`.thread_tagged_users`: never filled, they belong to comments, tokens or
+virtual filter keys), 3 made multi-valued (`avi_read_level_code`,
+`genre_type`, `id_online_collection_group…source_id_online_collection`), 13
+types without documents dropped (`comment`, `context`, `group`, `partner`,
+`token`, `user` and the seven camel-cased `zizo*` types: the zizo levels are
+`zizo` documents with `properties.level`). The overlay keeps 18 dimensions
+over 34 types.
+
+### Findings that matter for the next steps
+
+1. **Creation dates are not all creation dates.** 728,349 documents were
+   "created" in 2026. In `entities_actual` (persons, publishers, titles…)
+   650k were created by `developers-uat@inuits.eu` in May and June 2026: the
+   migration to Elody, which did not keep their original date. The
+   bibliographic records kept theirs (back to 1983, the start of Vlacc;
+   1983-05-20 is the placeholder of the oldest import). Counting "created per
+   month" over 2026 counts the migration; the dashboard needs either a filter
+   on the service accounts (`*@inuits.eu`) or a cut-off date. To decide with
+   Cultuurconnect.
+2. **60 dates are strings** (`"2010-09-29 00:00:00"`, in
+   `bibliographic_entities_actual`), 1,134 documents have no creation date and
+   3 are dated 2062. Step 4/5 must parse the strings (dlt) and keep the
+   documents without a date out of the time series rather than at 1970.
+3. **Mostly unattributed.** `audit.created.by` is filled in 17% of the
+   documents; 98% of those are service accounts (`developers-uat@`,
+   `developers@`, `jonasv@inuits.eu`). Library staff account for some 12,000
+   records so far.
+
+### Entry library (open decision 1), prepared
+
+| | `properties.cataloging_source_agency.value` | `audit.created.by` | e-mail domain of `audit.created.by` |
+|---|---|---|---|
+| filled | 465,016 of 4,062,861 (11%) | 685,391 (17%) | as `created_by` |
+| distinct values | 2: "Open Vlacc" (465,015), "Opeeng" (1) | 66 users | 14 domains: 12 libraries or cities, `cultuurconnect.be`, `inuits.eu` |
+| a library? | no: the same value everywhere | a person, not a library; all 66 are in `users_actual` | yes for the city and library domains (`brugge.be`, `stad.gent`, `muntpunt.be`, `luisterpuntbibliotheek.be`, …); not for `cultuurconnect.be` or `inuits.eu` |
+| via users / groups | — | `users_actual` has e-mail, name, username and roles only; `groups_actual` is empty, no `refUsers` relation: no library through a group | a domain → library table, kept by hand |
+
+None gives a library for the 83% of documents without `created_by` (imports
+and migrated records). The full counts are in
+`elody-declarations/clients/vlacc/analytics/profile/profile.md`.
