@@ -400,6 +400,124 @@ doelgroep, taal, catalografische bron and status (the list dimensions from
 their own views; `create_dashboard.py` finds them), exported and re-imported
 into an emptied Superset. New data-quality findings: catalografische bron
 spelled `VLACC I`/`Vlacc I`, `BoekenBank`/`Boekenbank`/`BoekenBanke`/…; 16
-expressions point at a language that does not exist (their identifier is
+records point at a language that does not exist (their identifier is
 loaded as is); doelgroep has `jeugd`, `18 maanden` and `3 maanden` next to the
 list's age bands.
+
+## Step 6 — hours per step
+
+Two different numbers, not to be confused.
+
+**Measured: the POC session.** The whole POC was built in one AI-assisted
+session on 2026-10-15, about 13:55 to 16:35, the commits' timestamps marking
+the steps. These minutes include the loads (5 to 6 minutes each) and exclude
+the discussion between steps; they say how fast the approach can be shown, not
+what it costs a team.
+
+| Step | Elapsed |
+|---|---|
+| 1 Inventory | 15 min |
+| 2 Overlay, vocabulary, shapes | 10 min |
+| 3 Profile | 15 min |
+| 4 Generators | 15 min |
+| 5 Local chain, dashboard, verify | 30 min |
+| Any client (v1, podiumnet) | 35 min |
+| Manual evaluation | 25 min |
+| vlacc modelled by hand, `ea:via` | 20 min |
+| **Total** | **≈ 2 h 45** |
+
+**Estimated: a developer who knows Elody, without the assistant, to POC
+quality.** An estimate, by the same assistant, from what was built (about 1,600
+lines of TypeScript, 750 of tests, 750 of Python, shell and compose, 130 of
+Turtle vocabulary and shapes) and from the problems that came up; to be checked
+before it goes into the Cultuurconnect estimate. *Platform* is built once and
+serves every client; *connector* is the source-specific loading (here Mongo);
+*tenant* is per client.
+
+| Step | Platform | Connector | Tenant |
+|---|---|---|---|
+| 1 Inventory | 6 h | | 1 h (vlacc review) |
+| 2 Overlay, vocabulary, shapes | 6 h | | |
+| 3 Profile | 6 h | 3 h (Mongo source) | 2 h (vlacc findings) |
+| 4 Generators (SQL, dlt projection, Superset bundle) | 10 h | | |
+| 5 Local chain (compose, import/export, dashboard script, verify) | 6 h | 10 h (dlt pipeline, staging → raw, incremental) | 4 h (vlacc dashboard, verification) |
+| Any client (schemas, client.json, mart naming) | 6 h | 3 h | 2 h (podiumnet) |
+| Evaluation, hand model, `ea:via` | 4 h | 3 h (lookups) | 6 h (evaluation and model) |
+| Documentation | 4 h | | |
+| **Total** | **48 h** | **19 h** | **15 h** (vlacc and podiumnet) |
+
+About 82 hours, ten working days, for the POC as it stands.
+
+**A further client** on what exists: `client.json`, modelling the overlay with
+someone who knows the data (1 to 2 h of theirs), generate, load, verify, a
+dashboard: **5 to 8 hours**, of which most is the model and the dashboard.
+
+**Towards production**, not done, orders of magnitude only, to refine per item:
+
+| Item | Kind | Order |
+|---|---|---|
+| Elody API as the source instead of Mongo | connector | 3–5 days |
+| Kubernetes deployment of ClickHouse and Superset, scheduled runs, Superset on PostgreSQL, Keycloak login | platform | 5–8 days |
+| Adding a dimension to a loaded client without a full reload (`ALTER TABLE`, backfill) | platform | 1 day |
+| Dimensions and analysed types declared in the TTL (`qb:DimensionProperty`, `elody:analysed`), elody-ontology release | platform | 1–2 days |
+| Derived dimensions: library from the creator's domain, way of entry | platform + tenant | 1–2 days |
+| Row-level security per library | platform | 2–3 days, after the entry-library decision |
+| Audit log (#139250) as a source | connector | 3–5 days |
+| Data-quality marts (missing fields, spelling variants, broken relations) | platform | 2–4 days |
+
+## Step 6 — summary for Redmine #167487
+
+To paste into the ticket (not posted from here). In Dutch, the ticket's language.
+
+> **Stand van zaken POC (2026-10-15)**
+>
+> De keten **Elody (MongoDB) → dlt → ClickHouse → Superset** draait lokaal voor
+> Open Vlacc en, als tweede klant, podiumnet. Het analytics-schema wordt niet met
+> de hand geschreven maar **gegenereerd uit de TTL-declaratie** van de klant:
+> `elody-ui analytics` leest de filters van de UI-declaratie, stelt per veld een
+> rol voor, en genereert uit een *overlay* (W3C Data Cube, per klant) de
+> ClickHouse-tabellen en -views, de dlt-projectie en de Superset-datasets met
+> Nederlandse labels. Code: branch `feat/analytics-poc` in `elody-generator`
+> (`src/analytics/`, uitleg in `docs/analytics.md`) en `elody-declarations`
+> (`clients/<klant>/analytics/`, keten in `poc/analytics/`).
+>
+> **Resultaat**
+> - Open Vlacc: 4.062.861 entiteiten geladen in ~5 min; incrementele run zonder wijzigingen: 2,6 s. Tellingen per type en maand in ClickHouse = Mongo (`verify.py`).
+> - Dashboard *Catalogusinvoer*: aangemaakte entiteiten per maand, per type, materiaaltype, bibliografisch type, doelgroep, taal, catalografische bron en status; filters op periode en type. Reproduceerbaar uit YAML.
+> - Podiumnet (ander documentschema, v1) door dezelfde keten zonder klantspecifieke code.
+>
+> **Afwijkingen van de architectuur in dit ticket**
+> - Bron is voor de POC MongoDB rechtstreeks; de Elody-API blijft de productieweg.
+> - Geen dbt: de marts zijn ClickHouse-views die uit de overlay gegenereerd worden.
+> - ClickHouse gekozen als datawarehouse (26.8 LTS); Superset 6.1.
+>
+> **Requirements #139502**
+>
+> | Req | Stand |
+> |---|---|
+> | F6.2.1 template-rapporten | dashboard als template, filters op periode en type; per bibliotheek nog niet (zie open beslissingen) |
+> | F6.2.2 configuratie door gebruiker | datasets met NL-labels beschikbaar in Explore/SQL Lab; rollen niet ingericht |
+> | F6.2.3 informatie | entiteiten met hun kenmerken; relaties alleen doelgroep en taal |
+> | F6.2.4 datakwaliteit | niet gebouwd; wel bevindingen (hieronder) |
+> | F6.2.5 statistieken | invoer per periode, type, materiaaltype, bibliografisch type, doelgroep, taal, bron; per invoerbibliotheek nog niet |
+> | F6.2.6 auditlogging | niet (fase 2, #139250) |
+> | F6.2.7 download | standaard in Superset (CSV/Excel), niet apart getest |
+> | F6.2.8 notificaties | niet ingericht |
+>
+> **Bevindingen in de data**
+> - De aanmaakdatum van ~650.000 autoriteitsrecords (personen, uitgevers, titels…) is de migratiedatum (mei–juni 2026); "aangemaakt per maand" over 2026 telt dus de migratie.
+> - Grote pieken op enkele dagen (1988-07-01, 2012-09-13, 2014-11-13, 2019-12-19) zijn bulkimports van deelcollecties (cd's, DAISY, braille): alle records hebben exact hetzelfde tijdstip.
+> - Invoerbibliotheek: `cataloging_source_agency` is overal "Open Vlacc"; alleen het e-maildomein van de aanmaker geeft een bibliotheek, voor ~12.000 records die bibliotheekmedewerkers in Elody aanmaakten.
+> - Spellingvarianten (`BOEK`/`Boek`, `VLACC I`/`Vlacc I`, `BoekenBank`/`BoekenBanke`), 16 records met een verwijzing naar een onbestaande taal, 60 datums als tekst.
+>
+> **Dimensies: generator of model?** Een vergelijking met een manuele evaluatie toonde dat de heuristiek 10 van de 13 relevante dimensies vond, met 7 overbodige, en doelgroep en taal miste. Daarom wordt het model per klant **met de hand** vastgelegd in de overlay (vlacc: 13 dimensies, met reden per keuze); de heuristiek stelt voor, de generator doet de rest.
+>
+> **Open beslissingen**
+> 1. Invoerbibliotheek: e-maildomein van de aanmaker (met een tabel domein → bibliotheek)? (Jeroen / Hannelore)
+> 2. Telt de migratie mee in "aangemaakt", of filteren op serviceaccounts of een startdatum? (met Cultuurconnect)
+> 3. Tellen autoriteiten (personen, uitgevers, genres) mee als "aangemaakte entiteiten"?
+> 4. Dimensies markeren in de TTL-declaratie zelf (`qb:DimensionProperty`, `elody:analysed`): vraagt een release van elody-ontology.
+>
+> **Volgende stappen**: invoerbibliotheek en invoerwijze (catalogisering / bulkimport / migratie) als afgeleide dimensies; dimensie toevoegen zonder volledige herlading; Elody-API als bron; deployment op de OVH Kubernetes-stack; datakwaliteitsmarts; auditlog (#139250).
+>
+> **Inspanning**: de POC zelf ~82 uur geraamd (48 platform, 19 connector, 15 tenant); een volgende klant op het bestaande 5–8 uur. Details en de raming naar productie in `docs/analytics-decisions.md`.
