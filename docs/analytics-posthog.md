@@ -69,6 +69,12 @@ Whether batch exports cost extra on Cloud was not confirmed.
 
 ## Assessment
 
+- **Open core, not free open source in practice**: the code is MIT except
+  `ee/`, whose premium features need a PostHog licence even self-hosted; the
+  self-hosted edition is an unsupported hobby deployment; "free" is the free
+  tier of the paid cloud. If open source and self-hosting are requirements,
+  PostHog drops out and Matomo (GPL-3.0, fully supported self-hosted) or
+  Plausible / Rybbit (AGPL-3.0, data in ClickHouse) remain.
 - **Fit**: good. PostHog answers the questions about how catalogers use Elody
   (funnels, paths, time between steps, session replay for UX) far better than
   Matomo or Plausible, which are built for websites.
