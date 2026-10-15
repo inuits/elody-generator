@@ -1,0 +1,61 @@
+{
+  "nl": {
+    "element-labels": {
+      "comment-category": "Categorie",
+      "comment-tagged-groups": "Getagde groepen",
+      "comment-tagged-users": "Getagde gebruikers"
+    },
+    "metadata": {
+      "labels": {
+        "author": "Auteur",
+        "authority-record-number": "Authority record nummer",
+        "avi-read-level-code": "AVI leesniveau code",
+        "bibliographic-type": "Bibliografisch type",
+        "child-omnibus-title": "Titel van omnibusdelen",
+        "code": "Code",
+        "created-at": "Aangemaakt op",
+        "created-by": "Aangemaakt door",
+        "created-from": "Aangemaakt vanaf",
+        "created-until": "Aangemaakt tot",
+        "description": "Omschrijving",
+        "ean": "EAN",
+        "group": "Groep",
+        "headtitle": "Hoofdtitel",
+        "id": "ID",
+        "is-omnibus": "Is omnibus",
+        "isbn": "ISBN",
+        "issn": "ISSN",
+        "label-genres": "Genre op etiket",
+        "land-language": "Land- of taalaanduiding",
+        "language": "Taal",
+        "level": "Niveau",
+        "life-dates": "Leefdata",
+        "literary-type": "Literair type",
+        "material-type": "Materiaaltype",
+        "name": "Naam",
+        "other-genres": "Overige genres",
+        "publication-year": "Jaar van uitgave",
+        "publisher": "Uitgever",
+        "record-format": "Recordformaat",
+        "record-type": "Record type",
+        "search-terms": "Zoektermen",
+        "series-title": "Reekstitel",
+        "siso": "SISO",
+        "source-online-collection": "Bron online collectie",
+        "status": "Status",
+        "subject": "Onderwerpen",
+        "subtitle": "Ondertitel",
+        "target-audience": "Doelgroep",
+        "title": "Titel",
+        "token-email": "E-mailadres",
+        "token-roles": "Rol",
+        "type": "Type",
+        "updated-at": "Gewijzigd op",
+        "updated-by": "Gewijzigd door",
+        "vlacc-number": "Vlaccnummer",
+        "wording": "Verwoording",
+        "zizo": "ZIZO"
+      }
+    }
+  }
+}

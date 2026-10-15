@@ -35,3 +35,5 @@ export { expandDeclaration, type ExpandResult } from "./expand.js";
 export { conventionalLabelKey } from "./vocab.js";
 export { inventory, readFilters, candidatesOf, candidatesMarkdown, normaliseKey, proposeRole, type Candidate, type FilterRecord, type Inventory, type Role } from "./analytics/inventory.js";
 export { renderOverlay, readOverlay, validateOverlay, propertyNames, type Overlay, type OverlayDimension, type OverlayOptions } from "./analytics/overlay.js";
+export { profile, profileMarkdown, applyProfile, valuesAt, type Profile, type ProfileSource, type ProfileOptions } from "./analytics/profile.js";
+export { generateAnalytics, columnsOf, uuidFor, toYaml, type Column, type GenerateOptions as AnalyticsGenerateOptions } from "./analytics/generate.js";

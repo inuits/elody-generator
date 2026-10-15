@@ -1,0 +1,13 @@
+database_name: "Analytics (ClickHouse)"
+sqlalchemy_uri: "clickhousedb://default:XXXXXXXXXX@clickhouse:8123/mart"
+cache_timeout: null
+expose_in_sqllab: true
+allow_run_async: false
+allow_ctas: false
+allow_cvas: false
+allow_dml: false
+allow_file_upload: false
+extra:
+  allows_virtual_table_explore: true
+uuid: "5e2d45df-b7e0-50a4-9360-f2f9e2ef37cd"
+version: "1.0.0"

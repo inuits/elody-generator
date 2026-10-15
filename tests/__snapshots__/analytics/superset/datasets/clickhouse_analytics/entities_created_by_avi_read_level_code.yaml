@@ -1,0 +1,77 @@
+table_name: "entities_created_by_avi_read_level_code"
+main_dttm_col: "day"
+description: "Aangemaakte entiteiten per dag, type en avi leesniveau code; een entiteit telt eenmaal per waarde."
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: "mart"
+sql: null
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: "c49a7a62-d8c6-53d0-9370-c0194f4c7e16"
+metrics:
+- metric_name: "count"
+  verbose_name: "Aantal entiteiten"
+  metric_type: "sum"
+  expression: "SUM(entity_count)"
+  description: "Het aantal aangemaakte entiteiten."
+  d3format: ",d"
+  currency: null
+  extra: {}
+  warning_text: null
+columns:
+- column_name: "day"
+  verbose_name: "Aangemaakt op"
+  is_dttm: true
+  is_active: true
+  type: "Date"
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: "the day of audit.created.at"
+  python_date_format: null
+  extra: {}
+- column_name: "type"
+  verbose_name: "Type"
+  is_dttm: false
+  is_active: true
+  type: "LowCardinality(String)"
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: "type"
+  python_date_format: null
+  extra: {}
+- column_name: "avi_read_level_code"
+  verbose_name: "AVI leesniveau code"
+  is_dttm: false
+  is_active: true
+  type: "String"
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: "properties.avi_read_level_code.value"
+  python_date_format: null
+  extra: {}
+- column_name: "entity_count"
+  verbose_name: "Aantal (per rij)"
+  is_dttm: false
+  is_active: true
+  type: "UInt64"
+  advanced_data_type: null
+  groupby: false
+  filterable: false
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+version: "1.0.0"
+database_uuid: "5e2d45df-b7e0-50a4-9360-f2f9e2ef37cd"

@@ -165,3 +165,59 @@ over 34 types.
 None gives a library for the 83% of documents without `created_by` (imports
 and migrated records). The full counts are in
 `elody-declarations/clients/vlacc/analytics/profile/profile.md`.
+
+## Step 4 — generators
+
+`elody-ui analytics generate OVERLAY --out DIR [--translations FILE ...]`
+writes `clickhouse/001_raw.sql`, `clickhouse/010_mart.sql`,
+`dlt/projection.json` and a Superset import bundle (`superset/metadata.yaml`,
+`databases/`, `datasets/`). It validates the overlay first and replaces the
+three generated folders, so a dimension dropped from the overlay leaves no
+stale file. For vlacc the output is in
+`elody-declarations/clients/vlacc/analytics/generated/`.
+
+- **`created_at` is `Nullable`.** The plan has `DateTime64(3, 'Europe/Brussels')`;
+  1,134 documents have no creation date (step 3). The views count only
+  entities with one (`WHERE created_at IS NOT NULL`) rather than placing them
+  at 1970.
+- **`updated_at` is the row version and never null.** 669,760 documents of
+  `entities_actual` have no `audit.updated.at`. `ReplacingMergeTree(updated_at)`
+  needs a value, and so does the incremental cursor: the projection names
+  `audit.created.at` as the cursor's fallback, and `updated_at` is
+  `audit.updated.at`, else `audit.created.at`, else 1970-01-01. Recorded in
+  `projection.json` (`incremental.fallback`, `notes`) for the pipeline of step 5.
+- **The day column is `day`.** The mart views expose `toDate(created_at) AS
+  day` (`Date`, in Europe/Brussels), the Superset datasets mark it `is_dttm`
+  and `main_dttm_col` and label it with `created_at`'s label ("Aangemaakt op").
+  Calling the alias `created_at` too would shadow the source column inside the
+  view, which ClickHouse resolves to the alias.
+- **View names as in the plan,** without the client: `mart.entities_created_daily`,
+  `mart.entities_created_by_<dim>`; the raw table carries it
+  (`raw.vlacc_entities`). A second client in the same ClickHouse needs a mart
+  database per client; not needed for the POC.
+- **`created_by` is a fixed column and a dimension** of the daily view (it is
+  in the overlay). `updated_by` is a column of the raw table only.
+- **Multi-valued views use `ARRAY JOIN`** (the plan's `arrayJoin`): an entity
+  counts once per value and not at all without one. Summing such a view over
+  its values counts an entity more than once; the dataset's description says so.
+- **Empty values.** A missing single value is `''` in `LowCardinality(String)`,
+  as the plan has it, not `NULL`; Superset shows it as an empty group.
+- **Labels.** Translation key → the bundles (client first, base-graphql second)
+  → the overlay's `rdfs:label` → the column name. Equal labels are told apart
+  by the column (`Type` for `type`, `Type (genre_type)`; `Doelgroep` for
+  `audience_type`, `Doelgroep (target_audience)`), so no two Superset columns
+  read the same.
+- **Superset.** Datasets are on the mart views; the metric `count` is
+  `SUM(entity_count)` ("Aantal entiteiten"), since the views are aggregated.
+  UUIDs are name-based (v5), so re-importing a regenerated bundle updates the
+  same objects. The database file has the password masked (`XXXXXXXXXX`), as a
+  Superset export does; it is given at import (step 5). The bundle has not been
+  imported into a Superset yet: that is step 5.
+- **Tests.** Snapshot tests on the vlacc overlay (copied to
+  `tests/fixtures/analytics/` with the translation keys it uses); the SQL runs
+  on an empty ClickHouse 25.8 (`clickhouse-local` in the
+  `clickhouse/clickhouse-server:25.8` image, skipped when the image is absent),
+  with a few rows: the later version of an entity replaces the first, an
+  entity without a creation date is not counted, a list is counted per value.
+- **YAML** is written by a small emitter (`toYaml`): strings always quoted, so
+  values like `yes` or `1.0` stay strings; no YAML dependency added.

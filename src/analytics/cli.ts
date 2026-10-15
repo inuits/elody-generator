@@ -14,13 +14,17 @@
  *   the overlay's paths measured on a local Mongo (profile.json, profile.md);
  *   --update writes the result back into the overlay (multi-valued, sparse paths
  *   commented out, types without documents dropped)
+ * elody-ui analytics generate OVERLAY --out DIR [--translations FILE ...] [--client NAME] [--database NAME]
+ *   the ClickHouse SQL, the dlt projection and the Superset bundle; the generated
+ *   folders (clickhouse/, dlt/, superset/) are replaced
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { dirname, join, relative } from "path";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { basename, dirname, join, relative } from "path";
 import { loadDeclaration } from "../declarationFiles.js";
 import { formatIssue } from "../validate.js";
 import { candidatesMarkdown, inventory, type Candidate } from "./inventory.js";
 import { readOverlay, renderOverlay, validateOverlay } from "./overlay.js";
+import { generateAnalytics } from "./generate.js";
 import { applyProfile, profile, profileMarkdown } from "./profile.js";
 import { mongoSource } from "./profileMongo.js";
 
@@ -28,6 +32,7 @@ const usage = `usage:
   elody-ui analytics inventory DECLARATION --out DIR [--translations FILE ...]
   elody-ui analytics overlay   CANDIDATES --client NAME --out FILE [--collection NAME ...]
   elody-ui analytics validate  OVERLAY
+  elody-ui analytics generate  OVERLAY --out DIR [--translations FILE ...] [--client NAME] [--database NAME]
   elody-ui analytics profile   OVERLAY --mongo URI --db NAME --out DIR [--sample N] [--extra PATH ...] [--library PATH ...] [--users COLLECTION] [--update]`;
 
 const options = (argv: string[], name: string): string[] => argv.flatMap((argument, index) => (argument === name && argv[index + 1] ? [argv[index + 1]] : []));
@@ -81,6 +86,29 @@ export async function analytics(argv: string[]): Promise<number> {
     for (const issue of report.issues) console.error(formatIssue(issue));
     console.log(report.conforms ? `${file} conforms` : `${file}: ${report.issues.length} issue(s)`);
     return report.conforms ? 0 : 1;
+  }
+
+  if (command === "generate") {
+    const [file] = positional(rest);
+    const [out] = options(rest, "--out");
+    if (!file || !out) throw new Error(usage);
+    const ttl = readFileSync(file, "utf-8");
+    const report = await validateOverlay(ttl);
+    for (const issue of report.issues) console.error(formatIssue(issue));
+    if (!report.conforms) return 1;
+    const files = generateAnalytics(readOverlay(ttl), {
+      bundles: options(rest, "--translations").map((path) => JSON.parse(readFileSync(path, "utf-8"))),
+      client: options(rest, "--client")[0],
+      database: options(rest, "--database")[0],
+      source: basename(file),
+    });
+    for (const folder of ["clickhouse", "dlt", "superset"]) rmSync(join(out, folder), { recursive: true, force: true });
+    for (const [path, content] of files) {
+      mkdirSync(dirname(join(out, path)), { recursive: true });
+      writeFileSync(join(out, path), content);
+    }
+    console.log(`${out}: ${files.size} file(s)`);
+    return 0;
   }
 
   if (command === "profile") {

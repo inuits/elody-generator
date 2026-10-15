@@ -35,7 +35,9 @@ const usage = `usage:
   elody-ui expand   FILE|DIR [--out FILE]   # every default written out
   elody-ui analytics inventory DECLARATION --out DIR [--translations FILE ...]
   elody-ui analytics overlay   CANDIDATES --client NAME --out FILE [--collection NAME ...]
-  elody-ui analytics validate  OVERLAY`;
+  elody-ui analytics validate  OVERLAY
+  elody-ui analytics profile   OVERLAY --mongo URI --db NAME --out DIR [--update]
+  elody-ui analytics generate  OVERLAY --out DIR [--translations FILE ...]`;
 
 function option(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(name);
