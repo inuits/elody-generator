@@ -6,6 +6,8 @@
  * elody-ui compare  DECLARATION CLIENT_SRC [--scope FILE] [--json FILE] [--name NAME]
  *                                                        the generated GraphQL against the client's, per definition
  * elody-ui extract  CLIENT_SRC --out FILE [--namespace IRI] a declaration proposal from the client's GraphQL
+ * elody-ui analytics inventory DECLARATION --out DIR [--translations FILE ...]
+ *                                                        every filter, one analytics candidate per document path
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { declarationFiles, loadDeclaration } from "./declarationFiles.js";
@@ -18,6 +20,7 @@ import { findDeclaration, generate } from "./generate.js";
 import type { Dialect } from "./render.js";
 import { migrateDeclaration } from "./migrate.js";
 import { formatIssue, validateDeclaration } from "./validate.js";
+import { analytics } from "./analytics/cli.js";
 
 const usage = `usage:
   elody-ui generate [--root DIR] [--declaration FILE] [--key-as-label input|legacy]
@@ -27,7 +30,8 @@ const usage = `usage:
   elody-ui compare  DECLARATION CLIENT_SRC [--scope FILE] [--json FILE] [--name NAME]
   elody-ui extract  CLIENT_SRC --out FILE [--namespace IRI]
   elody-ui reference --out DIR [--declarations DIR] [--base PATH]
-  elody-ui expand   FILE|DIR [--out FILE]   # every default written out`;
+  elody-ui expand   FILE|DIR [--out FILE]   # every default written out
+  elody-ui analytics inventory DECLARATION --out DIR [--translations FILE ...]`;
 
 function option(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(name);
@@ -152,6 +156,8 @@ export async function main(argv: string[]): Promise<number> {
     console.error(`${result.added} default(s) written out`);
     return 0;
   }
+
+  if (command === "analytics") return analytics(rest);
 
   if (command === "reference") {
     const out = option(rest, "--out");
