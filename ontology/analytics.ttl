@@ -1,0 +1,53 @@
+# The analytics terms (ea:): what an overlay says beyond the W3C Data Cube
+# vocabulary (qb:) it builds on. An overlay selects the document paths of a
+# client's entities that are analysed; it lives next to the client's UI
+# declaration, outside ui/, and is read by `elody-ui analytics`.
+# Kept here, not in elody-ontology, until analytics gets an ontology folder there.
+@prefix ea:   <https://elody.eu/ns/analytics#> .
+@prefix qb:   <http://purl.org/linked-data/cube#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+
+<https://elody.eu/ns/analytics> a owl:Ontology ;
+  rdfs:label "Elody analytics" ;
+  owl:versionInfo "0.1.0" ;
+  rdfs:comment "Which document paths of a client's entities are analysed, and how they are read from the store." .
+
+ea:sourceCollection a rdf:Property ;
+  rdfs:domain qb:DataStructureDefinition ; rdfs:range xsd:string ;
+  rdfs:comment "A Mongo collection the entities are read from." .
+
+ea:entityTypes a rdf:Property ;
+  rdfs:domain qb:DataStructureDefinition ; rdfs:range xsd:string ;
+  rdfs:comment "An entity type (the document's `type`) the cube counts; the others are not read." .
+
+ea:sourcePath a rdf:Property ;
+  rdfs:range xsd:string ;
+  rdfs:comment "The document path a dimension is read from, without the `<client>:<version>|` prefix of a filter key (`properties.material_type.value`)." .
+
+ea:role a rdf:Property ;
+  rdfs:range ea:Role ;
+  rdfs:comment "What a dimension is to the cube beyond a plain dimension." .
+
+ea:multiValued a rdf:Property ;
+  rdfs:range xsd:boolean ;
+  rdfs:comment "The path holds a list in a notable share of the documents: one row per value when it is counted." .
+
+ea:labelKey a rdf:Property ;
+  rdfs:range xsd:string ;
+  rdfs:comment "The translation key of the dimension's label, as the UI declaration names it (`metadata.labels.material-type`)." .
+
+ea:Role a rdfs:Class ;
+  rdfs:comment "A role of a dimension." .
+
+ea:EntityType a ea:Role ;
+  rdfs:comment "The dimension holding the entity's type; one per cube." .
+
+ea:Time a ea:Role ;
+  rdfs:comment "The dimension holding when the entity was created; one per cube." .
+
+ea:entityCount a qb:MeasureProperty ;
+  rdfs:label "Aantal entiteiten"@nl , "Number of entities"@en ;
+  rdfs:comment "The number of entities." .

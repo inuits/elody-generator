@@ -49,3 +49,51 @@ the plan left open is recorded here with the choice made.
   debugging, 220 KB) is not committed.
 
 Result on vlacc: 491 filters, 86 document paths, 25 included.
+
+## Step 2 — overlay
+
+- **Cube IRI.** The plan's `<#EntityActivity>` is a relative IRI, which only
+  means something against a base. The overlay uses a prefix per client,
+  `vlacc: <https://elody.eu/analytics/vlacc#>`, so the cube is
+  `vlacc:EntityActivity` wherever the file is read.
+- **Terms.** `ea:` is declared in `ontology/analytics.ttl` of this repo (not in
+  elody-ontology): `ea:sourceCollection`, `ea:entityTypes`, `ea:sourcePath`,
+  `ea:role` (`ea:Time`, `ea:EntityType`), `ea:multiValued`, `ea:entityCount`
+  (a `qb:MeasureProperty`), plus `ea:labelKey`: the translation key of a
+  dimension, which step 4 needs to label the Superset columns. Each component
+  also carries the Dutch text as `rdfs:label "…"@nl` for whoever edits the file.
+- **Property names.** `em:` + the last segment before `.value`; when that
+  segment says nothing alone (`at`, `by`, `key`, `value`, `id`) the one before
+  it too (`audit.created.at` → `em:created_at`). Paths whose names clash take
+  one more segment until they differ.
+- **Left-out paths in the file.** Every candidate with `include: false` is
+  written as a commented `qb:component` line under `# left out — <role>`, with
+  the reason; switching it on is removing the `#`. A left-out date gets no
+  `ea:role`, so switching it on never makes a second time dimension.
+- **Shapes.** `ontology/analytics.shapes.ttl` (SHACL Core): a cube names
+  collections and entity types, has exactly one `ea:Time` and one
+  `ea:EntityType` component and a measure; a component is a dimension or a
+  measure; every dimension has one `ea:sourcePath`. "Every component has
+  `ea:sourcePath`" is read as every *dimension*: the measure has no path. One
+  dimension per source path is checked in code (`validateOverlay`): SHACL Core
+  cannot compare values across nodes.
+- **Collections.** `--collection` names them; without it the overlay command
+  reads `mongoCollections` from the `client.json` two folders up from the
+  overlay and leaves `users_*` out (`entities_actual`,
+  `bibliographic_entities_actual` for vlacc).
+- **Entity types.** Every value the declaration's filters on `type` name: the
+  TypeFilters' `sh:defaultValue`s and those of the SelectionFilters on `type`
+  (71 of the 129 filters on `type` are SelectionFilters; with TypeFilters
+  alone the `work_*`/`manifestation_*` types were missing). 47 for vlacc,
+  `user`, `token` and `comment` among them: step 3 drops the types without
+  documents in the two collections.
+- **No hand review yet.** The overlay is generated as is (25 dimensions);
+  several are clearly noise for "entities created" (`life_dates`,
+  `thread_tagged_*` on comments, `roles` on tokens). Step 3 drops what the data
+  shows to be sparse (<5% filled); what is left is reviewed after that.
+- **Tests.** elody-declarations `pnpm test` gains `tests/analytics.test.ts`
+  (every `clients/*/analytics/*.analytics.ttl` conforms). Its 11 other failures
+  exist on `main` as well (the meta-shape test reads the `ui/` directory as a
+  file: `EISDIR`; digipolis, ugent-aicap and vliz differ from their moved
+  client checkouts) and are untouched here. `pnpm check:all`: every
+  declaration conforms, vlacc 601 of 601 equal.

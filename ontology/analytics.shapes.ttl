@@ -1,0 +1,48 @@
+# What an analytics overlay must say for `elody-ui analytics` to read it.
+# SHACL Core only; one dimension per source path is checked in code
+# (validateOverlay), SHACL Core cannot compare values across nodes.
+@prefix ea:   <https://elody.eu/ns/analytics#> .
+@prefix qb:   <http://purl.org/linked-data/cube#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+ea:CubeShape a sh:NodeShape ;
+  sh:targetClass qb:DataStructureDefinition ;
+  sh:property [
+    sh:path ea:sourceCollection ; sh:minCount 1 ; sh:datatype xsd:string ;
+    sh:message "a cube names the collections it reads (ea:sourceCollection)" ] ;
+  sh:property [
+    sh:path ea:entityTypes ; sh:minCount 1 ; sh:datatype xsd:string ;
+    sh:message "a cube names the entity types it counts (ea:entityTypes)" ] ;
+  sh:property [
+    sh:path qb:component ; sh:minCount 1 ;
+    sh:qualifiedValueShape [ sh:property [ sh:path ea:role ; sh:hasValue ea:Time ] ] ;
+    sh:qualifiedMinCount 1 ; sh:qualifiedMaxCount 1 ;
+    sh:message "a cube has exactly one component with ea:role ea:Time" ] ;
+  sh:property [
+    sh:path qb:component ;
+    sh:qualifiedValueShape [ sh:property [ sh:path ea:role ; sh:hasValue ea:EntityType ] ] ;
+    sh:qualifiedMinCount 1 ; sh:qualifiedMaxCount 1 ;
+    sh:message "a cube has exactly one component with ea:role ea:EntityType" ] ;
+  sh:property [
+    sh:path qb:component ;
+    sh:qualifiedValueShape [ sh:property [ sh:path qb:measure ; sh:minCount 1 ] ] ;
+    sh:qualifiedMinCount 1 ;
+    sh:message "a cube has a measure" ] .
+
+ea:ComponentShape a sh:NodeShape ;
+  sh:targetObjectsOf qb:component ;
+  sh:xone (
+    [ sh:property [ sh:path qb:dimension ; sh:minCount 1 ; sh:maxCount 1 ] ; sh:property [ sh:path qb:measure ; sh:maxCount 0 ] ]
+    [ sh:property [ sh:path qb:measure ; sh:minCount 1 ; sh:maxCount 1 ] ; sh:property [ sh:path qb:dimension ; sh:maxCount 0 ] ]
+  ) ;
+  sh:message "a component is a dimension or a measure" .
+
+ea:DimensionShape a sh:NodeShape ;
+  sh:targetSubjectsOf qb:dimension ;
+  sh:property [
+    sh:path ea:sourcePath ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ; sh:minLength 1 ;
+    sh:message "every dimension reads one document path (ea:sourcePath)" ] ;
+  sh:property [ sh:path ea:role ; sh:maxCount 1 ; sh:in ( ea:Time ea:EntityType ) ] ;
+  sh:property [ sh:path ea:multiValued ; sh:maxCount 1 ; sh:datatype xsd:boolean ] ;
+  sh:property [ sh:path ea:labelKey ; sh:maxCount 1 ; sh:datatype xsd:string ] .

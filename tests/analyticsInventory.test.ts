@@ -30,7 +30,8 @@ ui:ManifestationUi a elody:EntityUi ; elody:graphqlType "Manifestation" ;
       [ sh:order 7 ; elody:alias "keyword" ; elody:key "vlacc:1|properties.keyword.value" ; elody:filterKind elody:TextFilter ] ] .
 
 ui:WorkUi a elody:EntityUi ; elody:graphqlType "Work" ;
-  elody:listQuery [ a elody:ListQuery ; elody:filtersQuery "GetWorkFilters" ; elody:filter ${material(1)} ] .
+  elody:listQuery [ a elody:ListQuery ; elody:filtersQuery "GetWorkFilters" ; elody:filter ${material(1)} ,
+    [ sh:order 2 ; elody:alias "type" ; elody:key "type" ; dash:hidden true ; sh:defaultValue "work_word" ; elody:filterKind elody:SelectionFilter ] ] .
 
 ui:FragmentsUi a elody:EntityUi ; elody:graphqlType "Fragments" ;
   elody:filtersFragment [ elody:fragmentName "entityAuditFilters" ;
@@ -57,7 +58,7 @@ describe("analytics inventory", () => {
   });
 
   it("reads every filter, those of a filters fragment with the fragment as owner", () => {
-    expect(filters).toHaveLength(12);
+    expect(filters).toHaveLength(13);
     const createdAt = filters.find((filter) => filter.path === "audit.created.at")!;
     expect(createdAt.owners).toEqual(["fragment:entityAuditFilters"]);
     const material = filters.filter((filter) => filter.path === "properties.material_type.value");
@@ -78,7 +79,8 @@ describe("analytics inventory", () => {
   });
 
   it("proposes a role per path, and says why", () => {
-    expect(byPath("type")).toMatchObject({ role: "entity_type", include: true, typeValues: ["manifestation_music", "manifestation_word"] });
+    // the type values: a TypeFilter's defaults, and those of any other filter on `type`
+    expect(byPath("type")).toMatchObject({ role: "entity_type", include: true, occurrences: 2, typeValues: ["manifestation_music", "manifestation_word", "work_word"] });
     expect(byPath("audit.created.at")).toMatchObject({ role: "time", include: true });
     expect(byPath("audit.updated.at")).toMatchObject({ role: "time", include: false });
     expect(byPath("audit.created.by")).toMatchObject({ role: "dimension", include: true });

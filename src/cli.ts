@@ -8,6 +8,8 @@
  * elody-ui extract  CLIENT_SRC --out FILE [--namespace IRI] a declaration proposal from the client's GraphQL
  * elody-ui analytics inventory DECLARATION --out DIR [--translations FILE ...]
  *                                                        every filter, one analytics candidate per document path
+ * elody-ui analytics overlay CANDIDATES --client NAME --out FILE   the selection overlay (qb: cube)
+ * elody-ui analytics validate OVERLAY                    the overlay against the analytics shapes
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { declarationFiles, loadDeclaration } from "./declarationFiles.js";
@@ -31,7 +33,9 @@ const usage = `usage:
   elody-ui extract  CLIENT_SRC --out FILE [--namespace IRI]
   elody-ui reference --out DIR [--declarations DIR] [--base PATH]
   elody-ui expand   FILE|DIR [--out FILE]   # every default written out
-  elody-ui analytics inventory DECLARATION --out DIR [--translations FILE ...]`;
+  elody-ui analytics inventory DECLARATION --out DIR [--translations FILE ...]
+  elody-ui analytics overlay   CANDIDATES --client NAME --out FILE [--collection NAME ...]
+  elody-ui analytics validate  OVERLAY`;
 
 function option(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(name);

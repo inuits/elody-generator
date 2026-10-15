@@ -205,7 +205,7 @@ export function candidatesOf(filters: FilterRecord[], bundles: TranslationBundle
       const typeValues = unique(
         group.flatMap((filter) => [
           ...filter.optionTypes,
-          ...(filter.filterKind === "TypeFilter" ? filter.defaultValues.filter((value) => !value.startsWith("$")) : []),
+          ...(filter.filterKind === "TypeFilter" || filter.path === "type" ? filter.defaultValues.filter((value) => !value.startsWith("$")) : []),
         ]),
       );
       return {

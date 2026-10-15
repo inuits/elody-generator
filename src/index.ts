@@ -33,3 +33,5 @@ export { loadDeclaration, declarationFiles, declarationFileFor, declaredSubjects
 export { readReference, renderReference, curie, type Reference } from "./reference.js";
 export { expandDeclaration, type ExpandResult } from "./expand.js";
 export { conventionalLabelKey } from "./vocab.js";
+export { inventory, readFilters, candidatesOf, candidatesMarkdown, normaliseKey, proposeRole, type Candidate, type FilterRecord, type Inventory, type Role } from "./analytics/inventory.js";
+export { renderOverlay, readOverlay, validateOverlay, propertyNames, type Overlay, type OverlayDimension, type OverlayOptions } from "./analytics/overlay.js";
