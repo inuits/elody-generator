@@ -48,4 +48,13 @@ ea:DimensionShape a sh:NodeShape ;
     sh:message "every dimension reads one document path (ea:sourcePath)" ] ;
   sh:property [ sh:path ea:role ; sh:maxCount 1 ; sh:in ( ea:Time ea:EntityType ) ] ;
   sh:property [ sh:path ea:multiValued ; sh:maxCount 1 ; sh:datatype xsd:boolean ] ;
-  sh:property [ sh:path ea:labelKey ; sh:maxCount 1 ; sh:datatype xsd:string ] .
+  sh:property [ sh:path ea:labelKey ; sh:maxCount 1 ; sh:datatype xsd:string ] ;
+  sh:property [ sh:path ea:via ; sh:maxCount 1 ; sh:node ea:ViaShape ] .
+
+ea:ViaShape a sh:NodeShape ;
+  sh:property [
+    sh:path ea:targetType ; sh:minCount 1 ; sh:datatype xsd:string ;
+    sh:message "a relation names the type(s) it points at (ea:targetType)" ] ;
+  sh:property [
+    sh:path ea:labelPath ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ;
+    sh:message "a relation names where its target's label is (ea:labelPath)" ] .

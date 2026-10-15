@@ -274,7 +274,8 @@
   "notes": [
     "A date may be a string (\"2010-09-29 00:00:00\"): parse it as Europe/Brussels.",
     "updated_at is the version of the row: the update date, else the creation date, else 1970-01-01.",
-    "A multi-valued column is a list of strings; a single value is wrapped in one."
+    "A multi-valued column is a list of strings; a single value is wrapped in one.",
+    "A column with a lookup holds identifiers of entities of its target types: load it as their labels (an identifier without a target stays as it is)."
   ],
   "destination": {
     "dataset": "raw",

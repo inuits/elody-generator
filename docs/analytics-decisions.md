@@ -357,3 +357,49 @@ What a new client costs now: a `client.json` with `translations`, then
 `pipeline.py --reset` → `create_dashboard.py` → `export_dashboards.sh`. The
 reviews and the dashboard's choice of dimensions are the client's own work;
 the rest runs as is for v1 and v2.
+
+## vlacc modelled by hand; relations by their label
+
+After the manual evaluation (`elody-declarations/clients/vlacc/analytics/evaluation/manual-evaluation.md`:
+the generated set 10 of 18 right, doelgroep, taal and catalografische bron
+missed) the choice of dimensions moves from the heuristic to a person:
+
+- **The overlay is the model, written by hand.** vlacc's
+  `vlacc.analytics.ttl` now holds the 13 dimensions of the evaluation, each with
+  a line on why; `analytics overlay` is no longer run for vlacc. `inventory` and
+  `profile` (without `--update`) stay as the proposal and the check to read
+  before changing it. Everything downstream is generated as before.
+- **`ea:via`: a relation is a dimension by its target's label.** Doelgroep
+  (`properties.ref_target_audiences.value`) and taal
+  (`properties.ref_languages.value`) hold identifiers (`DG-…`, `TAAL-…`) of
+  `target_audience` and `language` entities. The component names the target
+  type and its label path (`ea:via [ ea:targetType "target_audience" ;
+  ea:labelPath "properties.title.value" ]`); the projection carries a `lookup`;
+  the pipeline reads the targets once (11 target audiences, 465 languages),
+  maps every identifier of a target (and its `_id`) to its label and loads the
+  labels. An identifier without a target stays as it is, so a broken relation
+  shows rather than disappears. Kept in ClickHouse as the labels, not as a
+  dictionary join: the lists are short and their labels rarely change; a
+  renamed target needs a reload.
+- **`--reset` drops** the raw table and the client's mart views instead of
+  emptying them, and applies the SQL after that, so a changed overlay's columns
+  are created afresh. A change without a reset is still not migrated
+  (`CREATE TABLE IF NOT EXISTS`): the open point of adding a column to a loaded
+  client stands.
+- **Not yet modelled**, kept in the overlay as a comment: publication year as a
+  number (`qb:AttributeProperty`, not a grouping key), the derived library and
+  way of entry, genre and classification, and whether the authority types count.
+
+Result: the full reload with the hand-modelled overlay takes 5 min 8 s
+(4,062,861 entities; 11 target audiences with 22 identifiers, 465 languages
+with 926), `verify.py` equal. Doelgroep: volwassenen 896,297, 9-11 35,597, 3-5
+27,261, …; taal: Nederlands 835,781, Niet gedefinieerd 811,076 (most music),
+Engels 334,821, …; catalografische bron: Open Vlacc 414,213, VLACC I 358,975,
+CDR 236,310, BoekenBank 203,827. The dashboard *Catalogusinvoer* gained per
+doelgroep, taal, catalografische bron and status (the list dimensions from
+their own views; `create_dashboard.py` finds them), exported and re-imported
+into an emptied Superset. New data-quality findings: catalografische bron
+spelled `VLACC I`/`Vlacc I`, `BoekenBank`/`Boekenbank`/`BoekenBanke`/…; 16
+expressions point at a language that does not exist (their identifier is
+loaded as is); doelgroep has `jeugd`, `18 maanden` and `3 maanden` next to the
+list's age bands.

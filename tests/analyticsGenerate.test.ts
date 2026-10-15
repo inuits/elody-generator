@@ -10,7 +10,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { describe, expect, it } from "vitest";
 import { columnsOf, generateAnalytics, toYaml, uuidFor } from "../src/analytics/generate.js";
-import { readOverlay } from "../src/analytics/overlay.js";
+import { readOverlay, validateOverlay } from "../src/analytics/overlay.js";
 
 const fixtures = join(__dirname, "fixtures", "analytics");
 const overlay = readOverlay(readFileSync(join(fixtures, "vlacc.analytics.ttl"), "utf-8"));
@@ -109,6 +109,32 @@ describe("analytics generate", () => {
     expect(projection.projection).toMatchObject({ _id: 1, type: 1, date_created: 1, date_updated: 1, metadata: 1 });
     expect(projection.projection["metadata.material_type.value"]).toBeUndefined();
     expect(projection.incremental).toMatchObject({ cursor: "date_updated", fallback: "date_created" });
+  });
+
+  it("reads a relation's label: the dimension holds the target's title, not its identifier", async () => {
+    const ttl = readFileSync(join(fixtures, "vlacc.analytics.ttl"), "utf-8").replace(
+      "  qb:component [ qb:measure",
+      `  qb:component [ qb:dimension em:audience ; ea:sourcePath "properties.ref_target_audiences.value" ;
+    ea:via [ ea:targetType "target_audience" ; ea:labelPath "properties.title.value" ] ;
+    ea:multiValued true ; ea:labelKey "metadata.labels.target-audience" ] ;
+  qb:component [ qb:measure`,
+    );
+    expect((await validateOverlay(ttl)).issues).toEqual([]);
+    const withVia = readOverlay(ttl);
+    expect(withVia.dimensions.find((dimension) => dimension.sourcePath === "properties.ref_target_audiences.value")!.via).toEqual({
+      targetTypes: ["target_audience"],
+      labelPath: "properties.title.value",
+    });
+    const projection = JSON.parse(generateAnalytics(withVia, { bundles }).get("dlt/projection.json")!);
+    expect(projection.columns.find((column: { name: string }) => column.name === "audience")).toMatchObject({
+      path: "properties.ref_target_audiences.value",
+      multiValued: true,
+      clickhouse: "Array(LowCardinality(String))",
+      lookup: { targetTypes: ["target_audience"], match: "identifiers", label: { path: "properties.title.value" } },
+    });
+    // a target without a label is refused: a via must name both
+    const noLabel = ttl.replace(' ; ea:labelPath "properties.title.value"', "");
+    expect((await validateOverlay(noLabel)).conforms).toBe(false);
   });
 
   it("matches the snapshots", async () => {

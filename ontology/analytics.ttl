@@ -39,6 +39,17 @@ ea:multiValued a rdf:Property ;
   rdfs:range xsd:boolean ;
   rdfs:comment "The path holds a list in a notable share of the documents: one row per value when it is counted." .
 
+ea:via a rdf:Property ;
+  rdfs:comment "The dimension's path holds identifiers of other entities (a relation): its values are those entities' labels. The node names the target's type(s) (ea:targetType) and where its label is (ea:labelPath)." .
+
+ea:targetType a rdf:Property ;
+  rdfs:range xsd:string ;
+  rdfs:comment "An entity type a relation points at (the target document's `type`)." .
+
+ea:labelPath a rdf:Property ;
+  rdfs:range xsd:string ;
+  rdfs:comment "The logical path of the label in the target document (`properties.title.value`)." .
+
 ea:labelKey a rdf:Property ;
   rdfs:range xsd:string ;
   rdfs:comment "The translation key of the dimension's label, as the UI declaration names it (`metadata.labels.material-type`)." .

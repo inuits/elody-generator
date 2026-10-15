@@ -34,6 +34,8 @@ export type Column = {
   clickhouse: string;
   /** the dlt data type hint */
   dlt: "text" | "timestamp" | "json";
+  /** a relation: the values are identifiers, resolved to the targets' labels on loading */
+  lookup?: { targetTypes: string[]; match: "identifiers"; label: Accessor };
 };
 
 export type GenerateOptions = {
@@ -86,6 +88,9 @@ export function columnsOf(overlay: Overlay, bundles: TranslationBundle[]): Colum
       label: label(dimension.labelKey, name, dimension.label),
       clickhouse: dimension.multiValued ? "Array(LowCardinality(String))" : "LowCardinality(String)",
       dlt: dimension.multiValued ? "json" : "text",
+      ...(dimension.via
+        ? { lookup: { targetTypes: dimension.via.targetTypes, match: "identifiers" as const, label: accessorOf(dimension.via.labelPath, overlay.schema) } }
+        : {}),
     });
   }
   // two columns with one label read the same in Superset: the later ones say which column they are
@@ -176,6 +181,7 @@ function projection(overlay: Overlay, columns: Column[], options: { client: stri
       clickhouse: column.clickhouse,
       ...(column.multiValued ? { multiValued: true } : {}),
       ...(column.kind === "id" ? { cast: "string" } : {}),
+      ...(column.lookup ? { lookup: column.lookup } : {}),
     })),
     primaryKey: "id",
     incremental: {
@@ -188,6 +194,7 @@ function projection(overlay: Overlay, columns: Column[], options: { client: stri
       "A date may be a string (\"2010-09-29 00:00:00\"): parse it as Europe/Brussels.",
       "updated_at is the version of the row: the update date, else the creation date, else 1970-01-01.",
       "A multi-valued column is a list of strings; a single value is wrapped in one.",
+      "A column with a lookup holds identifiers of entities of its target types: load it as their labels (an identifier without a target stays as it is).",
     ],
     destination: { dataset: "raw", table: options.table },
     mart: { daily: `${MART}.${viewName(options.client, DAILY_VIEW)}` },

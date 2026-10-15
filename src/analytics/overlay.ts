@@ -31,6 +31,8 @@ export const ANALYTICS_SHAPES_PATH = join(moduleRoot, "ontology", "analytics.sha
 export type OverlayDimension = {
   property: string;
   sourcePath: string;
+  /** the path holds identifiers of other entities: the dimension is their label */
+  via?: { targetTypes: string[]; labelPath: string };
   /** `EntityType` or `Time`; a plain dimension has none */
   role?: string;
   multiValued: boolean;
@@ -169,6 +171,7 @@ export function readOverlay(ttl: string): Overlay {
       .map((node) => ({
         property: reading.node(node, qb("dimension"))!,
         sourcePath: reading.value(node, ea("sourcePath")) ?? "",
+        via: viaOf(reading, node),
         role: reading.node(node, ea("role"))?.replace(EA, ""),
         multiValued: reading.literal(node, ea("multiValued")) === true,
         labelKey: reading.value(node, ea("labelKey")),
@@ -176,6 +179,12 @@ export function readOverlay(ttl: string): Overlay {
       })),
     measures: components.flatMap((node) => reading.nodes(node, qb("measure"))),
   };
+}
+
+function viaOf(reading: Reading, component: string): OverlayDimension["via"] {
+  const via = reading.node(component, ea("via"));
+  if (!via) return undefined;
+  return { targetTypes: reading.literals(via, ea("targetType")).sort(), labelPath: reading.value(via, ea("labelPath")) ?? "" };
 }
 
 let shapesCache: Quad[] | undefined;
