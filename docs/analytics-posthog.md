@@ -107,3 +107,26 @@ Whether batch exports cost extra on Cloud was not confirmed.
 - Pricing: https://posthog.com/pricing, https://posthog.com/product-analytics/pricing, https://posthog.com/group-analytics/pricing
 - Privacy: https://posthog.com/docs/privacy/gdpr-compliance.md, https://posthog.com/blog/posthog-cloud-eu.md, https://posthog.com/docs/privacy/data-storage
 - Vue: https://posthog.com/docs/libraries/vue-js, https://posthog.com/tutorials/spa, https://posthog.com/docs/web-analytics/installation/vue
+
+## Alternatives that store their events in ClickHouse
+
+PostHog turned out open core, and its self-hosted edition an unsupported hobby
+deployment (paid self-hosting stopped in February 2023). The open-source tools
+that keep their events in ClickHouse, from their documentation and
+third-party listings (not tried; licences to confirm in each repository):
+
+| Tool | Licence | Storage | For | Self-hosted |
+|---|---|---|---|---|
+| **OpenPanel** | AGPL-3.0 (one of its own pages says MIT: to confirm) | ClickHouse, PostgreSQL, Redis | product analytics à la Mixpanel: events, funnels, retention cohorts | the same as its cloud, no caps or gated features (vendor's claim) |
+| **Rybbit** | AGPL-3.0 | ClickHouse, PostgreSQL, Redis | web analytics plus funnels, journeys, retention, session replay, custom events with JSON properties | no gated features (template page's claim; Web Vitals possibly paid); young, about a year old |
+| **Plausible** Community Edition | AGPL-3.0 | ClickHouse, PostgreSQL | simple web statistics, custom events and goals; direct ClickHouse access documented | funnels and revenue are Cloud-only; releases twice a year |
+| **Umami** | MIT | PostgreSQL; ClickHouse optional, advised above ~1M events a day | simple web statistics and events | everything |
+| **Jitsu** | MIT | a pipeline, not a store: delivers events to ClickHouse among others | collection only (a Segment alternative); no analysis UI | free; Kafka/Redpanda, PostgreSQL, ClickHouse, MongoDB |
+
+For Elody, usage inside an application: **OpenPanel** comes closest to what
+PostHog offers, and is the first to try; **Rybbit** second. **Jitsu** is the
+route if Superset is to be the only interface: it only collects and writes
+into our ClickHouse, the dashboards are ours to build. Plausible and Umami are
+website statistics. Each tool owns its ClickHouse schema; Superset reading it
+couples to that schema, so a mart over it (as for Elody's data) keeps the
+dashboards stable. One ClickHouse server can hold both, in separate databases.
