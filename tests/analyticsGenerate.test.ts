@@ -78,7 +78,7 @@ describe("analytics generate", () => {
   });
 });
 
-const IMAGE = "clickhouse/clickhouse-server:25.8";
+const IMAGE = "clickhouse/clickhouse-server:26.8";
 const hasClickhouse = (() => {
   try {
     execFileSync("docker", ["image", "inspect", IMAGE], { stdio: "ignore" });

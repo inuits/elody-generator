@@ -215,9 +215,82 @@ stale file. For vlacc the output is in
   imported into a Superset yet: that is step 5.
 - **Tests.** Snapshot tests on the vlacc overlay (copied to
   `tests/fixtures/analytics/` with the translation keys it uses); the SQL runs
-  on an empty ClickHouse 25.8 (`clickhouse-local` in the
-  `clickhouse/clickhouse-server:25.8` image, skipped when the image is absent),
+  on an empty ClickHouse 26.8 (`clickhouse-local` in the
+  `clickhouse/clickhouse-server:26.8` image, skipped when the image is absent),
   with a few rows: the later version of an entity replaces the first, an
   entity without a creation date is not counted, a list is counted per value.
 - **YAML** is written by a small emitter (`toYaml`): strings always quoted, so
   values like `yes` or `1.0` stay strings; no YAML dependency added.
+
+## Step 5 — the local chain
+
+- **Where.** `elody-declarations/poc/analytics/`, next to the generated files
+  it reads (`clients/vlacc/analytics/generated/`), on the same
+  `feat/analytics-poc` branch; not in elody-common, whose root repository
+  holds no client work.
+- **Versions.** ClickHouse 26.8 (the latest LTS), Superset 6.1.0 (the latest
+  stable, 2026-09-07) with `clickhouse-connect` 0.8.18 for `clickhousedb://`,
+  dlt 1.30.0. Host ports 18123/19000 (ClickHouse) and 18088 (Superset) so
+  nothing clashes with the Elody stack (port 9000 is taken).
+- **pymongo 4.13.2.** pymongo 4.18 refuses MongoDB 4.0 (it needs 4.4, wire
+  version 9); elody-common runs `mongo:4.0.0`. 4.13.2 works; a production
+  connector on a newer Mongo can move up.
+- **A dlt resource of its own, not the verified MongoDB source.** The resource
+  reads `projection.json`: its type filter, projection and the incremental
+  query with the creation date as fallback (`$or` on `audit.updated.at`, or
+  no update date and `audit.created.at`). The verified source has no such
+  fallback, and 670k entities have no update date.
+- **Staging, then raw.** dlt loads with `write_disposition="merge"` on `id`
+  into its own table (`default.dlt_vlacc___vlacc_entities`; dlt has no array
+  type, a list goes in as JSON text). After each load the pipeline copies that
+  load's rows (`_dlt_load_id`) into `raw.vlacc_entities`, turning the JSON into
+  `Array(String)` and NULLs into `''`; ReplacingMergeTree keeps the latest
+  version. The raw table stays exactly what step 4 generates.
+- **`--reset`** removes the local pipeline state, every `dlt_vlacc*` table and
+  the raw rows. Dropping the data table alone is not enough: dlt's own schema
+  table still records it and the next merge fails on the missing table.
+- **Superset import.** `scripts/load_superset.sh` zips the generated bundle with
+  the ClickHouse URI set (the generated file masks the password, like a
+  Superset export) and runs `superset import-datasources`; it fails when
+  Superset logs an error (the CLI itself exits 0 on a failed import).
+- **The dashboard** *Catalogusinvoer* was built once through the REST API
+  (`scripts/create_dashboard.py`: a total, created per month, per type, per
+  material type, per bibliographic type; native filters *Periode* on the day
+  and *Type*) and exported with `scripts/export_dashboards.sh` to
+  `poc/analytics/superset/dashboards/`: dashboards and charts only. The
+  datasets and database stay the generated ones; the load script puts them
+  next to the export when it imports, so there is one source for them.
+- **ClickHouse must prefer column names to aliases.** Superset groups the time
+  column by an expression it aliases with the column's own name
+  (`dateTrunc('MONTH', toDateTime(day)) AS day`); ClickHouse reads the `day`
+  inside as the alias and refuses the query (code 215). The POC sets
+  `prefer_column_name_to_alias = 1` in the server's default profile
+  (`poc/analytics/clickhouse/users.d/analytics.xml`). Any ClickHouse a
+  Superset reads the mart from needs it.
+- **A dashboard's layout names its charts by uuid.** The first export placed
+  the charts in the wrong cells after re-import: the layout carried uuids of
+  its own instead of the charts'. `create_dashboard.py` now reads each chart's
+  uuid back from the API.
+- **Bars keep the largest values.** A categorical bar chart with a row limit
+  keeps the first rows of the query, not the largest: `order_desc` makes the
+  query sort by the metric, and ascending display order puts the largest bar
+  on top of a horizontal chart. Top 15 for type and material type.
+
+### Result
+
+- Full load: 4,062,861 entities from the two collections in 5 min 45 s (one
+  dlt package); `raw.vlacc_entities FINAL`
+  holds exactly the 4,062,861 the profile counted. A second run with nothing
+  changed loads nothing (2.6 s). Loading a *changed* entity incrementally was
+  not exercised: that would mean writing to the local Mongo dump.
+- `scripts/verify.py`: manifestation_word, person and reading in 2024-06,
+  2025-11 and 2026-05, ClickHouse and Mongo equal in all nine (person is 0
+  before 2026 and 236,595 in May 2026: the migration of finding 1, step 3).
+- The dashboard, imported from the YAML into an emptied Superset: total
+  4,061,727 (the 1,134 entities without a creation date left out), created per
+  month, top 15 per type and per material type, per bibliographic type;
+  filtering on `manifestation_word` gives 890,599 and a monthly trend without
+  the 2026 spike.
+- Seen in the data along the way: material type has both `BOEK` (704,632) and
+  `Boek` (2,949), literary type `Non-Fictie` and `Non-fictie`. Case variants
+  of one value; a question for the catalogue, not for the chain.
