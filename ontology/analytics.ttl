@@ -19,6 +19,10 @@ ea:sourceCollection a rdf:Property ;
   rdfs:domain qb:DataStructureDefinition ; rdfs:range xsd:string ;
   rdfs:comment "A Mongo collection the entities are read from." .
 
+ea:documentSchema a rdf:Property ;
+  rdfs:domain qb:DataStructureDefinition ; rdfs:range xsd:string ;
+  rdfs:comment "Where the documents keep their values: \"v2\" at the path, \"v1\" with the audit at the top (date_created, created_by, date_updated, last_editor) and metadata and relations as lists matched on their key or type. The source paths stay logical (as the declaration's filter keys); v2 when absent." .
+
 ea:entityTypes a rdf:Property ;
   rdfs:domain qb:DataStructureDefinition ; rdfs:range xsd:string ;
   rdfs:comment "An entity type (the document's `type`) the cube counts; the others are not read." .

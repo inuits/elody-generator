@@ -11,16 +11,17 @@
  * profileMongo.ts reads a local Mongo.
  */
 import { readOverlay, type Overlay } from "./overlay.js";
+import { accessorOf, mongoRoot, readValues, type Accessor } from "./storage.js";
 
 export type ProfileSource = {
   /** documents per `type` in a collection */
   typeCounts(collection: string): Promise<Record<string, number>>;
-  /** a random sample of a type's documents, at most `size`, the paths projected */
-  sample(collection: string, type: string, paths: string[], size: number): Promise<Record<string, unknown>[]>;
+  /** a random sample of a type's documents, at most `size`, the fields that hold the paths projected (storage.ts mongoRoot) */
+  sample(collection: string, type: string, roots: string[], size: number): Promise<Record<string, unknown>[]>;
   /** every value of a path over the documents of the types, exactly: how many documents carry each */
-  distribution(collections: string[], types: string[], path: string): Promise<{ documents: number; values: [string, number][] }>;
+  distribution(collections: string[], types: string[], accessor: Accessor): Promise<{ documents: number; values: [string, number][] }>;
   /** documents per year of a date path, `null` for those without one */
-  yearly(collections: string[], types: string[], path: string): Promise<{ year: number | null; count: number }[]>;
+  yearly(collections: string[], types: string[], accessor: Accessor): Promise<{ year: number | null; count: number }[]>;
   /** the values that name a user (an identifier of a document in the users collection) */
   lookup(collection: string, values: string[]): Promise<string[]>;
 };
@@ -96,24 +97,7 @@ export type ProfileOptions = {
 };
 
 /** The values at a dotted path, descending through lists the way a Mongo query does; empty strings and nulls are no value. */
-export function valuesAt(doc: unknown, path: string): { present: boolean; isArray: boolean; values: unknown[] } {
-  let current: unknown[] = [doc];
-  let isArray = false;
-  for (const segment of path.split(".")) {
-    const next: unknown[] = [];
-    for (const node of current) {
-      if (node === null || node === undefined || typeof node !== "object" || node instanceof Date) continue;
-      const value = (node as Record<string, unknown>)[segment];
-      if (Array.isArray(value)) {
-        isArray = true;
-        next.push(...value);
-      } else if (value !== undefined) next.push(value);
-    }
-    current = next.flatMap((value) => (Array.isArray(value) ? ((isArray = true), value) : [value]));
-  }
-  const values = current.filter((value) => value !== null && value !== undefined && value !== "");
-  return { present: values.length > 0, isArray: values.length > 0 && isArray, values };
-}
+export const valuesAt = (doc: unknown, path: string) => readValues(doc, { path });
 
 export function bsonType(value: unknown): string {
   if (value instanceof Date) return "date";
@@ -130,13 +114,13 @@ const keyOf = (value: unknown): string =>
 const topOf = (counts: Map<string, number>, size: number): [string, number][] =>
   [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, size);
 
-function statsOf(docs: Record<string, unknown>[], path: string): PathStats & { counts: Map<string, number> } {
+function statsOf(docs: Record<string, unknown>[], accessor: Accessor): PathStats & { counts: Map<string, number> } {
   let present = 0;
   let arrays = 0;
   const bsonTypes: Record<string, number> = {};
   const counts = new Map<string, number>();
   for (const doc of docs) {
-    const found = valuesAt(doc, path);
+    const found = readValues(doc, accessor);
     if (!found.present) continue;
     present += 1;
     if (found.isArray) arrays += 1;
@@ -171,10 +155,12 @@ export async function profile(overlay: Overlay, source: ProfileSource, options: 
 
   const dimensions = new Map(overlay.dimensions.map((dimension) => [dimension.sourcePath, dimension]));
   const paths = [...dimensions.keys(), ...options.extras.filter((path) => !dimensions.has(path))];
+  const accessor = (path: string) => accessorOf(path, overlay.schema);
+  const roots = [...new Set(["type", ...paths.map((path) => mongoRoot(accessor(path)))])];
 
   const samples = new Map<string, Record<string, unknown>[]>();
   for (const entry of types) {
-    const docs = await source.sample(entry.collection, entry.type, paths, options.sample);
+    const docs = await source.sample(entry.collection, entry.type, roots, options.sample);
     entry.sampled = docs.length;
     samples.set(entry.type, docs);
   }
@@ -187,7 +173,7 @@ export async function profile(overlay: Overlay, source: ProfileSource, options: 
     const merged = new Map<string, number>();
     let maxFilled = { type: "", filled: 0 };
     for (const entry of types) {
-      const { counts, ...stats } = statsOf(samples.get(entry.type) ?? [], path);
+      const { counts, ...stats } = statsOf(samples.get(entry.type) ?? [], accessor(path));
       perType[entry.type] = stats;
       const weight = stats.sampled ? entry.documents / stats.sampled : 0;
       filledDocs += stats.filled * entry.documents;
@@ -225,12 +211,12 @@ export async function profile(overlay: Overlay, source: ProfileSource, options: 
   const scope = [...withDocuments];
   const timePath = overlay.dimensions.find((dimension) => dimension.role === "Time")?.sourcePath;
   const time = timePath
-    ? { path: timePath, byYear: (await source.yearly(overlay.sourceCollections, scope, timePath)).sort((a, b) => (a.year ?? -1) - (b.year ?? -1)) }
+    ? { path: timePath, byYear: (await source.yearly(overlay.sourceCollections, scope, accessor(timePath))).sort((a, b) => (a.year ?? -1) - (b.year ?? -1)) }
     : undefined;
 
   const library: LibraryCandidate[] = [];
   for (const path of options.library) {
-    const { documents, values } = await source.distribution(overlay.sourceCollections, scope, path);
+    const { documents, values } = await source.distribution(overlay.sourceCollections, scope, accessor(path));
     const candidate: LibraryCandidate = {
       path,
       documents,

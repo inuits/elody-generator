@@ -2,9 +2,12 @@
  * The overlay generates the analytics store and the tools around it:
  *
  * - clickhouse/001_raw.sql   the raw table, one row per entity, its latest version kept
- * - clickhouse/010_mart.sql  the views the dashboards read: created per day × type × every
- *                            single-valued dimension, and one view per multi-valued dimension
- * - dlt/projection.json      what the dlt pipeline reads from Mongo and where it writes it
+ * - clickhouse/010_mart.sql  the views the dashboards read, in the shared `mart` database and
+ *                            named after the client (mart.<client>_entities_created_daily):
+ *                            created per day × type × every single-valued dimension, and one
+ *                            view per multi-valued dimension
+ * - dlt/projection.json      what the dlt pipeline reads from Mongo and where it writes it; each
+ *                            column carries where the client's schema stores it (storage.ts)
  * - superset/…               a Superset import bundle: the database and a dataset per view,
  *                            labelled in Dutch from the client's translations
  *
@@ -14,13 +17,16 @@ import { createHash } from "crypto";
 import { localName } from "../vocab.js";
 import { translate, type TranslationBundle } from "./inventory.js";
 import type { Overlay } from "./overlay.js";
+import { accessorOf, mongoRoot, type Accessor } from "./storage.js";
 
 const TIMESTAMP = "DateTime64(3, 'Europe/Brussels')";
 
 export type Column = {
   name: string;
-  /** the document path it is read from */
+  /** the logical path it is read from, as the declaration names it */
   path: string;
+  /** where the client's document schema stores that path */
+  source: Accessor;
   kind: "id" | "type" | "time" | "audit" | "dimension";
   multiValued: boolean;
   labelKey?: string;
@@ -53,10 +59,10 @@ export function columnsOf(overlay: Overlay, bundles: TranslationBundle[]): Colum
   const fixed = (name: string, path: string, kind: Column["kind"], clickhouse: string, dlt: Column["dlt"], labelKey: string): Column => {
     const dimension = byPath.get(path);
     const key = dimension?.labelKey ?? labelKey;
-    return { name, path, kind, multiValued: false, labelKey: key, label: label(key, name, dimension?.label), clickhouse, dlt };
+    return { name, path, source: accessorOf(path, overlay.schema), kind, multiValued: false, labelKey: key, label: label(key, name, dimension?.label), clickhouse, dlt };
   };
   const columns: Column[] = [
-    fixed("id", "_id", "id", "String", "text", "metadata.labels.id"),
+    { ...fixed("id", "_id", "id", "String", "text", "metadata.labels.id"), source: { path: "_id" } },
     fixed("type", type?.sourcePath ?? "type", "type", "LowCardinality(String)", "text", "metadata.labels.type"),
     fixed("created_at", time?.sourcePath ?? "audit.created.at", "time", `Nullable(${TIMESTAMP})`, "timestamp", "metadata.labels.created-at"),
     fixed("created_by", "audit.created.by", "audit", "String", "text", "metadata.labels.created-by"),
@@ -73,6 +79,7 @@ export function columnsOf(overlay: Overlay, bundles: TranslationBundle[]): Colum
     columns.push({
       name,
       path: dimension.sourcePath,
+      source: accessorOf(dimension.sourcePath, overlay.schema),
       kind: "dimension",
       multiValued: dimension.multiValued,
       labelKey: dimension.labelKey,
@@ -116,13 +123,17 @@ function rawSql(columns: Column[], table: string, source?: string): string {
 export const DAILY_VIEW = "entities_created_daily";
 export const byView = (column: Column) => `entities_created_by_${column.name}`;
 
-function martSql(columns: Column[], table: string, source?: string): string {
+const MART = "mart";
+/** A view's name: the client's prefix, so clients share the mart and Superset's dataset names stay unique. */
+const viewName = (client: string, base: string) => `${client}_${base}`;
+
+function martSql(columns: Column[], table: string, client: string, source?: string): string {
   const single = columns.filter((column) => column.kind === "dimension" && !column.multiValued).map((column) => column.name);
   const multi = columns.filter((column) => column.multiValued);
   const keys = ["day", "type", "created_by", ...single];
   const day = "toDate(assumeNotNull(created_at)) AS day";
   const view = (name: string, select: string[], from: string[], group: string[]) => [
-    `CREATE OR REPLACE VIEW mart.${name} AS`,
+    `CREATE OR REPLACE VIEW ${MART}.${viewName(client, name)} AS`,
     "SELECT",
     ...[...select, "count() AS entity_count"].map((line, index, all) => `    ${line}${index < all.length - 1 ? "," : ""}`),
     ...from,
@@ -133,7 +144,7 @@ function martSql(columns: Column[], table: string, source?: string): string {
   return [
     header(source),
     "-- Entities created per day; an entity without a creation date is not counted.",
-    "CREATE DATABASE IF NOT EXISTS mart;",
+    `CREATE DATABASE IF NOT EXISTS ${MART};`,
     "",
     ...view(DAILY_VIEW, [day, ...keys.slice(1)], [`FROM raw.${table} FINAL`], keys),
     ...multi.flatMap((column) => [
@@ -144,17 +155,23 @@ function martSql(columns: Column[], table: string, source?: string): string {
 }
 
 function projection(overlay: Overlay, columns: Column[], options: { client: string; database: string; table: string; source?: string }) {
-  const paths = columns.map((column) => column.path);
+  const storedAt = (name: string) => {
+    const accessor = columns.find((column) => column.name === name)!.source;
+    if (!("path" in accessor) || "list" in accessor) throw new Error(`${name} must be stored at a path to serve as the incremental cursor`);
+    return accessor.path;
+  };
   return {
     $comment: `Generated by \`elody-ui analytics generate\`${options.source ? ` from ${options.source}` : ""}; do not edit.`,
     client: options.client,
     database: options.database,
+    schema: overlay.schema,
     collections: overlay.sourceCollections,
     filter: { type: { $in: overlay.entityTypes } },
-    projection: Object.fromEntries([...new Set(paths)].map((path) => [path, 1])),
+    projection: Object.fromEntries([...new Set(["type", ...columns.map((column) => mongoRoot(column.source))])].map((root) => [root, 1])),
     columns: columns.map((column) => ({
       name: column.name,
       path: column.path,
+      source: column.source,
       type: column.dlt,
       clickhouse: column.clickhouse,
       ...(column.multiValued ? { multiValued: true } : {}),
@@ -162,17 +179,18 @@ function projection(overlay: Overlay, columns: Column[], options: { client: stri
     })),
     primaryKey: "id",
     incremental: {
-      cursor: "audit.updated.at",
+      cursor: storedAt("updated_at"),
       // most authority records were never changed in Elody: their creation date stands in, and is the row's version
-      fallback: "audit.created.at",
+      fallback: storedAt("created_at"),
       column: "updated_at",
     },
     notes: [
       "A date may be a string (\"2010-09-29 00:00:00\"): parse it as Europe/Brussels.",
-      "updated_at is the version of the row: audit.updated.at, else audit.created.at, else 1970-01-01.",
+      "updated_at is the version of the row: the update date, else the creation date, else 1970-01-01.",
       "A multi-valued column is a list of strings; a single value is wrapped in one.",
     ],
     destination: { dataset: "raw", table: options.table },
+    mart: { daily: `${MART}.${viewName(options.client, DAILY_VIEW)}` },
   };
 }
 
@@ -240,15 +258,18 @@ function supersetColumn(name: string, label: string, type: string, options: { dt
   };
 }
 
+// one connection for every client: each client's views are a schema (a ClickHouse database) of it
+const SHARED = "elody";
+
 function dataset(client: string, view: string, description: string, columns: Yaml[]): Yaml {
   return {
-    table_name: view,
+    table_name: viewName(client, view),
     main_dttm_col: "day",
     description,
     default_endpoint: null,
     offset: 0,
     cache_timeout: null,
-    schema: "mart",
+    schema: MART,
     sql: null,
     params: null,
     template_params: null,
@@ -273,7 +294,7 @@ function dataset(client: string, view: string, description: string, columns: Yam
     ],
     columns,
     version: "1.0.0",
-    database_uuid: uuidFor(client, "database", SUPERSET_DATABASE),
+    database_uuid: uuidFor(SHARED, "database", SUPERSET_DATABASE),
   };
 }
 
@@ -289,7 +310,7 @@ function superset(columns: Column[], client: string): Map<string, string> {
     `superset/databases/${SUPERSET_DATABASE}.yaml`,
     toYaml({
       database_name: "Analytics (ClickHouse)",
-      sqlalchemy_uri: "clickhousedb://default:XXXXXXXXXX@clickhouse:8123/mart",
+      sqlalchemy_uri: "clickhousedb://default:XXXXXXXXXX@clickhouse:8123/default",
       cache_timeout: null,
       expose_in_sqllab: true,
       allow_run_async: false,
@@ -298,18 +319,18 @@ function superset(columns: Column[], client: string): Map<string, string> {
       allow_dml: false,
       allow_file_upload: false,
       extra: { allows_virtual_table_explore: true },
-      uuid: uuidFor(client, "database", SUPERSET_DATABASE),
+      uuid: uuidFor(SHARED, "database", SUPERSET_DATABASE),
       version: "1.0.0",
     }),
   );
   const single = columns.filter((column) => column.kind === "type" || column.name === "created_by" || (column.kind === "dimension" && !column.multiValued));
   files.set(
-    `superset/datasets/${SUPERSET_DATABASE}/${DAILY_VIEW}.yaml`,
+    `superset/datasets/${SUPERSET_DATABASE}/${viewName(client, DAILY_VIEW)}.yaml`,
     toYaml(dataset(client, DAILY_VIEW, "Aangemaakte entiteiten per dag, type en kenmerk.", [day, ...single.map(dimension), count])),
   );
   for (const column of columns.filter((entry) => entry.multiValued))
     files.set(
-      `superset/datasets/${SUPERSET_DATABASE}/${byView(column)}.yaml`,
+      `superset/datasets/${SUPERSET_DATABASE}/${viewName(client, byView(column))}.yaml`,
       toYaml(dataset(client, byView(column), `Aangemaakte entiteiten per dag, type en ${column.label.toLowerCase()}; een entiteit telt eenmaal per waarde.`, [day, dimension(byName.get("type")!), dimension(column), count])),
     );
   return files;
@@ -322,7 +343,7 @@ export function generateAnalytics(overlay: Overlay, options: GenerateOptions): M
   const columns = columnsOf(overlay, options.bundles);
   return new Map([
     ["clickhouse/001_raw.sql", rawSql(columns, table, options.source)],
-    ["clickhouse/010_mart.sql", martSql(columns, table, options.source)],
+    ["clickhouse/010_mart.sql", martSql(columns, table, client, options.source)],
     ["dlt/projection.json", JSON.stringify(projection(overlay, columns, { client, database: options.database ?? client, table, source: options.source }), null, 2) + "\n"],
     ...superset(columns, client),
   ]);

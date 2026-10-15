@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import { readOverlay } from "../src/analytics/overlay.js";
 import { applyProfile, profile, profileMarkdown, valuesAt, type ProfileSource } from "../src/analytics/profile.js";
+import { readValues, type Accessor } from "../src/analytics/storage.js";
 
 const overlayTtl = `@prefix qb: <http://purl.org/linked-data/cube#> .
 @prefix ea: <https://elody.eu/ns/analytics#> .
@@ -49,7 +50,7 @@ const books = Array.from({ length: 10 }, (_, index) => ({
 const people = Array.from({ length: 20 }, (_, index) => ({ type: "person", audit: at(2022), properties: index === 0 ? { life_dates: { value: "1900-1980" } } : {} }));
 const collections: Record<string, typeof books | typeof people> = { books, people };
 
-const pick = (doc: Record<string, unknown>, path: string) => valuesAt(doc, path).values;
+const pick = (doc: Record<string, unknown>, accessor: Accessor) => readValues(doc, accessor).values;
 
 const source: ProfileSource = {
   async typeCounts(collection) {
@@ -60,23 +61,23 @@ const source: ProfileSource = {
   async sample(collection, type, _paths, size) {
     return (collections[collection] ?? []).filter((doc) => doc.type === type).slice(0, size);
   },
-  async distribution(names, types, path) {
+  async distribution(names, types, accessor) {
     const counts = new Map<string, number>();
     let documents = 0;
     for (const name of names)
       for (const doc of collections[name] ?? []) {
         if (!types.includes(doc.type)) continue;
         documents += 1;
-        for (const value of pick(doc, path)) counts.set(String(value), (counts.get(String(value)) ?? 0) + 1);
+        for (const value of pick(doc, accessor)) counts.set(String(value), (counts.get(String(value)) ?? 0) + 1);
       }
     return { documents, values: [...counts].sort((a, b) => b[1] - a[1]) };
   },
-  async yearly(names, types, path) {
+  async yearly(names, types, accessor) {
     const counts = new Map<number | null, number>();
     for (const name of names)
       for (const doc of collections[name] ?? []) {
         if (!types.includes(doc.type)) continue;
-        const [value] = pick(doc, path) as Date[];
+        const [value] = pick(doc, accessor) as Date[];
         const year = value ? value.getUTCFullYear() : null;
         counts.set(year, (counts.get(year) ?? 0) + 1);
       }
@@ -169,6 +170,52 @@ describe("analytics profile", () => {
     expect(markdown).toContain("## Entry library");
     expect(markdown).toContain("| `properties.target_audience.value` |");
     expect(markdown).toContain("ghost");
+  });
+});
+
+describe("analytics profile of a v1 client", () => {
+  const v1Overlay = overlayTtl.replace('ea:sourceCollection "books" , "people" ;', 'ea:sourceCollection "entities" ;\n  ea:documentSchema "v1" ;').replace(
+    'ea:sourcePath "properties.material_type.value"',
+    'ea:sourcePath "metadata.status.value"',
+  );
+  const docs = [
+    { type: "book", date_created: new Date(Date.UTC(2025, 0, 1)), created_by: "a@x.be", metadata: [{ key: "status", value: "Concept" }] },
+    { type: "book", date_created: new Date(Date.UTC(2025, 5, 1)), metadata: [{ key: "status", value: "Gepubliceerd" }, { key: "title", value: "T" }] },
+    { type: "book", metadata: [] },
+  ];
+  const v1Source: ProfileSource = {
+    ...source,
+    async typeCounts(collection) {
+      return collection === "entities" ? { book: docs.length } : {};
+    },
+    async sample(collection, type, roots) {
+      expect(roots).toEqual(expect.arrayContaining(["metadata", "date_created", "type"]));
+      return collection === "entities" ? docs.filter((doc) => doc.type === type) : [];
+    },
+    async distribution(_names, _types, accessor) {
+      const counts = new Map<string, number>();
+      for (const doc of docs) for (const value of pick(doc, accessor)) counts.set(String(value), (counts.get(String(value)) ?? 0) + 1);
+      return { documents: docs.length, values: [...counts] };
+    },
+    async yearly(_names, _types, accessor) {
+      expect(accessor).toEqual({ path: "date_created" });
+      const counts = new Map<number | null, number>();
+      for (const doc of docs) {
+        const [value] = pick(doc, accessor) as Date[];
+        const year = value ? value.getUTCFullYear() : null;
+        counts.set(year, (counts.get(year) ?? 0) + 1);
+      }
+      return [...counts].map(([year, count]) => ({ year, count }));
+    },
+  };
+
+  it("reads the logical paths where v1 stores them", async () => {
+    const result = await profile(readOverlay(v1Overlay), v1Source, { sample: 100, extras: [], library: ["audit.created.by"], usersCollection: undefined });
+    expect(result.paths.find((entry) => entry.path === "metadata.status.value")).toMatchObject({ distinct: 2, maxFilled: { type: "book" } });
+    expect(result.paths.find((entry) => entry.path === "metadata.status.value")!.perType.book.filled).toBeCloseTo(2 / 3);
+    expect(result.paths.find((entry) => entry.path === "audit.created.at")!.perType.book.filled).toBeCloseTo(2 / 3);
+    expect(result.time!.byYear).toEqual([{ year: null, count: 1 }, { year: 2025, count: 2 }]);
+    expect(result.library[0]).toMatchObject({ path: "audit.created.by", filled: 1, distinct: 1 });
   });
 });
 

@@ -36,7 +36,7 @@ const candidates: Candidate[] = [
   candidate("properties.ref_authors.value", "relation", false),
 ];
 
-const options = { client: "vlacc", collections: ["entities_actual", "bibliographic_entities_actual"], source: "candidates.json" };
+const options = { client: "vlacc", collections: ["entities_actual", "bibliographic_entities_actual"], schema: "v2" as const, source: "candidates.json" };
 
 describe("analytics overlay", () => {
   const ttl = renderOverlay(candidates, options);
@@ -50,6 +50,8 @@ describe("analytics overlay", () => {
     expect(names.get("audit.created.by")).toBe("created_by");
     expect(names.get("properties.material_type.value")).toBe("material_type");
     expect(names.get("properties.id_online_collection_group.value.source_id_online_collection")).toBe("source_id_online_collection");
+    // v1 keeps metadata under `metadata.`: the same name as v2's `properties.`
+    expect(propertyNames(["metadata.assetType.value"]).get("metadata.assetType.value")).toBe("asset_type");
     const clash = propertyNames(["properties.status.value", "properties.record.value.status"]);
     expect(new Set(clash.values()).size).toBe(2);
   });
@@ -57,6 +59,8 @@ describe("analytics overlay", () => {
   it("holds the included paths only, as dimensions with their source path", () => {
     expect(overlay.cube).toBe("https://elody.eu/analytics/vlacc#EntityActivity");
     expect(overlay.sourceCollections).toEqual(["bibliographic_entities_actual", "entities_actual"]);
+    expect(overlay.schema).toBe("v2");
+    expect(ttl).toContain('ea:documentSchema "v2"');
     expect(overlay.entityTypes).toEqual(["manifestation_word", "user", "work_word"]);
     expect(overlay.dimensions.map((dimension) => dimension.sourcePath)).toEqual([
       "type",
@@ -74,6 +78,14 @@ describe("analytics overlay", () => {
     expect(ttl).toContain('#   qb:component [ qb:dimension em:ref_authors ; ea:sourcePath "properties.ref_authors.value"');
     const switchedOn = ttl.replace('#   qb:component [ qb:dimension em:ref_authors', '  qb:component [ qb:dimension em:ref_authors');
     expect(readOverlay(switchedOn).dimensions.map((dimension) => dimension.sourcePath)).toContain("properties.ref_authors.value");
+  });
+
+  it("says the client's document schema; an overlay that does not is v2", async () => {
+    const v1 = renderOverlay(candidates, { ...options, client: "podiumnet", schema: "v1" });
+    expect(readOverlay(v1).schema).toBe("v1");
+    expect((await validateOverlay(v1)).conforms).toBe(true);
+    expect(readOverlay(ttl.replace(' ;\n  ea:documentSchema "v2"', "")).schema).toBe("v2");
+    expect((await validateOverlay(ttl.replace('ea:documentSchema "v2"', 'ea:documentSchema "v3"'))).conforms).toBe(false);
   });
 
   it("conforms to the analytics shapes", async () => {

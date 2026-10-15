@@ -147,8 +147,8 @@ export function readFilters(ttl: string): FilterRecord[] {
 const IDENTIFIER_SEGMENTS = new Set(["identifiers", "id", "_id", "isbn", "ean", "email", "issn", "code"]);
 const TEXT_WORDS = ["title", "name", "description", "wording", "subtitle"];
 
-/** The path's meaningful segments: the v2 `properties.` and `.value` dropped. */
-export const pathSegments = (path: string): string[] => path.replace(/^properties\./, "").replace(/\.value$/, "").split(".");
+/** The path's meaningful segments: v2's `properties.`, v1's `metadata.` and `.value` dropped. */
+export const pathSegments = (path: string): string[] => path.replace(/^(properties|metadata)\./, "").replace(/\.value$/, "").split(".");
 
 /** The proposed role of a path and why; a reviewer overrides `include` where it is wrong. */
 export function proposeRole(path: string, kinds: FilterKind[]): { role: Role; reason: string; include: boolean } {

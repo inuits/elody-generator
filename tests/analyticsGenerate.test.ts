@@ -24,10 +24,10 @@ describe("analytics generate", () => {
       "clickhouse/010_mart.sql",
       "dlt/projection.json",
       "superset/databases/clickhouse_analytics.yaml",
-      "superset/datasets/clickhouse_analytics/entities_created_by_avi_read_level_code.yaml",
-      "superset/datasets/clickhouse_analytics/entities_created_by_genre_type.yaml",
-      "superset/datasets/clickhouse_analytics/entities_created_by_source_id_online_collection.yaml",
-      "superset/datasets/clickhouse_analytics/entities_created_daily.yaml",
+      "superset/datasets/clickhouse_analytics/vlacc_entities_created_by_avi_read_level_code.yaml",
+      "superset/datasets/clickhouse_analytics/vlacc_entities_created_by_genre_type.yaml",
+      "superset/datasets/clickhouse_analytics/vlacc_entities_created_by_source_id_online_collection.yaml",
+      "superset/datasets/clickhouse_analytics/vlacc_entities_created_daily.yaml",
       "superset/metadata.yaml",
     ]);
   });
@@ -63,6 +63,8 @@ describe("analytics generate", () => {
     const projection = JSON.parse(files.get("dlt/projection.json")!);
     expect(projection).toMatchObject({
       database: "vlacc",
+      schema: "v2",
+      mart: { daily: "mart.vlacc_entities_created_daily" },
       collections: ["bibliographic_entities_actual", "entities_actual"],
       filter: { type: { $in: expect.arrayContaining(["manifestation_word", "person"]) } },
       primaryKey: "id",
@@ -70,7 +72,43 @@ describe("analytics generate", () => {
       destination: { dataset: "raw", table: "vlacc_entities" },
     });
     expect(projection.projection).toMatchObject({ _id: 1, type: 1, "audit.created.at": 1, "properties.material_type.value": 1 });
-    expect(projection.columns.find((column: { name: string }) => column.name === "avi_read_level_code")).toMatchObject({ path: "properties.avi_read_level_code.value", multiValued: true });
+    expect(projection.columns.find((column: { name: string }) => column.name === "avi_read_level_code")).toMatchObject({
+      path: "properties.avi_read_level_code.value",
+      source: { path: "properties.avi_read_level_code.value" },
+      multiValued: true,
+    });
+  });
+
+  it("names each client's views after it, read through one shared Superset database", () => {
+    expect(files.get("clickhouse/010_mart.sql")).toContain("CREATE DATABASE IF NOT EXISTS mart;");
+    expect(files.get("clickhouse/010_mart.sql")).toContain("CREATE OR REPLACE VIEW mart.vlacc_entities_created_daily AS");
+    expect(files.get("clickhouse/010_mart.sql")).toContain("CREATE OR REPLACE VIEW mart.vlacc_entities_created_by_genre_type AS");
+    const daily = files.get("superset/datasets/clickhouse_analytics/vlacc_entities_created_daily.yaml")!;
+    expect(daily).toContain('table_name: "vlacc_entities_created_daily"');
+    expect(daily).toContain('schema: "mart"');
+    // the dataset's uuid stays the one of the unprefixed name: dashboards exported before keep finding it
+    expect(daily).toContain(`uuid: "${uuidFor("vlacc", "dataset", "entities_created_daily")}"`);
+    const other = generateAnalytics(overlay, { bundles, client: "other" });
+    const database = (bundle: Map<string, string>) => /^uuid: "(.*)"$/m.exec(bundle.get("superset/databases/clickhouse_analytics.yaml")!)![1];
+    expect(database(other)).toBe(database(files));
+    expect(other.get("superset/datasets/clickhouse_analytics/other_entities_created_daily.yaml")).toContain('table_name: "other_entities_created_daily"');
+  });
+
+  it("reads a v1 client's paths where v1 stores them", () => {
+    const v1 = readOverlay(
+      readFileSync(join(fixtures, "vlacc.analytics.ttl"), "utf-8")
+        .replace('ea:sourceCollection "bibliographic_entities_actual" , "entities_actual" ;', 'ea:sourceCollection "entities" ;\n  ea:documentSchema "v1" ;')
+        .replace('ea:sourcePath "properties.material_type.value"', 'ea:sourcePath "metadata.material_type.value"'),
+    );
+    const projection = JSON.parse(generateAnalytics(v1, { bundles, client: "podiumnet" }).get("dlt/projection.json")!);
+    const column = (name: string) => projection.columns.find((entry: { name: string }) => entry.name === name);
+    expect(projection.schema).toBe("v1");
+    expect(column("created_at").source).toEqual({ path: "date_created" });
+    expect(column("updated_by").source).toEqual({ path: "last_editor" });
+    expect(column("material_type")).toMatchObject({ path: "metadata.material_type.value", source: { list: "metadata", match: { field: "key", value: "material_type" }, path: "value" } });
+    expect(projection.projection).toMatchObject({ _id: 1, type: 1, date_created: 1, date_updated: 1, metadata: 1 });
+    expect(projection.projection["metadata.material_type.value"]).toBeUndefined();
+    expect(projection.incremental).toMatchObject({ cursor: "date_updated", fallback: "date_created" });
   });
 
   it("matches the snapshots", async () => {
@@ -96,8 +134,8 @@ VALUES ('1', 'manifestation_word', '2025-03-01 10:00:00', 'a@brugge.be', '2025-0
        ('1', 'manifestation_word', '2025-03-01 10:00:00', 'a@brugge.be', '2025-03-02 10:00:00', '', 'STRIP', []),
        ('2', 'easy_reading', '2025-03-01 12:00:00', '', '2025-03-01 12:00:00', '', '', ['AVI 1', 'AVI 2']),
        ('3', 'person', NULL, '', '1970-01-01 00:00:00', '', '', []);
-SELECT type, material_type, sum(entity_count) FROM mart.entities_created_daily GROUP BY ALL ORDER BY ALL FORMAT TSV;
-SELECT avi_read_level_code, sum(entity_count) FROM mart.entities_created_by_avi_read_level_code GROUP BY ALL ORDER BY ALL FORMAT TSV;
+SELECT type, material_type, sum(entity_count) FROM mart.vlacc_entities_created_daily GROUP BY ALL ORDER BY ALL FORMAT TSV;
+SELECT avi_read_level_code, sum(entity_count) FROM mart.vlacc_entities_created_by_avi_read_level_code GROUP BY ALL ORDER BY ALL FORMAT TSV;
 `;
     const sql = `${files.get("clickhouse/001_raw.sql")}\n${files.get("clickhouse/010_mart.sql")}\n${rows}`;
     const run = spawnSync("docker", ["run", "--rm", "-i", IMAGE, "clickhouse-local", "--multiquery"], { input: sql, encoding: "utf-8" });

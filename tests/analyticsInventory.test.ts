@@ -97,6 +97,9 @@ describe("analytics inventory", () => {
     expect(proposeRole("properties.vlacc_number.value", ["SelectionFilter"]).role).toBe("identifier");
     expect(proposeRole("properties.issn_group.value.issn", ["SelectionFilter"]).role).toBe("identifier");
     expect(proposeRole("properties.avi_read_level_code.value", ["SelectionFilter"]).role).toBe("dimension");
+    // v1's metadata reads like v2's properties
+    expect(proposeRole("metadata.email.value", ["TextFilter"])).toMatchObject({ role: "identifier", reason: "the path ends on `email`" });
+    expect(proposeRole("metadata.assetType.value", ["SelectionFilter"]).role).toBe("dimension");
   });
 
   it("labels a path from the first translation bundle that has its key, else the conventional key", () => {

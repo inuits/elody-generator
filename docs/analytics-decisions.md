@@ -294,3 +294,66 @@ stale file. For vlacc the output is in
 - Seen in the data along the way: material type has both `BOEK` (704,632) and
   `Boek` (2,949), literary type `Non-Fictie` and `Non-fictie`. Case variants
   of one value; a question for the catalogue, not for the chain.
+
+## Client-agnostic: v1 schema, podiumnet as the second client
+
+The chain was shaped by vlacc (v2, `audit.*`). Four things kept another client
+out; podiumnet (v1) now goes through it next to vlacc, in the same ClickHouse
+and Superset.
+
+- **Logical paths, stored per schema** (`src/analytics/storage.ts`). The
+  declaration's filter keys are logical: podiumnet filters on
+  `audit.created.at` and `metadata.status.value`, but its documents hold
+  `date_created` and `metadata: [{ key: "status", value: … }]`. The overlay
+  keeps the logical paths and says the schema (`ea:documentSchema "v1"`, from
+  `client.json`; v2 when absent); one table maps them: v1's `audit.*` to the
+  fields collection-api writes (`date_created`, `created_by`, `date_updated`,
+  `last_editor`: `api/resources/generic_object.py`, `base_resource.py`),
+  `metadata.<key>.<path>` to the list elements with that key,
+  `relations.<type>.<path>` to the relations of that type. A key given twice
+  counts as a list. The profile, the Mongo aggregations
+  (`$filter`/`$map`) and the dlt projection all go through it; the projection
+  carries an accessor per column (`source`), so `pipeline.py` executes it
+  without knowing about schemas.
+- **No audit roles in the overlay.** The brief suggested roles for the
+  creator and update paths. With logical paths there is nothing to declare:
+  `audit.created.by` is the creator in both schemas, and the schema table says
+  where it is. The incremental cursor and its fallback are the storage paths
+  of `audit.updated.at` and the time dimension, in `projection.json`.
+- **One mart, views named after the client** (`mart.vlacc_entities_created_daily`,
+  `mart.podiumnet_entities_created_daily`). Tried first: a database per client
+  (`mart_vlacc`). Superset 6.1 on its SQLite metadata refused the second
+  client's dataset: `UNIQUE constraint failed: tables.table_name`, the
+  constraint on the name alone. Prefixed names keep every dataset unique in
+  any metadata store. The dataset uuids stay those of the unprefixed names, so
+  vlacc's exported dashboard kept working. One Superset database connection
+  serves every client (a uuid of its own, URI on `default`).
+- **client.json** gives what the command line leaves out (`src/analytics/client.ts`,
+  found above the declaration, overlay or output): the client's name, Mongo
+  database and collections (users left out), schema and translations
+  (`"translations"`, paths from the elody-common root, added for vlacc and
+  podiumnet). `inventory`, `overlay`, `profile` and `generate` need no more
+  than paths.
+- **The POC scripts** take any client: `load_superset.sh` imports every
+  `clients/*/analytics/generated` (or those named); `create_dashboard.py`
+  takes `--client --title --dimensions` and replaces only its own dashboard's
+  charts (it used to delete every chart of the same name, vlacc's "Per type"
+  included); `verify.py` reads the daily view and the creation date's storage
+  path from the projection and, without arguments, checks the three largest
+  types in their three busiest months. `pipeline.py` has unit tests
+  (`poc/analytics/tests`, stdlib unittest).
+
+Result: podiumnet, 24 entities in `entities` and `mediafiles`, profiled (the
+v1 paths filled: status 46%, asset type 25%; `isTenantFor` never, dropped),
+loaded, `verify.py` equal (asset, mediafile, notification in 2025-12), its
+dashboard *Invoer podiumnet* (17 created: 7 have no `date_created`; per type,
+status, asset type). vlacc after the change: regenerated, nothing reloaded
+(the raw table is unchanged), `verify.py` equal both for the earlier nine
+combinations and the new default. Both dashboards re-imported into an
+emptied Superset from `poc/analytics/superset/dashboards/`.
+
+What a new client costs now: a `client.json` with `translations`, then
+`inventory` → review → `overlay` → `profile --update` → review → `generate` →
+`pipeline.py --reset` → `create_dashboard.py` → `export_dashboards.sh`. The
+reviews and the dashboard's choice of dimensions are the client's own work;
+the rest runs as is for v1 and v2.

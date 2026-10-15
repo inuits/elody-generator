@@ -37,3 +37,5 @@ export { inventory, readFilters, candidatesOf, candidatesMarkdown, normaliseKey,
 export { renderOverlay, readOverlay, validateOverlay, propertyNames, type Overlay, type OverlayDimension, type OverlayOptions } from "./analytics/overlay.js";
 export { profile, profileMarkdown, applyProfile, valuesAt, type Profile, type ProfileSource, type ProfileOptions } from "./analytics/profile.js";
 export { generateAnalytics, columnsOf, uuidFor, toYaml, type Column, type GenerateOptions as AnalyticsGenerateOptions } from "./analytics/generate.js";
+export { accessorOf, readValues, mongoRoot, mongoExpression, type Accessor, type Schema } from "./analytics/storage.js";
+export { findClientConfig, type ClientConfig } from "./analytics/client.js";

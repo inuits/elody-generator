@@ -15,6 +15,7 @@ import { Reading } from "../reading.js";
 import type { ValidationIssue, ValidationReport } from "../validate.js";
 import { rdfs } from "../vocab.js";
 import { pathSegments, type Candidate, type Role } from "./inventory.js";
+import type { Schema } from "./storage.js";
 
 export const QB = "http://purl.org/linked-data/cube#";
 export const EA = "https://elody.eu/ns/analytics#";
@@ -40,6 +41,8 @@ export type OverlayDimension = {
 export type Overlay = {
   cube: string;
   sourceCollections: string[];
+  /** where the documents keep their values (storage.ts); v2 when the overlay does not say */
+  schema: Schema;
   entityTypes: string[];
   dimensions: OverlayDimension[];
   measures: string[];
@@ -48,6 +51,8 @@ export type Overlay = {
 export type OverlayOptions = {
   client: string;
   collections: string[];
+  /** the client's document schema (client.json `schema`) */
+  schema?: Schema;
   /** where the candidates came from, named in the header */
   source?: string;
 };
@@ -123,6 +128,7 @@ export function renderOverlay(candidates: Candidate[], options: OverlayOptions):
     `${options.client}:EntityActivity a qb:DataStructureDefinition ;`,
     `  rdfs:label "Aangemaakte entiteiten"@nl ;`,
     `  ea:sourceCollection ${collections.map(literal).join(" , ")} ;`,
+    `  ea:documentSchema ${literal(options.schema ?? "v2")} ;`,
     `  ea:entityTypes`,
     ...chunk(entityTypes.map(literal), 6).map((row, index, rows) => `    ${row.join(" , ")}${index === rows.length - 1 ? " ;" : " ,"}`),
     "",
@@ -156,6 +162,7 @@ export function readOverlay(ttl: string): Overlay {
   return {
     cube,
     sourceCollections: reading.literals(cube, ea("sourceCollection")).sort(),
+    schema: reading.value(cube, ea("documentSchema")) === "v1" ? "v1" : "v2",
     entityTypes: reading.literals(cube, ea("entityTypes")).sort(),
     dimensions: components
       .filter((node) => reading.has(node, qb("dimension")))

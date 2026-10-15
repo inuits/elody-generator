@@ -2,7 +2,7 @@
 -- Entities created per day; an entity without a creation date is not counted.
 CREATE DATABASE IF NOT EXISTS mart;
 
-CREATE OR REPLACE VIEW mart.entities_created_daily AS
+CREATE OR REPLACE VIEW mart.vlacc_entities_created_daily AS
 SELECT
     toDate(assumeNotNull(created_at)) AS day,
     type,
@@ -25,7 +25,7 @@ WHERE created_at IS NOT NULL
 GROUP BY day, type, created_by, audience_type, bibliographic_type, land_or_language, level, life_dates, literary_type, material_type, publication_year, record_format, record_type, status_field, target_audience;
 
 -- AVI leesniveau code: holds a list, one row per value (an entity counts once per value, not at all without one).
-CREATE OR REPLACE VIEW mart.entities_created_by_avi_read_level_code AS
+CREATE OR REPLACE VIEW mart.vlacc_entities_created_by_avi_read_level_code AS
 SELECT
     toDate(assumeNotNull(created_at)) AS day,
     type,
@@ -37,7 +37,7 @@ WHERE created_at IS NOT NULL
 GROUP BY day, type, avi_read_level_code;
 
 -- Type (genre_type): holds a list, one row per value (an entity counts once per value, not at all without one).
-CREATE OR REPLACE VIEW mart.entities_created_by_genre_type AS
+CREATE OR REPLACE VIEW mart.vlacc_entities_created_by_genre_type AS
 SELECT
     toDate(assumeNotNull(created_at)) AS day,
     type,
@@ -49,7 +49,7 @@ WHERE created_at IS NOT NULL
 GROUP BY day, type, genre_type;
 
 -- Bron online collectie: holds a list, one row per value (an entity counts once per value, not at all without one).
-CREATE OR REPLACE VIEW mart.entities_created_by_source_id_online_collection AS
+CREATE OR REPLACE VIEW mart.vlacc_entities_created_by_source_id_online_collection AS
 SELECT
     toDate(assumeNotNull(created_at)) AS day,
     type,

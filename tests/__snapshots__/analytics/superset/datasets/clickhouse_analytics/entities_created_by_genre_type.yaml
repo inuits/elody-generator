@@ -4,7 +4,7 @@ description: "Aangemaakte entiteiten per dag, type en type (genre_type); een ent
 default_endpoint: null
 offset: 0
 cache_timeout: null
-schema: "mart"
+schema: "mart_vlacc"
 sql: null
 params: null
 template_params: null
@@ -74,4 +74,4 @@ columns:
   python_date_format: null
   extra: {}
 version: "1.0.0"
-database_uuid: "5e2d45df-b7e0-50a4-9360-f2f9e2ef37cd"
+database_uuid: "eed8c9b8-b3c3-59f6-ae15-9a51fe65aa55"

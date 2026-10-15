@@ -1,0 +1,77 @@
+table_name: "vlacc_entities_created_by_source_id_online_collection"
+main_dttm_col: "day"
+description: "Aangemaakte entiteiten per dag, type en bron online collectie; een entiteit telt eenmaal per waarde."
+default_endpoint: null
+offset: 0
+cache_timeout: null
+schema: "mart"
+sql: null
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+uuid: "018d19a1-30d7-5fda-98a9-6da2c8991a78"
+metrics:
+- metric_name: "count"
+  verbose_name: "Aantal entiteiten"
+  metric_type: "sum"
+  expression: "SUM(entity_count)"
+  description: "Het aantal aangemaakte entiteiten."
+  d3format: ",d"
+  currency: null
+  extra: {}
+  warning_text: null
+columns:
+- column_name: "day"
+  verbose_name: "Aangemaakt op"
+  is_dttm: true
+  is_active: true
+  type: "Date"
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: "the day of audit.created.at"
+  python_date_format: null
+  extra: {}
+- column_name: "type"
+  verbose_name: "Type"
+  is_dttm: false
+  is_active: true
+  type: "LowCardinality(String)"
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: "type"
+  python_date_format: null
+  extra: {}
+- column_name: "source_id_online_collection"
+  verbose_name: "Bron online collectie"
+  is_dttm: false
+  is_active: true
+  type: "String"
+  advanced_data_type: null
+  groupby: true
+  filterable: true
+  expression: null
+  description: "properties.id_online_collection_group.value.source_id_online_collection"
+  python_date_format: null
+  extra: {}
+- column_name: "entity_count"
+  verbose_name: "Aantal (per rij)"
+  is_dttm: false
+  is_active: true
+  type: "UInt64"
+  advanced_data_type: null
+  groupby: false
+  filterable: false
+  expression: null
+  description: null
+  python_date_format: null
+  extra: {}
+version: "1.0.0"
+database_uuid: "eed8c9b8-b3c3-59f6-ae15-9a51fe65aa55"

@@ -3,6 +3,7 @@
  * profile reads a restored dump, never a production database.
  */
 import type { ProfileSource } from "./profile.js";
+import { mongoExpression } from "./storage.js";
 
 const LOCAL_HOSTS = /^(localhost|127\.0\.0\.1|\[?::1\]?|[\w.-]+\.localhost)$/i;
 
@@ -19,9 +20,9 @@ export function assertLocal(uri: string): void {
   if (remote.length) throw new Error(`${remote.join(", ")} is not a local host: the profile reads a local Mongo only (a restored dump), never production`);
 }
 
-/** Drops a path whose ancestor is projected too: Mongo refuses both in one projection. */
+/** Drops a field whose ancestor is projected too: Mongo refuses both in one projection. */
 const projection = (paths: string[]) =>
-  Object.fromEntries(["type", ...paths].filter((path, _, all) => !all.some((other) => other !== path && path.startsWith(`${other}.`))).map((path) => [path, 1]));
+  Object.fromEntries([...new Set(["type", ...paths])].filter((path, _, all) => !all.some((other) => other !== path && path.startsWith(`${other}.`))).map((path) => [path, 1]));
 
 export async function mongoSource(uri: string, db: string): Promise<{ source: ProfileSource; close(): Promise<void> }> {
   assertLocal(uri);
@@ -39,13 +40,13 @@ export async function mongoSource(uri: string, db: string): Promise<{ source: Pr
       const rows = await database.collection(collection).aggregate<{ _id: string; n: number }>([{ $group: { _id: "$type", n: { $sum: 1 } } }], options).toArray();
       return Object.fromEntries(rows.filter((row) => typeof row._id === "string").map((row) => [row._id, row.n]));
     },
-    async sample(collection, type, paths, size) {
+    async sample(collection, type, roots, size) {
       return database
         .collection(collection)
-        .aggregate([{ $match: { type } }, { $project: projection(paths) }, { $sample: { size } }], options)
+        .aggregate([{ $match: { type } }, { $project: projection(roots) }, { $sample: { size } }], options)
         .toArray();
     },
-    async distribution(collections, types, path) {
+    async distribution(collections, types, accessor) {
       const counts = new Map<string, number>();
       let documents = 0;
       for (const name of collections) {
@@ -55,7 +56,9 @@ export async function mongoSource(uri: string, db: string): Promise<{ source: Pr
           .aggregate<{ _id: unknown; n: number }>(
             [
               { $match: { type: { $in: types } } },
-              { $project: { _id: 0, v: `$${path}` } },
+              { $project: { _id: 0, v: mongoExpression(accessor) } },
+              // a list of lists (a v1 key whose value is a list) unwinds twice; a scalar unwinds as itself
+              { $unwind: "$v" },
               { $unwind: "$v" },
               { $match: { v: { $nin: [null, ""] } } },
               { $group: { _id: "$v", n: { $sum: 1 } } },
@@ -67,7 +70,9 @@ export async function mongoSource(uri: string, db: string): Promise<{ source: Pr
       }
       return { documents, values: [...counts] };
     },
-    async yearly(collections, types, path) {
+    async yearly(collections, types, accessor) {
+      const expression = mongoExpression(accessor);
+      const value = typeof expression === "string" ? expression : { $arrayElemAt: [expression, 0] };
       const counts = new Map<number | null, number>();
       for (const name of collections) {
         const rows = await database
@@ -75,7 +80,7 @@ export async function mongoSource(uri: string, db: string): Promise<{ source: Pr
           .aggregate<{ _id: number | null; n: number }>(
             [
               { $match: { type: { $in: types } } },
-              { $group: { _id: { $cond: [{ $eq: [{ $type: `$${path}` }, "date"] }, { $year: `$${path}` }, null] }, n: { $sum: 1 } } },
+              { $group: { _id: { $cond: [{ $eq: [{ $type: value }, "date"] }, { $year: value }, null] }, n: { $sum: 1 } } },
             ],
             options,
           )

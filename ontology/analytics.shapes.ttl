@@ -12,6 +12,9 @@ ea:CubeShape a sh:NodeShape ;
     sh:path ea:sourceCollection ; sh:minCount 1 ; sh:datatype xsd:string ;
     sh:message "a cube names the collections it reads (ea:sourceCollection)" ] ;
   sh:property [
+    sh:path ea:documentSchema ; sh:maxCount 1 ; sh:in ( "v1" "v2" ) ;
+    sh:message "a cube's document schema is \"v1\" or \"v2\"" ] ;
+  sh:property [
     sh:path ea:entityTypes ; sh:minCount 1 ; sh:datatype xsd:string ;
     sh:message "a cube names the entity types it counts (ea:entityTypes)" ] ;
   sh:property [
