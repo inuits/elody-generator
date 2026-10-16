@@ -10,6 +10,8 @@
  *                                                        every filter, one analytics candidate per document path
  * elody-ui analytics overlay CANDIDATES --client NAME --out FILE   the selection overlay (qb: cube)
  * elody-ui analytics validate OVERLAY                    the overlay against the analytics shapes
+ * elody-ui analytics tracking DECLARATION --out DIR      the tracking plan: usage events and their declared values
+ * elody-ui analytics coverage PLAN --observed FILE --out DIR   observed usage events against the plan
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { declarationFiles, loadDeclaration } from "./declarationFiles.js";
@@ -37,7 +39,9 @@ const usage = `usage:
   elody-ui analytics overlay   CANDIDATES --client NAME --out FILE [--collection NAME ...]
   elody-ui analytics validate  OVERLAY
   elody-ui analytics profile   OVERLAY --mongo URI --db NAME --out DIR [--update]
-  elody-ui analytics generate  OVERLAY --out DIR [--translations FILE ...]`;
+  elody-ui analytics generate  OVERLAY --out DIR [--translations FILE ...]
+  elody-ui analytics tracking  DECLARATION --out DIR [--client NAME]
+  elody-ui analytics coverage  PLAN --observed FILE --out DIR`;
 
 function option(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(name);

@@ -16,6 +16,13 @@
  * elody-ui analytics generate OVERLAY --out DIR [--translations FILE ...] [--client NAME] [--database NAME]
  *   the ClickHouse SQL, the dlt projection and the Superset bundle; the generated
  *   folders (clickhouse/, dlt/, superset/) are replaced
+ * elody-ui analytics tracking DECLARATION --out DIR [--client NAME]
+ *   the tracking plan: the platform's usage events and the values the
+ *   declaration allows per property (tracking-plan.json, tracking-plan.md)
+ * elody-ui analytics coverage PLAN --observed FILE --out DIR
+ *   what a usage tool saw ({ event, property, value, count }, a JSON list or JSON lines)
+ *   against the plan: declared values never seen, values and events not declared
+ *   (coverage.json, coverage.md)
  *
  * What the command line leaves out comes from the client's client.json, found
  * above the declaration, overlay or output (client.ts): collections, schema,
@@ -31,13 +38,17 @@ import { findClientConfig } from "./client.js";
 import { generateAnalytics } from "./generate.js";
 import { applyProfile, profile, profileMarkdown } from "./profile.js";
 import { mongoSource } from "./profileMongo.js";
+import { coverage, coverageMarkdown, parseObserved, trackingPlan, trackingPlanMarkdown, type TrackingPlan } from "./tracking.js";
+import { readUiDeclaration } from "../parse.js";
 
 const usage = `usage:
   elody-ui analytics inventory DECLARATION --out DIR [--translations FILE ...]
   elody-ui analytics overlay   CANDIDATES --out FILE [--client NAME] [--collection NAME ...] [--schema v1|v2]
   elody-ui analytics validate  OVERLAY
   elody-ui analytics generate  OVERLAY --out DIR [--translations FILE ...] [--client NAME] [--database NAME]
-  elody-ui analytics profile   OVERLAY --mongo URI --out DIR [--db NAME] [--sample N] [--extra PATH ...] [--library PATH ...] [--users COLLECTION] [--update]`;
+  elody-ui analytics profile   OVERLAY --mongo URI --out DIR [--db NAME] [--sample N] [--extra PATH ...] [--library PATH ...] [--users COLLECTION] [--update]
+  elody-ui analytics tracking  DECLARATION --out DIR [--client NAME]
+  elody-ui analytics coverage  PLAN --observed FILE --out DIR`;
 
 const options = (argv: string[], name: string): string[] => argv.flatMap((argument, index) => (argument === name && argv[index + 1] ? [argv[index + 1]] : []));
 const positional = (argv: string[]): string[] => argv.filter((argument, index) => !argument.startsWith("--") && !argv[index - 1]?.startsWith("--"));
@@ -115,6 +126,38 @@ export async function analytics(argv: string[]): Promise<number> {
       writeFileSync(join(out, path), content);
     }
     console.log(`${out}: ${files.size} file(s)`);
+    return 0;
+  }
+
+  if (command === "tracking") {
+    const [declaration] = positional(rest);
+    const [out] = options(rest, "--out");
+    const client = options(rest, "--client")[0] ?? (declaration ? findClientConfig(declaration)?.name : undefined);
+    if (!declaration || !out || !client) throw new Error(usage);
+    const ttl = loadDeclaration(declaration);
+    const { entities } = await readUiDeclaration(ttl);
+    const plan = trackingPlan({ client, entities, filters: inventory(ttl, []).filters });
+    mkdirSync(out, { recursive: true });
+    writeFileSync(join(out, "tracking-plan.json"), json(plan));
+    writeFileSync(join(out, "tracking-plan.md"), trackingPlanMarkdown(plan));
+    const counted = plan.events.map((event) => `${event.name} ${event.properties.reduce((sum, property) => sum + (property.values?.length ?? 0), 0)}`);
+    console.log(`${out}: ${plan.events.length} event(s), values per event: ${counted.join(", ")}`);
+    return 0;
+  }
+
+  if (command === "coverage") {
+    const [file] = positional(rest);
+    const [observedFile] = options(rest, "--observed");
+    const [out] = options(rest, "--out");
+    if (!file || !observedFile || !out) throw new Error(usage);
+    const plan: TrackingPlan = JSON.parse(readFileSync(file, "utf-8"));
+    const observed = parseObserved(readFileSync(observedFile, "utf-8"));
+    const report = coverage(plan, observed);
+    mkdirSync(out, { recursive: true });
+    writeFileSync(join(out, "coverage.json"), json(report));
+    writeFileSync(join(out, "coverage.md"), coverageMarkdown(report));
+    const declared = report.events.flatMap((event) => event.properties.flatMap((property) => property.values));
+    console.log(`${out}: ${declared.filter((value) => value.count > 0).length} of ${declared.length} declared value(s) seen, ${report.unknownEvents.length} event(s) not in the plan`);
     return 0;
   }
 

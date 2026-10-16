@@ -152,3 +152,5 @@ compares ClickHouse with Mongo per type and month. Start-up is in its README.
   the keys, `elody:analysed` on the types).
 - **Schema migration**: adding a dimension to a loaded client needs
   `pipeline.py --reset` (a full reload); there is no `ALTER TABLE` step.
+
+The usage events and the values a declaration allows for them are in the tracking plan: see `tracking-plan.md`.
