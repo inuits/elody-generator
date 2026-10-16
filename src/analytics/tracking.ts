@@ -66,6 +66,7 @@ export function trackingPlan(input: { client: string; entities: UiEntity[]; filt
   const sorts = new Values();
   const operations = new Values();
   const actions = new Values();
+  const actionTypes = new Values();
   const forms = new Values();
 
   for (const entity of input.entities) {
@@ -80,7 +81,11 @@ export function trackingPlan(input: { client: string; entities: UiEntity[]; filt
     for (const mode of entity.viewModes ?? []) viewModes.add(mode.mode, owner);
     for (const form of [...(entity.createForms ?? []), ...(entity.repetitiveForms ?? [])]) forms.add(form.queryName, owner, { label: form.label });
     walk(entity, {
-      menu: (menu) => menu.actions?.forEach((action) => actions.add(action.alias, owner, { label: action.label })),
+      menu: (menu) =>
+        menu.actions?.forEach((action) => {
+          actions.add(action.alias, owner, { label: action.label });
+          actionTypes.add(action.actionType, owner);
+        }),
       operation: (operation) => operations.add(operation.value, owner, { label: operation.label }),
     });
   }
@@ -127,17 +132,17 @@ export function trackingPlan(input: { client: string; entities: UiEntity[]; filt
         trigger: "every GraphQL mutation; sent under the mutation's operation name, with kind mutation",
         properties: [{ name: "kind", type: "string", description: "always mutation", values: fixed("mutation") }, outcome, entityType("the type of the entity the mutation is on, when it names one")],
       },
-      { name: "view_mode_changed", status: "planned", trigger: "the user switches an overview's view mode", properties: [{ name: "view_mode", type: "string", description: "the view mode switched to", values: viewModes.list() }, entityType("the overview's entity type")] },
-      { name: "sort_changed", status: "planned", trigger: "the user sorts an overview", properties: [{ name: "sort", type: "string", description: "the sort option chosen", values: sorts.list() }, entityType("the overview's entity type")] },
+      { name: "view_mode_changed", status: "sent", trigger: "the user switches an overview's view mode", properties: [{ name: "view_mode", type: "string", description: "the view mode switched to", values: viewModes.list() }, entityType("the overview's entity type")] },
+      { name: "sort_changed", status: "sent", trigger: "the user sorts an overview", properties: [{ name: "sort", type: "string", description: "the sort option chosen", values: sorts.list() }, entityType("the overview's entity type")] },
       {
         name: "bulk_operation",
-        status: "planned",
+        status: "sent",
         trigger: "the user runs a bulk operation on a selection",
         properties: [{ name: "operation", type: "string", description: "the operation's value", values: operations.list() }, { name: "selected", type: "number", description: "how many items were selected" }, entityType("the overview's entity type")],
       },
-      { name: "context_action", status: "planned", trigger: "the user picks an action from a context menu", properties: [{ name: "action", type: "string", description: "the action's alias", values: actions.list() }, entityType("the entity's type")] },
-      { name: "form_opened", status: "planned", trigger: "a form opens (a create form, a repetitive form, a menu item's form)", properties: [form, entityType("the entity type the form creates or is opened on")] },
-      { name: "form_submitted", status: "planned", trigger: "a form is submitted", properties: [form, outcome, entityType("the entity type the form creates or is opened on")] },
+      { name: "context_action", status: "sent", trigger: "the user picks an action from a context menu", properties: [{ name: "action", type: "string", description: "the action's alias", values: actions.list() }, { name: "action_type", type: "string", description: "the action's kind (elody:actionKind), when it has one", values: actionTypes.list() }, entityType("the entity's type")] },
+      { name: "form_opened", status: "sent", trigger: "a form opens (a create form, a repetitive form, a menu item's form)", properties: [form, entityType("the entity type the form creates or is opened on")] },
+      { name: "form_submitted", status: "sent", trigger: "a form is submitted", properties: [form, outcome, entityType("the entity type the form creates or is opened on")] },
     ],
   };
 }

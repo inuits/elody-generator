@@ -58,19 +58,19 @@ const event = (name: string) => plan.events.find((e) => e.name === name)!;
 const values = (name: string, property: string) => event(name).properties.find((p) => p.name === property)!.values!.map((v) => v.value);
 
 describe("trackingPlan", () => {
-  it("lists the platform's events, each sent today or planned", () => {
+  it("lists the platform's events, each sent today or planned (all sent, since the PWA sends every one)", () => {
     expect(plan.client).toBe("vlacc");
     expect(plan.events.map((e) => [e.name, e.status])).toEqual([
       ["screen_view", "sent"],
       ["search", "sent"],
       ["filters_applied", "sent"],
       ["mutation", "sent"],
-      ["view_mode_changed", "planned"],
-      ["sort_changed", "planned"],
-      ["bulk_operation", "planned"],
-      ["context_action", "planned"],
-      ["form_opened", "planned"],
-      ["form_submitted", "planned"],
+      ["view_mode_changed", "sent"],
+      ["sort_changed", "sent"],
+      ["bulk_operation", "sent"],
+      ["context_action", "sent"],
+      ["form_opened", "sent"],
+      ["form_submitted", "sent"],
     ]);
   });
 
@@ -107,6 +107,8 @@ describe("trackingPlan", () => {
     expect(event("context_action").properties.find((p) => p.name === "action")!.values).toEqual([
       { value: "merge", label: "context-menu.merge", declaredBy: ["Person"] },
     ]);
+    // the alias is often generic (doElodyAction): the action's kind says what it does
+    expect(values("context_action", "action_type")).toEqual(["openModal"]);
     expect(event("form_opened").properties.find((p) => p.name === "form")!.values).toEqual([
       { value: "GetPersonCreateForm", label: "navigation.new-person", declaredBy: ["App", "Person"] },
     ]);
