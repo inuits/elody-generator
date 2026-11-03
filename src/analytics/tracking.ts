@@ -68,6 +68,7 @@ export function trackingPlan(input: { client: string; entities: UiEntity[]; filt
   const actions = new Values();
   const actionTypes = new Values();
   const forms = new Values();
+  const surfaces = new Values();
 
   for (const entity of input.entities) {
     const owner = entity.graphqlType;
@@ -80,6 +81,9 @@ export function trackingPlan(input: { client: string; entities: UiEntity[]; filt
     for (const document of entity.sortDocuments ?? []) for (const option of document.options) sorts.add(option.value, owner, { label: option.labelKey });
     for (const mode of entity.viewModes ?? []) viewModes.add(mode.mode, owner);
     for (const form of [...(entity.createForms ?? []), ...(entity.repetitiveForms ?? [])]) forms.add(form.queryName, owner, { label: form.label });
+    // the PWA names an action after the detail page's element it was started in (the outermost)
+    for (const column of entity.detail?.columns ?? []) for (const element of column.elements) surfaces.add(element.alias, owner, { label: element.label });
+    for (const fragment of entity.elementsFragments ?? []) for (const element of fragment.elements) surfaces.add(element.alias, owner, { label: element.label });
     walk(entity, {
       menu: (menu) =>
         menu.actions?.forEach((action) => {
@@ -102,6 +106,7 @@ export function trackingPlan(input: { client: string; entities: UiEntity[]; filt
   const entityType = (description: string): TrackedProperty => ({ name: "entity_type", type: "string", description, values: entityTypes.list() });
   const outcome: TrackedProperty = { name: "outcome", type: "string", description: "whether it succeeded", values: fixed("ok", "error") };
   const form: TrackedProperty = { name: "form", type: "string", description: "the form's query (elody:queryName)", values: forms.list() };
+  const surface: TrackedProperty = { name: "surface", type: "string", description: "the detail page's element it was started in (its elody:alias), when it was started in one", values: surfaces.list() };
 
   return {
     client: input.client,
@@ -138,11 +143,11 @@ export function trackingPlan(input: { client: string; entities: UiEntity[]; filt
         name: "bulk_operation",
         status: "sent",
         trigger: "the user runs a bulk operation on a selection",
-        properties: [{ name: "operation", type: "string", description: "the operation's value", values: operations.list() }, { name: "selected", type: "number", description: "how many items were selected" }, entityType("the overview's entity type")],
+        properties: [{ name: "operation", type: "string", description: "the operation's value", values: operations.list() }, { name: "selected", type: "number", description: "how many items were selected" }, entityType("the overview's entity type"), surface],
       },
       { name: "context_action", status: "sent", trigger: "the user picks an action from a context menu", properties: [{ name: "action", type: "string", description: "the action's alias", values: actions.list() }, { name: "action_type", type: "string", description: "the action's kind (elody:actionKind), when it has one", values: actionTypes.list() }, entityType("the entity's type")] },
-      { name: "form_opened", status: "sent", trigger: "a form opens (a create form, a repetitive form, a menu item's form)", properties: [form, entityType("the entity type the form creates or is opened on")] },
-      { name: "form_submitted", status: "sent", trigger: "a form is submitted", properties: [form, outcome, entityType("the entity type the form creates or is opened on")] },
+      { name: "form_opened", status: "sent", trigger: "a form opens (a create form, a repetitive form, a menu item's form)", properties: [form, entityType("the entity type the form creates or is opened on"), surface] },
+      { name: "form_submitted", status: "sent", trigger: "a form is submitted", properties: [form, outcome, entityType("the entity type the form creates or is opened on"), surface] },
     ],
   };
 }

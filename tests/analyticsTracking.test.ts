@@ -115,6 +115,28 @@ describe("trackingPlan", () => {
     expect(values("form_submitted", "outcome")).toEqual(["ok", "error"]);
   });
 
+  it("says which part of a page an action was started from: the aliases of the detail page's elements", () => {
+    const production = entity({
+      graphqlType: "Production",
+      detail: {
+        shapeDriven: false,
+        fragmentFields: [],
+        columns: [
+          { order: 1, elements: [{ kind: "window", order: 1, alias: "productionInfo", panels: [], entityTypes: [] }], elementSpreads: [] },
+          { order: 2, elements: [{ kind: "window", order: 1, alias: "completenessOverview", panels: [], entityTypes: [] }], elementSpreads: [] },
+        ],
+      },
+    } as Partial<UiEntity> & { graphqlType: string });
+    const withPage = trackingPlan({ client: "podiumnet", entities: [production], filters: [] });
+    for (const name of ["bulk_operation", "form_opened", "form_submitted"]) {
+      const surface = withPage.events.find((e) => e.name === name)!.properties.find((p) => p.name === "surface")!;
+      expect(surface.values).toEqual([
+        { value: "productionInfo", declaredBy: ["Production"] },
+        { value: "completenessOverview", declaredBy: ["Production"] },
+      ]);
+    }
+  });
+
   it("writes a readable plan", () => {
     const md = trackingPlanMarkdown(plan);
     expect(md).toContain("# Tracking plan: vlacc");
