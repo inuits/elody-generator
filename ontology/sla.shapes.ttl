@@ -1,0 +1,57 @@
+# What an SLA declaration must say for `elody-ui analytics sla` to read it.
+@prefix ea:   <https://elody.eu/ns/analytics#> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+ea:SlaShape a sh:NodeShape ;
+  sh:targetClass ea:ServiceLevelAgreement ;
+  sh:property [ sh:path rdfs:label ; sh:minCount 1 ; sh:message "an SLA has a title (rdfs:label)" ] ;
+  sh:property [ sh:path dct:source ; sh:maxCount 1 ; sh:datatype xsd:string ] ;
+  sh:property [
+    sh:path ea:language ; sh:maxCount 1 ; sh:in ( "nl" "en" ) ;
+    sh:message "an SLA's ea:language is \"nl\" or \"en\"" ] ;
+  sh:property [
+    sh:path ea:retentionDays ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 31 ;
+    sh:message "an SLA keeps its measurements at least a month (ea:retentionDays, an integer ≥ 31)" ] ;
+  sh:property [
+    sh:path ea:availability ; sh:minCount 1 ; sh:maxCount 1 ;
+    sh:message "an SLA has one availability goal (ea:availability)" ] ;
+  sh:property [
+    sh:path ea:performance ; sh:minCount 1 ; sh:maxCount 1 ;
+    sh:message "an SLA has one performance goal (ea:performance)" ] .
+
+# the goals, their tiers and the measured spans as targets of their own, so
+# a violation says what is wrong, not only that the SLA is
+ea:GoalShape a sh:NodeShape ;
+  sh:targetObjectsOf ea:availability , ea:performance ;
+  sh:property [
+    sh:path ea:goal ; sh:minCount 1 ; sh:maxCount 1 ; sh:minExclusive 0 ; sh:maxInclusive 1 ;
+    sh:message "a goal is a share between 0 and 1 (ea:goal)" ] ;
+  sh:property [
+    sh:path ea:creditTier ;
+    sh:qualifiedValueShape [ sh:property [ sh:path ea:atLeast ; sh:maxCount 0 ] ] ;
+    sh:qualifiedMinCount 1 ; sh:qualifiedMaxCount 1 ;
+    sh:message "a goal has one floor: one credit tier without ea:atLeast" ] .
+
+ea:CreditTierShape a sh:NodeShape ;
+  sh:targetObjectsOf ea:creditTier ;
+  sh:property [
+    sh:path ea:creditPercent ; sh:minCount 1 ; sh:maxCount 1 ; sh:minInclusive 0 ; sh:maxInclusive 100 ;
+    sh:message "a credit tier gives ea:creditPercent of the monthly fee (0 to 100)" ] ;
+  sh:property [
+    sh:path ea:atLeast ; sh:maxCount 1 ; sh:minExclusive 0 ; sh:maxExclusive 1 ;
+    sh:message "a credit tier's ea:atLeast is a share between 0 and 1" ] .
+
+ea:PerformanceShape a sh:NodeShape ;
+  sh:targetObjectsOf ea:performance ;
+  sh:property [
+    sh:path ea:service ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[A-Za-z0-9_.-]+$" ;
+    sh:message "the performance goal names one OpenTelemetry service (ea:service)" ] ;
+  sh:property [
+    sh:path ea:spanName ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[A-Za-z0-9 _./-]+$" ;
+    sh:message "the performance goal names the server spans it measures (ea:spanName)" ] ;
+  sh:property [
+    sh:path ea:apdexThresholdMs ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minExclusive 0 ;
+    sh:message "the performance goal has Apdex's T in milliseconds (ea:apdexThresholdMs)" ] .

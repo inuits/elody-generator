@@ -19,6 +19,14 @@
  * elody-ui analytics tracking DECLARATION --out DIR [--client NAME]
  *   the tracking plan: the platform's usage events and the values the
  *   declaration allows per property (tracking-plan.json, tracking-plan.md)
+ * elody-ui analytics sla DECLARATION --out DIR [--client NAME]
+ *   the SLA in Superset: the ClickHouse SQL, the Superset dashboard bundle and
+ *   the manifest elody-superset reads (clickhouse/, superset/, manifest.json
+ *   are replaced)
+ * elody-ui analytics values --into FILE --bundle NAME=DIR ... [--source TEXT]
+ *   the bundles (every file under DIR) as superset.bundles in a Helm values
+ *   file (the client's common/elody.yaml); the rest of the file stays;
+ *   --source says in the block where the bundles come from
  * elody-ui analytics coverage PLAN --observed FILE --out DIR
  *   what a usage tool saw ({ event, property, value, count }, a JSON list or JSON lines)
  *   against the plan: declared values never seen, values and events not declared
@@ -28,7 +36,7 @@
  * above the declaration, overlay or output (client.ts): collections, schema,
  * database, translations.
  */
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
 import { basename, dirname, join, relative } from "path";
 import { loadDeclaration } from "../declarationFiles.js";
 import { formatIssue } from "../validate.js";
@@ -40,6 +48,16 @@ import { applyProfile, profile, profileMarkdown } from "./profile.js";
 import { mongoSource } from "./profileMongo.js";
 import { coverage, coverageMarkdown, parseObserved, trackingPlan, trackingPlanMarkdown, type TrackingPlan } from "./tracking.js";
 import { readUiDeclaration } from "../parse.js";
+import { generateSla, readSla, validateSla } from "./sla.js";
+import { bundleValues } from "./values.js";
+
+/** Every file under dir, by its path relative to dir. */
+const filesUnder = (dir: string): Map<string, string> =>
+  new Map(
+    readdirSync(dir, { recursive: true, encoding: "utf-8" })
+      .filter((path) => statSync(join(dir, path)).isFile())
+      .map((path) => [path.split("\\").join("/"), readFileSync(join(dir, path), "utf-8")]),
+  );
 
 const usage = `usage:
   elody-ui analytics inventory DECLARATION --out DIR [--translations FILE ...]
@@ -48,7 +66,9 @@ const usage = `usage:
   elody-ui analytics generate  OVERLAY --out DIR [--translations FILE ...] [--client NAME] [--database NAME]
   elody-ui analytics profile   OVERLAY --mongo URI --out DIR [--db NAME] [--sample N] [--extra PATH ...] [--library PATH ...] [--users COLLECTION] [--update]
   elody-ui analytics tracking  DECLARATION --out DIR [--client NAME]
-  elody-ui analytics coverage  PLAN --observed FILE --out DIR`;
+  elody-ui analytics coverage  PLAN --observed FILE --out DIR
+  elody-ui analytics sla       DECLARATION --out DIR [--client NAME]
+  elody-ui analytics values    --into FILE --bundle NAME=DIR ... [--source TEXT]`;
 
 const options = (argv: string[], name: string): string[] => argv.flatMap((argument, index) => (argument === name && argv[index + 1] ? [argv[index + 1]] : []));
 const positional = (argv: string[]): string[] => argv.filter((argument, index) => !argument.startsWith("--") && !argv[index - 1]?.startsWith("--"));
@@ -194,6 +214,37 @@ export async function analytics(argv: string[]): Promise<number> {
     } finally {
       await close();
     }
+  }
+
+  if (command === "sla") {
+    const [file] = positional(rest);
+    const [out] = options(rest, "--out");
+    if (!file || !out) throw new Error(usage);
+    const ttl = readFileSync(file, "utf-8");
+    const report = await validateSla(ttl);
+    for (const issue of report.issues) console.error(formatIssue(issue));
+    if (!report.conforms) return 1;
+    const client = options(rest, "--client")[0] ?? findClientConfig(file)?.name;
+    if (!client) throw new Error("no --client and no client.json above the declaration");
+    const files = generateSla(readSla(ttl), { client, source: basename(file) });
+    for (const path of ["clickhouse", "superset", "manifest.json"]) rmSync(join(out, path), { recursive: true, force: true });
+    for (const [path, content] of files) {
+      mkdirSync(dirname(join(out, path)), { recursive: true });
+      writeFileSync(join(out, path), content);
+    }
+    console.log(`${out}: ${files.size} file(s)`);
+    return 0;
+  }
+
+  if (command === "values") {
+    const [into] = options(rest, "--into");
+    const pairs = options(rest, "--bundle").map((pair) => pair.split("="));
+    if (!into || !pairs.length || pairs.some((pair) => pair.length !== 2 || !pair[0] || !pair[1])) throw new Error(usage);
+    const bundles = new Map(pairs.map(([name, dir]) => [name, filesUnder(dir)]));
+    const existing = existsSync(into) ? readFileSync(into, "utf-8") : "";
+    writeFileSync(into, bundleValues(existing, bundles, options(rest, "--source")[0]));
+    console.log(`${into}: ${[...bundles].map(([name, files]) => `${name} (${files.size} file(s))`).join(", ")}`);
+    return 0;
   }
 
   console.error(usage);

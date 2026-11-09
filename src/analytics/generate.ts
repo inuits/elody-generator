@@ -215,7 +215,7 @@ export function uuidFor(client: string, kind: string, name: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-type Yaml = string | number | boolean | null | Yaml[] | { [key: string]: Yaml };
+export type Yaml = string | number | boolean | null | Yaml[] | { [key: string]: Yaml };
 
 /** Block YAML; strings are always double-quoted (JSON strings are YAML), so `yes` or `1.0` stay strings. */
 export function toYaml(value: Yaml, indent = ""): string {

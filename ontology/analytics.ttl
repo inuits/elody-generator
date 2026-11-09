@@ -66,3 +66,43 @@ ea:Time a ea:Role ;
 ea:entityCount a qb:MeasureProperty ;
   rdfs:label "Aantal entiteiten"@nl , "Number of entities"@en ;
   rdfs:comment "The number of entities." .
+
+# --- the SLA: what a client's service level agreement promises, reported in
+# Superset from the instance's ClickHouse (`elody-ui analytics sla`)
+
+ea:ServiceLevelAgreement a rdfs:Class ;
+  rdfs:label "Service level agreement" ;
+  rdfs:comment "The goals and service credits of a client's SLA: availability from a check of the health endpoint, performance as the Apdex of the API's requests." .
+
+ea:language a rdf:Property ;
+  rdfs:comment "The language of the dashboard's titles and texts: \"nl\" or \"en\"." .
+
+ea:retentionDays a rdf:Property ;
+  rdfs:comment "How many days the measurements are kept (HyperDX keeps its spans 30 days; the SLA is measured per month and per year)." .
+
+ea:availability a rdf:Property ;
+  rdfs:comment "The availability goal: the share of the checks of the health endpoint that answered 200 within 10 seconds, per month." .
+
+ea:performance a rdf:Property ;
+  rdfs:comment "The performance goal: the Apdex of one service's server spans, per month." .
+
+ea:goal a rdf:Property ;
+  rdfs:comment "The value a month must reach (a share between 0 and 1); below it the credit tiers apply." .
+
+ea:creditTier a rdf:Property ;
+  rdfs:comment "A service credit below the goal: from ea:atLeast up, ea:creditPercent of the monthly fee; the one without ea:atLeast is the floor." .
+
+ea:atLeast a rdf:Property ;
+  rdfs:comment "The lowest value (a share between 0 and 1) of a credit tier." .
+
+ea:creditPercent a rdf:Property ;
+  rdfs:comment "The service credit of a tier, in percent of the monthly fee." .
+
+ea:service a rdf:Property ;
+  rdfs:comment "The OpenTelemetry service name whose server spans are measured (ServiceName in HyperDX)." .
+
+ea:spanName a rdf:Property ;
+  rdfs:comment "The name of the measured server spans, e.g. \"POST /api/graphql\"." .
+
+ea:apdexThresholdMs a rdf:Property ;
+  rdfs:comment "Apdex's T in milliseconds: satisfied up to T, tolerating up to 4 T, frustrated above." .

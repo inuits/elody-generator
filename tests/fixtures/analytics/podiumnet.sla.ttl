@@ -1,0 +1,24 @@
+@prefix ea:   <https://elody.eu/ns/analytics#> .
+@prefix dct:  <http://purl.org/dc/terms/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix podiumnet: <https://elody.eu/analytics/podiumnet#> .
+
+podiumnet:Sla a ea:ServiceLevelAgreement ;
+  rdfs:label "SLA"@nl ;
+  dct:source "Bijlage 3, Antwoordformulier SLA v1.1" ;
+  ea:language "nl" ;
+  ea:retentionDays 400 ;
+  ea:availability [
+    ea:goal 0.999 ;
+    ea:creditTier [ ea:atLeast 0.995 ; ea:creditPercent 5 ] ,
+                  [ ea:atLeast 0.99 ; ea:creditPercent 10 ] ,
+                  [ ea:creditPercent 20 ]
+  ] ;
+  ea:performance [
+    ea:service "graphql" ;
+    ea:spanName "POST /api/graphql" ;
+    ea:apdexThresholdMs 1000 ;
+    ea:goal 0.85 ;
+    ea:creditTier [ ea:atLeast 0.75 ; ea:creditPercent 5 ] ,
+                  [ ea:creditPercent 10 ]
+  ] .

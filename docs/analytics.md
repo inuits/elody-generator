@@ -41,6 +41,8 @@ translation bundles), found above the path given.
 | `elody-ui analytics validate <overlay>` | The overlay against `ontology/analytics.shapes.ttl`, plus one dimension per source path. |
 | `elody-ui analytics profile <overlay> --mongo <uri> --out <dir> [--update]` | A sample per entity type from a **local** Mongo (any other host is refused): fill rate, lists, value types, distinct values, top values per path; creation dates per year and the entry-library candidates counted exactly. `--update` writes back: lists become `ea:multiValued`, paths filled in no type's 5% are commented out, types without documents dropped. |
 | `elody-ui analytics generate <overlay> --out <dir>` | The ClickHouse SQL, the dlt projection and the Superset bundle (below). Replaces the three generated folders. |
+| `elody-ui analytics sla <sla.ttl> --out <dir>` | The SLA's ClickHouse SQL, Superset dashboard bundle and manifest (see The SLA). |
+| `elody-ui analytics values --into <file> --bundle <name>=<dir> ...` | The bundles as `superset.bundles` in a Helm values file. |
 
 ## The role heuristic (inventory)
 
@@ -116,6 +118,31 @@ all use this one table; the pipeline executes the accessor each column carries.
 | `clickhouse/010_mart.sql` | `mart.<c>_entities_created_daily` (day × type × created_by × every single-valued dimension → `entity_count`, from `FINAL`, entities without a creation date left out) and `mart.<c>_entities_created_by_<dim>` per list dimension (`ARRAY JOIN`) |
 | `dlt/projection.json` | collections, type filter, Mongo projection, per column its logical path, storage accessor, ClickHouse and dlt type, lookup; the incremental cursor and its fallback; the daily view's name |
 | `superset/…` | an import bundle: one shared ClickHouse database and a dataset per view, columns labelled from the client's translations (equal labels told apart by the column), the time column, metric `count` = `SUM(entity_count)` "Aantal entiteiten", name-based uuids |
+
+## The SLA (`analytics sla`, `analytics values`)
+
+A client's SLA is a declaration of its own, `analytics/sla.ttl` (an
+`ea:ServiceLevelAgreement`, shapes in `ontology/sla.shapes.ttl`): the title,
+language (`nl`/`en`), retention, and two goals with their service-credit
+tiers (`ea:creditTier [ ea:atLeast 0.995 ; ea:creditPercent 5 ]`, one tier
+without `ea:atLeast` is the floor). Availability is measured by a check of the
+environment's health endpoint; performance is the Apdex of one service's
+server spans in HyperDX (`ea:service`, `ea:spanName`, `ea:apdexThresholdMs` is
+T; tolerating is up to 4 T).
+
+`elody-ui analytics sla <sla.ttl> --out <dir>` writes:
+
+| File | Content |
+|---|---|
+| `clickhouse/001_sla.sql` | `sla.uptime`, `sla.requests` with the retention as TTL, the materialized view over `default.otel_traces` (its query updated with `MODIFY QUERY`), the backfill guarded by `sla.setup`; every statement can run again |
+| `superset/…` | a dashboard import bundle: the connection as the read-only user, the datasets `uptime` and `requests`, nine charts and the dashboard `sla`, name-based uuids |
+| `manifest.json` | for elody-superset: the tables to wait for, the read-only ClickHouse user and its databases, which connection gets its password |
+
+Nothing client-specific is in the image that applies it (`elody-superset`):
+`elody-ui analytics values --into <values repo>/common/elody.yaml --bundle
+sla=<dir>` writes the bundles as `superset.bundles.<name>` between markers in
+the client's Helm values; the elody chart mounts each bundle for the
+elody-superset setup.
 
 ## The local chain (`elody-declarations/poc/analytics`)
 
