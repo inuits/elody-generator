@@ -1,21 +1,22 @@
 /**
- * The SLA declaration generates what Superset reports it from: the ClickHouse
- * SQL (the sla database, the copy of the API's server spans, the backfill)
- * and a Superset import bundle with the connection, the datasets, the charts
- * and the dashboard; manifest.json tells elody-superset what the bundle needs.
+ * The SLA declaration is a layer under a dashboard: it provides the ClickHouse
+ * SQL (the sla database, the copy of the API's server spans, the backfill),
+ * the datasets uptime and requests with the SLA's metrics (its goals, T and
+ * service credits), and the placeholders a dashboard's texts use. A bundle
+ * folder (the SLA, its dashboard) becomes what elody-superset applies.
  * The SQL also runs against an empty ClickHouse when its image is present.
  */
 import { execFileSync, spawnSync } from "child_process";
-import { readFileSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { join } from "path";
 import { describe, expect, it } from "vitest";
-import { creditSql, generateSla, readSla, validateSla } from "../src/analytics/sla.js";
+import { buildBundle } from "../src/analytics/bundle.js";
+import { creditSql, readSla, slaParts, validateSla } from "../src/analytics/sla.js";
 
 const fixtures = join(__dirname, "fixtures", "analytics");
 const ttl = readFileSync(join(fixtures, "podiumnet.sla.ttl"), "utf-8");
 const sla = readSla(ttl);
-const files = generateSla(sla, { client: "podiumnet", source: "podiumnet.sla.ttl" });
-const yamlOf = (path: string) => files.get(path)!;
 
 describe("analytics sla: the declaration", () => {
   it("reads the goals, the credit tiers and the measured service", () => {
@@ -46,28 +47,71 @@ describe("analytics sla: the declaration", () => {
     expect(messages).toMatch(/creditPercent/);
   });
 
-  it("refuses a service or span name that does not fit in SQL", () => {
-    expect(() => generateSla({ ...sla, performance: { ...sla.performance, service: "graphql' OR 1=1" } }, { client: "podiumnet" })).toThrow(/service/);
+});
+
+describe("analytics sla: the layer under its dashboard", () => {
+  const parts = slaParts(sla, "podiumnet");
+
+  it("provides the SQL, the two datasets with the SLA's metrics, and the placeholders", () => {
+    expect([...parts.sql.keys()]).toEqual(["001_sla.sql"]);
+    expect(parts.datasets.map((dataset) => dataset.name)).toEqual(["uptime", "requests"]);
+    expect(parts.datasets[0].metrics.map((metric) => metric.name)).toEqual(["availability", "downtime_minutes", "checks", "availability_credit"]);
+    expect(parts.datasets[1].metrics.map((metric) => metric.name)).toEqual([
+      "apdex", "requests", "satisfied", "tolerating", "frustrated", "satisfied_share", "frustrated_share", "apdex_credit", "p95_ms",
+    ]);
+    expect(parts.variables).toEqual({
+      availability_goal: "99,90 %",
+      apdex_goal: "0,85",
+      apdex_t: "1 s",
+      apdex_tolerating: "4 s",
+      service: "graphql",
+      span_name: "POST /api/graphql",
+      source: "Bijlage 3, Antwoordformulier SLA v1.1",
+    });
+    expect(parts.manifest).toEqual({ requires: ["default.otel_traces"], readOnlyDatabases: ["sla"] });
+  });
+
+  it("puts the declaration's thresholds and tiers into the metrics", () => {
+    expect(creditSql("avg(ok)", sla.availability, "nl")).toBe(
+      "multiIf(avg(ok) >= 0.999, 'geen', avg(ok) >= 0.995, '5 %', avg(ok) >= 0.99, '10 %', '20 %')",
+    );
+    const metric = (dataset: number, name: string) => parts.datasets[dataset].metrics.find((entry) => entry.name === name)!;
+    expect(metric(1, "satisfied")).toMatchObject({ label: "Tevreden (≤ 1 s)", sql: "countIf(duration_ms <= 1000)" });
+    expect(metric(1, "tolerating").sql).toBe("countIf(duration_ms > 1000 AND duration_ms <= 4000)");
+    expect(metric(1, "apdex_credit").sql).toContain(">= 0.85, 'geen'");
+    expect(metric(0, "availability_credit").label).toBe("Service credit");
+  });
+
+  it("copies only the declared service's server spans, kept as long as the declaration says", () => {
+    const sql = parts.sql.get("001_sla.sql")!;
+    expect(sql).toContain("WHERE ServiceName = 'graphql' AND SpanKind = 'Server' AND SpanName = 'POST /api/graphql'");
+    expect(sql).toContain("TTL checked_at + INTERVAL 400 DAY");
+  });
+
+  it("speaks English when the declaration does", () => {
+    const english = slaParts({ ...sla, language: "en" }, "podiumnet");
+    expect(english.variables.availability_goal).toBe("99.90%");
+    expect(english.datasets[1].metrics.find((metric) => metric.name === "satisfied")!.label).toBe("Satisfied (≤ 1 s)");
+    expect(creditSql("avg(ok)", sla.availability, "en")).toContain("'none'");
   });
 });
 
-describe("analytics sla: generated", () => {
-  it("writes the SQL, the manifest and a Superset dashboard bundle", () => {
-    const paths = [...files.keys()].sort();
-    expect(paths.filter((path) => !path.startsWith("superset/charts/"))).toEqual([
-      "clickhouse/001_sla.sql",
-      "manifest.json",
-      "superset/dashboards/sla.yaml",
-      "superset/databases/clickhouse_sla.yaml",
-      "superset/datasets/clickhouse_sla/requests.yaml",
-      "superset/datasets/clickhouse_sla/uptime.yaml",
-      "superset/metadata.yaml",
-    ]);
-    expect(paths.filter((path) => path.startsWith("superset/charts/"))).toHaveLength(9);
+describe("analytics bundle: a folder of declarations", () => {
+  const dir = mkdtempSync(join(tmpdir(), "bundle-"));
+  const bundleDir = join(dir, "sla");
+  mkdirSync(bundleDir);
+  writeFileSync(join(bundleDir, "sla.ttl"), ttl);
+  writeFileSync(join(bundleDir, "sla.dashboard.ttl"), readFileSync(join(fixtures, "sla.dashboard.ttl"), "utf-8"));
+  const bundle = buildBundle(bundleDir, { client: "podiumnet" });
+
+  it("writes the SQL, the manifest and the Superset import bundle", () => {
+    expect([...bundle.keys()].filter((path) => !path.startsWith("superset/")).sort()).toEqual(["clickhouse/001_sla.sql", "manifest.json"]);
+    expect(bundle.get("clickhouse/001_sla.sql")).toMatch(/^-- Generated by `elody-ui analytics bundle` from sla.ttl; do not edit./);
+    expect(bundle.has("superset/dashboards/sla.yaml")).toBe(true);
   });
 
-  it("names in the manifest the tables it waits for, the read-only user and the connection's password", () => {
-    expect(JSON.parse(files.get("manifest.json")!)).toEqual({
+  it("names in the manifest the tables it waits for, the read-only user, its connections and the dashboards", () => {
+    expect(JSON.parse(bundle.get("manifest.json")!)).toEqual({
       requires: ["default.otel_traces"],
       readOnlyUser: { name: "superset", databases: ["sla"] },
       passwords: { "databases/clickhouse_sla.yaml": "readOnlyUser" },
@@ -75,48 +119,15 @@ describe("analytics sla: generated", () => {
     });
   });
 
-  it("puts the declaration's thresholds and tiers into the SQL of the charts", () => {
-    expect(creditSql("avg(ok)", sla.availability, "nl")).toBe(
-      "multiIf(avg(ok) >= 0.999, 'geen', avg(ok) >= 0.995, '5 %', avg(ok) >= 0.99, '10 %', '20 %')",
-    );
-    const charts = [...files.entries()].filter(([path]) => path.startsWith("superset/charts/")).map(([, yaml]) => yaml).join("\n");
-    expect(charts).toContain("countIf(duration_ms <= 1000)");
-    expect(charts).toContain("countIf(duration_ms > 1000 AND duration_ms <= 4000)");
-    expect(charts).toContain("doel ≥ 0,85 (T = 1 s)");
-    expect(charts).toContain("doel 99,90 %");
+  it("refuses a folder without a dashboard", () => {
+    const empty = join(dir, "empty");
+    mkdirSync(empty);
+    writeFileSync(join(empty, "sla.ttl"), ttl);
+    expect(() => buildBundle(empty, { client: "podiumnet" })).toThrow(/no ea:Dashboard/);
   });
 
-  it("copies only the declared service's server spans, kept as long as the declaration says", () => {
-    const sql = files.get("clickhouse/001_sla.sql")!;
-    expect(sql).toContain("WHERE ServiceName = 'graphql' AND SpanKind = 'Server' AND SpanName = 'POST /api/graphql'");
-    expect(sql).toContain("TTL checked_at + INTERVAL 400 DAY");
-    expect(sql).toMatch(/^-- Generated by `elody-ui analytics sla` from podiumnet.sla.ttl; do not edit./);
-  });
-
-  it("gives every Superset object a stable uuid and ties charts, datasets and the dashboard together", () => {
-    const again = generateSla(readSla(ttl), { client: "podiumnet", source: "podiumnet.sla.ttl" });
-    expect([...again.entries()]).toEqual([...files.entries()]);
-    const uuidOf = (yaml: string) => /^uuid: "([0-9a-f-]{36})"$/m.exec(yaml)![1];
-    const requests = uuidOf(yamlOf("superset/datasets/clickhouse_sla/requests.yaml"));
-    const database = uuidOf(yamlOf("superset/databases/clickhouse_sla.yaml"));
-    expect(yamlOf("superset/datasets/clickhouse_sla/requests.yaml")).toContain(`database_uuid: "${database}"`);
-    const dashboard = yamlOf("superset/dashboards/sla.yaml");
-    for (const [path, yaml] of files) {
-      if (!path.startsWith("superset/charts/")) continue;
-      expect(dashboard).toContain(`uuid: "${uuidOf(yaml)}"`);
-      expect(yaml).toMatch(/^dataset_uuid: "[0-9a-f-]{36}"$/m);
-    }
-    expect(dashboard).toContain('slug: "sla"');
-    expect(yamlOf("superset/metadata.yaml")).toContain('type: "Dashboard"');
-    expect(yamlOf("superset/databases/clickhouse_sla.yaml")).toContain('sqlalchemy_uri: "clickhousedb://superset:XXXXXXXXXX@clickhouse:8123/sla"');
-    expect(requests).toMatch(/^[0-9a-f-]{36}$/);
-  });
-
-  it("writes English when the declaration asks for it", () => {
-    const english = generateSla({ ...sla, language: "en" }, { client: "podiumnet" });
-    const charts = [...english.entries()].filter(([path]) => path.startsWith("superset/charts/")).map(([, yaml]) => yaml).join("\n");
-    expect(charts).toContain("Availability this month (%)");
-    expect(creditSql("avg(ok)", sla.availability, "en")).toContain("'none'");
+  it("refuses a service or span name that does not fit in SQL", () => {
+    expect(() => slaParts({ ...sla, performance: { ...sla.performance, service: "graphql' OR 1=1" } }, "podiumnet")).toThrow(/service/);
   });
 });
 
@@ -140,7 +151,7 @@ INSERT INTO default.otel_traces VALUES
   (now64() - 50, 'graphql', 'Internal', 'parse', 1000000, {}),
   (now64() - 40, 'collection', 'Server', 'POST /api/graphql', 1000000, {});
 `;
-    const sql = files.get("clickhouse/001_sla.sql")!;
+    const sql = slaParts(sla, "podiumnet").sql.get("001_sla.sql")!;
     const later = `INSERT INTO default.otel_traces VALUES (now64(), 'graphql', 'Server', 'POST /api/graphql', 2500000000, {'graphql.operation.name': 'Save'});`;
     const check = "SELECT operation, duration_ms FROM sla.requests ORDER BY at FORMAT TSV;";
     // the setup runs at every start: the second run must not copy the spans again

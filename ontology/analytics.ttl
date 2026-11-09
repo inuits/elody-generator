@@ -106,3 +106,42 @@ ea:spanName a rdf:Property ;
 
 ea:apdexThresholdMs a rdf:Property ;
   rdfs:comment "Apdex's T in milliseconds: satisfied up to T, tolerating up to 4 T, frustrated above." .
+
+# --- dashboards: charts over named datasets and the metrics they carry
+# (`elody-ui analytics bundle`). A dataset comes from a layer under the
+# dashboard: the SLA (uptime, requests) or the overlay (its mart views).
+
+ea:Dashboard a rdfs:Class ;
+  rdfs:comment "A Superset dashboard: rdfs:label is its title, ea:items its charts and texts in order, laid out in rows of 12 columns." .
+
+ea:Chart a rdfs:Class ;
+  rdfs:comment "An item that draws a dataset: rdfs:label is its title, ea:dataset the dataset's name." .
+ea:BigNumber a rdfs:Class ; rdfs:subClassOf ea:Chart ; rdfs:comment "One number: ea:measure over ea:period." .
+ea:Table a rdfs:Class ; rdfs:subClassOf ea:Chart ; rdfs:comment "Rows per ea:groupBy with ea:measures, sorted by ea:sortBy." .
+ea:TimeSeries a rdfs:Class ; rdfs:subClassOf ea:Chart ; rdfs:comment "ea:measures over the dataset's time column per ea:timeGrain, as ea:style." .
+ea:Ranking a rdfs:Class ; rdfs:subClassOf ea:Chart ; rdfs:comment "The top ea:limit values of ea:dimension by ea:measure, as horizontal bars." .
+ea:Markdown a rdfs:Class ; rdfs:comment "A text (ea:text, Markdown) between the charts." .
+
+ea:slug a rdf:Property ; rdfs:comment "The dashboard's address: /superset/dashboard/<slug>/." .
+ea:items a rdf:Property ; rdfs:comment "The dashboard's charts and texts, an RDF list in reading order." .
+ea:key a rdf:Property ; rdfs:comment "An item's stable name (its file and uuid); by default the title, as a slug." .
+ea:dataset a rdf:Property ; rdfs:comment "The name of the dataset a chart draws." .
+ea:measure a rdf:Property ; rdfs:comment "The one measure of a big number or a ranking." .
+ea:measures a rdf:Property ; rdfs:comment "A list of measures: a dataset metric's name, or [ rdfs:label ; ea:sql ] inline." .
+ea:groupBy a rdf:Property ; rdfs:comment "A table's rows: a list of column names, or [ rdfs:label ; ea:sql ] expressions." .
+ea:dimension a rdf:Property ; rdfs:comment "The column a ranking counts by." .
+ea:period a rdf:Property ; rdfs:comment "The time the chart covers: ea:CurrentMonth, ea:Last90Days or ea:AllTime (the default)." .
+ea:CurrentMonth a rdfs:Resource . ea:Last90Days a rdfs:Resource . ea:AllTime a rdfs:Resource .
+ea:timeGrain a rdf:Property ; rdfs:comment "A time series' step, as an ISO 8601 duration: P1D, P1W, P1M, P1Y." .
+ea:style a rdf:Property ; rdfs:comment "A time series drawn as ea:Line, ea:Bar or ea:StackedBar." .
+ea:Line a rdfs:Resource . ea:Bar a rdfs:Resource . ea:StackedBar a rdfs:Resource .
+ea:subheader a rdf:Property ; rdfs:comment "The line under a big number." .
+ea:format a rdf:Property ; rdfs:comment "A d3 number format, e.g. \",d\" or \",.3f\"." .
+ea:sortBy a rdf:Property ; rdfs:comment "The measure or group label a table is sorted by; ea:ascending true sorts up." .
+ea:ascending a rdf:Property .
+ea:limit a rdf:Property ; rdfs:comment "The most rows a table or ranking shows." .
+ea:search a rdf:Property ; rdfs:comment "A table with a search box." .
+ea:width a rdf:Property ; rdfs:comment "An item's width, out of the row's 12 columns." .
+ea:height a rdf:Property ; rdfs:comment "An item's height, in Superset's grid units (8 px)." .
+ea:text a rdf:Property ; rdfs:comment "A Markdown item's text." .
+ea:sql a rdf:Property ; rdfs:comment "A ClickHouse SQL expression." .

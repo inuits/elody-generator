@@ -1,0 +1,53 @@
+@prefix ea:   <https://elody.eu/ns/analytics#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix podiumnet: <https://elody.eu/analytics/podiumnet#> .
+
+# The SLA dashboard: the charts over the SLA's datasets (uptime, requests) and
+# their metrics; what a goal or T is comes from sla.ttl, as {placeholders}.
+podiumnet:SlaDashboard a ea:Dashboard ;
+  rdfs:label "SLA" ;
+  ea:slug "sla" ;
+  ea:items (
+    [ a ea:BigNumber ; rdfs:label "Beschikbaarheid deze maand (%)" ; ea:dataset "uptime" ; ea:measure "availability" ;
+      ea:period ea:CurrentMonth ; ea:subheader "doel {availability_goal}" ; ea:width 4 ; ea:height 30 ]
+    [ a ea:BigNumber ; rdfs:label "Apdex deze maand" ; ea:dataset "requests" ; ea:measure "apdex" ;
+      ea:period ea:CurrentMonth ; ea:subheader "doel ≥ {apdex_goal} (T = {apdex_t})" ; ea:width 4 ; ea:height 30 ]
+    [ a ea:BigNumber ; rdfs:label "Requests deze maand ({span_name})" ; ea:dataset "requests" ; ea:measure "requests" ;
+      ea:period ea:CurrentMonth ; ea:subheader "gemeten voor de Apdex" ; ea:format ",d" ; ea:width 4 ; ea:height 30 ]
+    [ a ea:Table ; rdfs:label "Beschikbaarheid per maand" ; ea:dataset "uptime" ;
+      ea:groupBy ( [ rdfs:label "Maand" ; ea:sql "formatDateTime(checked_at, '%Y-%m')" ] ) ;
+      ea:measures ( "availability" "downtime_minutes" "checks" "availability_credit" ) ;
+      ea:sortBy "Maand" ; ea:ascending false ; ea:limit 24 ; ea:width 6 ; ea:height 50 ]
+    [ a ea:Table ; rdfs:label "Apdex per maand" ; ea:dataset "requests" ;
+      ea:groupBy ( [ rdfs:label "Maand" ; ea:sql "formatDateTime(at, '%Y-%m')" ] ) ;
+      ea:measures ( "apdex" "requests" "satisfied_share" "frustrated_share" "apdex_credit" ) ;
+      ea:sortBy "Maand" ; ea:ascending false ; ea:limit 24 ; ea:width 6 ; ea:height 50 ]
+    [ a ea:TimeSeries ; rdfs:label "Apdex per dag" ; ea:dataset "requests" ; ea:style ea:Line ; ea:timeGrain "P1D" ;
+      ea:measures ( "apdex" ) ; ea:period ea:Last90Days ; ea:width 6 ; ea:height 50 ]
+    [ a ea:TimeSeries ; rdfs:label "Responstijden per dag" ; ea:dataset "requests" ; ea:style ea:StackedBar ; ea:timeGrain "P1D" ;
+      ea:measures ( "satisfied" "tolerating" "frustrated" ) ; ea:period ea:Last90Days ; ea:width 6 ; ea:height 50 ]
+    [ a ea:TimeSeries ; rdfs:label "Beschikbaarheid per dag (%)" ; ea:dataset "uptime" ; ea:style ea:Bar ; ea:timeGrain "P1D" ;
+      ea:measures ( "availability" ) ; ea:period ea:Last90Days ; ea:width 6 ; ea:height 50 ]
+    [ a ea:Table ; rdfs:label "Traagste operaties deze maand" ; ea:dataset "requests" ;
+      ea:groupBy ( "operation" "kind" ) ; ea:measures ( "apdex" "requests" "p95_ms" ) ;
+      ea:sortBy "apdex" ; ea:ascending true ; ea:period ea:CurrentMonth ; ea:limit 50 ; ea:search true ;
+      ea:width 6 ; ea:height 50 ]
+    [ a ea:Markdown ; ea:width 12 ; ea:height 40 ; ea:text """### Hoe deze SLA gemeten wordt
+
+**Beschikbaarheid** (doel {availability_goal}): elke minuut een opvraging van het
+health endpoint van deze omgeving over het internet. Een antwoord anders dan
+200 binnen 10 seconden telt als een minuut downtime.
+
+**Performantie** (doel Apdex ≥ {apdex_goal}): elke request van de service
+`{service}` (`{span_name}`). Tevreden tot {apdex_t}, getolereerd tot
+{apdex_tolerating}, daarboven ontevreden. Apdex = (tevreden + getolereerd / 2)
+/ alle requests.
+
+**Service credits** per maand staan in de tabellen per maand. Gepland
+onderhoud en overmacht trekken we er niet automatisch af.
+
+**Reactie- en oplostijden per prioriteit** komen uit de servicedesk, niet uit
+deze metingen.
+
+Bron: {source}.""" ]
+  ) .

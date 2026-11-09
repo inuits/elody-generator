@@ -1,0 +1,63 @@
+# What a dashboard declaration must say for `elody-ui analytics bundle` to
+# render it. Whether a dataset, metric or {placeholder} exists is checked when
+# it is rendered: the datasets come from the layers under the dashboard.
+@prefix ea:   <https://elody.eu/ns/analytics#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+ea:DashboardShape a sh:NodeShape ;
+  sh:targetClass ea:Dashboard ;
+  sh:property [ sh:path rdfs:label ; sh:minCount 1 ; sh:message "a dashboard has a title (rdfs:label)" ] ;
+  sh:property [
+    sh:path ea:slug ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[a-z0-9][a-z0-9-]*$" ;
+    sh:message "a dashboard has one ea:slug (lowercase, digits, -)" ] ;
+  sh:property [ sh:path ea:items ; sh:minCount 1 ; sh:maxCount 1 ; sh:message "a dashboard lists its ea:items" ] .
+
+ea:ItemShape a sh:NodeShape ;
+  sh:targetClass ea:BigNumber , ea:Table , ea:TimeSeries , ea:Ranking , ea:Markdown ;
+  sh:property [
+    sh:path ea:width ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 1 ; sh:maxInclusive 12 ;
+    sh:message "an item's ea:width is 1 to 12 columns" ] ;
+  sh:property [ sh:path ea:height ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 1 ] ;
+  sh:property [ sh:path ea:key ; sh:maxCount 1 ; sh:pattern "^[a-z0-9][a-z0-9-]*$" ] .
+
+ea:ChartShape a sh:NodeShape ;
+  sh:targetClass ea:BigNumber , ea:Table , ea:TimeSeries , ea:Ranking ;
+  sh:property [ sh:path rdfs:label ; sh:minCount 1 ; sh:maxCount 1 ; sh:message "a chart has a title (rdfs:label)" ] ;
+  sh:property [
+    sh:path ea:dataset ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ;
+    sh:message "a chart names the dataset it draws (ea:dataset)" ] ;
+  sh:property [ sh:path ea:period ; sh:maxCount 1 ; sh:in ( ea:CurrentMonth ea:Last90Days ea:AllTime ) ;
+    sh:message "a chart's ea:period is ea:CurrentMonth, ea:Last90Days or ea:AllTime" ] ;
+  sh:property [ sh:path ea:format ; sh:maxCount 1 ; sh:datatype xsd:string ] ;
+  sh:property [ sh:path ea:limit ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 1 ] .
+
+ea:OneMeasureShape a sh:NodeShape ;
+  sh:targetClass ea:BigNumber , ea:Ranking ;
+  sh:property [ sh:path ea:measure ; sh:minCount 1 ; sh:maxCount 1 ; sh:message "a big number or ranking has one ea:measure" ] .
+
+ea:MeasuresShape a sh:NodeShape ;
+  sh:targetClass ea:Table , ea:TimeSeries ;
+  sh:property [ sh:path ea:measures ; sh:minCount 1 ; sh:maxCount 1 ; sh:message "a table or time series lists its ea:measures" ] .
+
+ea:TimeSeriesShape a sh:NodeShape ;
+  sh:targetClass ea:TimeSeries ;
+  sh:property [ sh:path ea:style ; sh:maxCount 1 ; sh:in ( ea:Line ea:Bar ea:StackedBar ) ;
+    sh:message "a time series' ea:style is ea:Line, ea:Bar or ea:StackedBar" ] ;
+  sh:property [ sh:path ea:timeGrain ; sh:maxCount 1 ; sh:in ( "P1D" "P1W" "P1M" "P3M" "P1Y" ) ;
+    sh:message "a time series' ea:timeGrain is P1D, P1W, P1M, P3M or P1Y" ] .
+
+ea:RankingShape a sh:NodeShape ;
+  sh:targetClass ea:Ranking ;
+  sh:property [ sh:path ea:dimension ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ;
+    sh:message "a ranking names the column it ranks (ea:dimension)" ] .
+
+ea:MarkdownShape a sh:NodeShape ;
+  sh:targetClass ea:Markdown ;
+  sh:property [ sh:path ea:text ; sh:minCount 1 ; sh:maxCount 1 ; sh:message "a Markdown item has its ea:text" ] .
+
+ea:InlineShape a sh:NodeShape ;
+  sh:targetSubjectsOf ea:sql ;
+  sh:property [ sh:path rdfs:label ; sh:minCount 1 ; sh:maxCount 1 ; sh:message "an inline measure or group has a label (rdfs:label) and ea:sql" ] .

@@ -19,10 +19,11 @@
  * elody-ui analytics tracking DECLARATION --out DIR [--client NAME]
  *   the tracking plan: the platform's usage events and the values the
  *   declaration allows per property (tracking-plan.json, tracking-plan.md)
- * elody-ui analytics sla DECLARATION --out DIR [--client NAME]
- *   the SLA in Superset: the ClickHouse SQL, the Superset dashboard bundle and
- *   the manifest elody-superset reads (clickhouse/, superset/, manifest.json
- *   are replaced)
+ * elody-ui analytics bundle DIR --out DIR [--client NAME] [--overlay FILE]
+ *   a folder of declarations (dashboards, and an SLA under them) as what
+ *   elody-superset applies: the ClickHouse SQL, the Superset import bundle,
+ *   the manifest (clickhouse/, superset/, manifest.json are replaced);
+ *   --overlay lets the dashboards draw the overlay's mart views
  * elody-ui analytics values --into FILE --bundle NAME=DIR ... [--source TEXT]
  *   the bundles (every file under DIR) as superset.bundles in a Helm values
  *   file (the client's common/elody.yaml); the rest of the file stays;
@@ -48,7 +49,9 @@ import { applyProfile, profile, profileMarkdown } from "./profile.js";
 import { mongoSource } from "./profileMongo.js";
 import { coverage, coverageMarkdown, parseObserved, trackingPlan, trackingPlanMarkdown, type TrackingPlan } from "./tracking.js";
 import { readUiDeclaration } from "../parse.js";
-import { generateSla, readSla, validateSla } from "./sla.js";
+import { buildBundle } from "./bundle.js";
+import { validateDashboards } from "./dashboard.js";
+import { validateSla } from "./sla.js";
 import { bundleValues } from "./values.js";
 
 /** Every file under dir, by its path relative to dir. */
@@ -67,7 +70,7 @@ const usage = `usage:
   elody-ui analytics profile   OVERLAY --mongo URI --out DIR [--db NAME] [--sample N] [--extra PATH ...] [--library PATH ...] [--users COLLECTION] [--update]
   elody-ui analytics tracking  DECLARATION --out DIR [--client NAME]
   elody-ui analytics coverage  PLAN --observed FILE --out DIR
-  elody-ui analytics sla       DECLARATION --out DIR [--client NAME]
+  elody-ui analytics bundle    DIR --out DIR [--client NAME] [--overlay FILE]
   elody-ui analytics values    --into FILE --bundle NAME=DIR ... [--source TEXT]`;
 
 const options = (argv: string[], name: string): string[] => argv.flatMap((argument, index) => (argument === name && argv[index + 1] ? [argv[index + 1]] : []));
@@ -216,17 +219,25 @@ export async function analytics(argv: string[]): Promise<number> {
     }
   }
 
-  if (command === "sla") {
-    const [file] = positional(rest);
+  if (command === "bundle") {
+    const [dir] = positional(rest);
     const [out] = options(rest, "--out");
-    if (!file || !out) throw new Error(usage);
-    const ttl = readFileSync(file, "utf-8");
-    const report = await validateSla(ttl);
-    for (const issue of report.issues) console.error(formatIssue(issue));
-    if (!report.conforms) return 1;
-    const client = options(rest, "--client")[0] ?? findClientConfig(file)?.name;
-    if (!client) throw new Error("no --client and no client.json above the declaration");
-    const files = generateSla(readSla(ttl), { client, source: basename(file) });
+    if (!dir || !out) throw new Error(usage);
+    let conforms = true;
+    for (const name of readdirSync(dir).filter((entry) => entry.endsWith(".ttl"))) {
+      const ttl = readFileSync(join(dir, name), "utf-8");
+      const reports = [await validateDashboards(ttl), ...(/ServiceLevelAgreement/.test(ttl) ? [await validateSla(ttl)] : [])];
+      for (const issue of reports.flatMap((report) => report.issues)) console.error(`${name}: ${formatIssue(issue)}`);
+      conforms &&= reports.every((report) => report.conforms);
+    }
+    if (!conforms) return 1;
+    const client = options(rest, "--client")[0] ?? findClientConfig(dir)?.name;
+    if (!client) throw new Error("no --client and no client.json above the bundle");
+    const [overlayFile] = options(rest, "--overlay");
+    const files = buildBundle(dir, {
+      client,
+      ...(overlayFile ? { overlay: { overlay: readOverlay(readFileSync(overlayFile, "utf-8")), bundles: bundlesFor(rest, overlayFile) } } : {}),
+    });
     for (const path of ["clickhouse", "superset", "manifest.json"]) rmSync(join(out, path), { recursive: true, force: true });
     for (const [path, content] of files) {
       mkdirSync(dirname(join(out, path)), { recursive: true });

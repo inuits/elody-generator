@@ -41,7 +41,7 @@ translation bundles), found above the path given.
 | `elody-ui analytics validate <overlay>` | The overlay against `ontology/analytics.shapes.ttl`, plus one dimension per source path. |
 | `elody-ui analytics profile <overlay> --mongo <uri> --out <dir> [--update]` | A sample per entity type from a **local** Mongo (any other host is refused): fill rate, lists, value types, distinct values, top values per path; creation dates per year and the entry-library candidates counted exactly. `--update` writes back: lists become `ea:multiValued`, paths filled in no type's 5% are commented out, types without documents dropped. |
 | `elody-ui analytics generate <overlay> --out <dir>` | The ClickHouse SQL, the dlt projection and the Superset bundle (below). Replaces the three generated folders. |
-| `elody-ui analytics sla <sla.ttl> --out <dir>` | The SLA's ClickHouse SQL, Superset dashboard bundle and manifest (see The SLA). |
+| `elody-ui analytics bundle <folder> --out <dir>` | A folder of dashboard declarations and the layers under them (an SLA, `--overlay`) as SQL, a Superset import bundle and a manifest (see Dashboards). |
 | `elody-ui analytics values --into <file> --bundle <name>=<dir> ...` | The bundles as `superset.bundles` in a Helm values file. |
 
 ## The role heuristic (inventory)
@@ -119,29 +119,48 @@ all use this one table; the pipeline executes the accessor each column carries.
 | `dlt/projection.json` | collections, type filter, Mongo projection, per column its logical path, storage accessor, ClickHouse and dlt type, lookup; the incremental cursor and its fallback; the daily view's name |
 | `superset/…` | an import bundle: one shared ClickHouse database and a dataset per view, columns labelled from the client's translations (equal labels told apart by the column), the time column, metric `count` = `SUM(entity_count)` "Aantal entiteiten", name-based uuids |
 
-## The SLA (`analytics sla`, `analytics values`)
+## Dashboards (`analytics bundle`, `analytics values`)
 
-A client's SLA is a declaration of its own, `analytics/sla.ttl` (an
-`ea:ServiceLevelAgreement`, shapes in `ontology/sla.shapes.ttl`): the title,
-language (`nl`/`en`), retention, and two goals with their service-credit
-tiers (`ea:creditTier [ ea:atLeast 0.995 ; ea:creditPercent 5 ]`, one tier
-without `ea:atLeast` is the floor). Availability is measured by a check of the
-environment's health endpoint; performance is the Apdex of one service's
-server spans in HyperDX (`ea:service`, `ea:spanName`, `ea:apdexThresholdMs` is
-T; tolerating is up to 4 T).
+Dashboards are declarations of their own: an `ea:Dashboard` (shapes in
+`ontology/dashboard.shapes.ttl`) lists its items in reading order, laid out in
+rows of 12 columns. An item is an `ea:BigNumber` (one `ea:measure` over an
+`ea:period`), an `ea:Table` (`ea:groupBy` × `ea:measures`, `ea:sortBy`), an
+`ea:TimeSeries` (`ea:measures` per `ea:timeGrain`, `ea:style` line, bar or
+stacked bar), an `ea:Ranking` (top `ea:limit` of an `ea:dimension`, as
+horizontal bars) or an `ea:Markdown` text. A chart draws a dataset by name
+(`ea:dataset`); a measure is one of the dataset's metrics by name, or
+`[ rdfs:label ; ea:sql ]` inline. Texts may hold `{placeholders}`.
 
-`elody-ui analytics sla <sla.ttl> --out <dir>` writes:
+The renderer knows no domain. The datasets, their metrics and the
+placeholders come from the layers under a dashboard:
 
-| File | Content |
-|---|---|
-| `clickhouse/001_sla.sql` | `sla.uptime`, `sla.requests` with the retention as TTL, the materialized view over `default.otel_traces` (its query updated with `MODIFY QUERY`), the backfill guarded by `sla.setup`; every statement can run again |
-| `superset/…` | a dashboard import bundle: the connection as the read-only user, the datasets `uptime` and `requests`, nine charts and the dashboard `sla`, name-based uuids |
-| `manifest.json` | for elody-superset: the tables to wait for, the read-only ClickHouse user and its databases, which connection gets its password |
+- **the SLA** (`ea:ServiceLevelAgreement`, shapes in `ontology/sla.shapes.ttl`):
+  title, language, retention, and two goals with their service-credit tiers
+  (`ea:creditTier [ ea:atLeast 0.995 ; ea:creditPercent 5 ]`, the one without
+  `ea:atLeast` is the floor). Availability is measured by a check of the
+  environment's health endpoint; performance is the Apdex of one service's
+  server spans in HyperDX (`ea:service`, `ea:spanName`, `ea:apdexThresholdMs`
+  is T, tolerating up to 4 T). It gives the SQL (`sla.uptime`, `sla.requests`
+  over `default.otel_traces`, backfilled once), the datasets `uptime`
+  (`availability`, `downtime_minutes`, `checks`, `availability_credit`) and
+  `requests` (`apdex`, `requests`, `satisfied`, `tolerating`, `frustrated`,
+  `satisfied_share`, `frustrated_share`, `apdex_credit`, `p95_ms`), and the
+  placeholders `{availability_goal}`, `{apdex_goal}`, `{apdex_t}`,
+  `{apdex_tolerating}`, `{service}`, `{span_name}`, `{source}`. Changing T or a
+  tier changes the metrics, not the dashboard.
+- **the overlay** (`--overlay`): its mart views, metric `count`.
+
+A bundle is a folder of these declarations,
+`clients/<client>/analytics/dashboards/<name>/*.ttl`.
+`elody-ui analytics bundle <folder> --out <dir>` writes `clickhouse/*.sql`, the
+Superset import bundle under `superset/` (name-based uuids) and
+`manifest.json` (the tables to wait for, the read-only ClickHouse user and its
+databases, the connections that get its password, the dashboards).
 
 Nothing client-specific is in the image that applies it (`elody-superset`):
 `elody-ui analytics values --into <values repo>/common/elody.yaml --bundle
-sla=<dir>` writes the bundles as `superset.bundles.<name>` between markers in
-the client's Helm values; the elody chart mounts each bundle for the
+<name>=<dir>` writes the bundles as `superset.bundles.<name>` between markers
+in the client's Helm values; the elody chart mounts each bundle for the
 elody-superset setup.
 
 ## The local chain (`elody-declarations/poc/analytics`)

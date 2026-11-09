@@ -1,0 +1,18 @@
+@prefix ea:   <https://elody.eu/ns/analytics#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix vlacc: <https://elody.eu/analytics/vlacc#> .
+
+# Catalogusinvoer: what is created, over the overlay's daily view (metric count).
+vlacc:Catalogusinvoer a ea:Dashboard ;
+  rdfs:label "Catalogusinvoer" ;
+  ea:slug "catalogusinvoer" ;
+  ea:items (
+    [ a ea:BigNumber ; rdfs:label "Aangemaakte entiteiten" ; ea:dataset "vlacc_entities_created_daily" ;
+      ea:measure "count" ; ea:format ",d" ; ea:width 4 ; ea:height 30 ]
+    [ a ea:TimeSeries ; rdfs:label "Aangemaakte entiteiten per maand" ; ea:dataset "vlacc_entities_created_daily" ;
+      ea:style ea:Bar ; ea:timeGrain "P1M" ; ea:measures ( "count" ) ; ea:format ",d" ; ea:width 8 ; ea:height 30 ]
+    [ a ea:Ranking ; rdfs:label "Per type" ; ea:dataset "vlacc_entities_created_daily" ;
+      ea:dimension "type" ; ea:measure "count" ; ea:limit 15 ; ea:width 6 ; ea:height 50 ]
+    [ a ea:Ranking ; rdfs:label "Per materiaaltype" ; ea:dataset "vlacc_entities_created_daily" ;
+      ea:dimension "material_type" ; ea:measure "count" ; ea:limit 15 ; ea:width 6 ; ea:height 50 ]
+  ) .

@@ -18,6 +18,7 @@ import { localName } from "../vocab.js";
 import { translate, type TranslationBundle } from "./inventory.js";
 import type { Overlay } from "./overlay.js";
 import { accessorOf, mongoRoot, type Accessor } from "./storage.js";
+import { databaseYaml, datasetYaml, type DatabaseDef, type DatasetColumn, type DatasetDef } from "./superset.js";
 
 const TIMESTAMP = "DateTime64(3, 'Europe/Brussels')";
 
@@ -248,98 +249,50 @@ export function toYaml(value: Yaml, indent = ""): string {
 
 const SUPERSET_DATABASE = "clickhouse_analytics";
 
-function supersetColumn(name: string, label: string, type: string, options: { dttm?: boolean; groupby?: boolean; description?: string } = {}): Yaml {
-  return {
-    column_name: name,
-    verbose_name: label,
-    is_dttm: options.dttm ?? false,
-    is_active: true,
-    type,
-    advanced_data_type: null,
-    groupby: options.groupby ?? true,
-    filterable: options.groupby ?? true,
-    expression: null,
-    description: options.description ?? null,
-    python_date_format: null,
-    extra: {},
-  };
-}
-
 // one connection for every client: each client's views are a schema (a ClickHouse database) of it
 const SHARED = "elody";
 
-function dataset(client: string, view: string, description: string, columns: Yaml[]): Yaml {
-  return {
-    table_name: viewName(client, view),
-    main_dttm_col: "day",
-    description,
-    default_endpoint: null,
-    offset: 0,
-    cache_timeout: null,
-    schema: MART,
-    sql: null,
-    params: null,
-    template_params: null,
-    filter_select_enabled: true,
-    fetch_values_predicate: null,
-    extra: null,
-    normalize_columns: false,
-    always_filter_main_dttm: false,
-    uuid: uuidFor(client, "dataset", view),
-    metrics: [
-      {
-        metric_name: "count",
-        verbose_name: "Aantal entiteiten",
-        metric_type: "sum",
-        expression: "SUM(entity_count)",
-        description: "Het aantal aangemaakte entiteiten.",
-        d3format: ",d",
-        currency: null,
-        extra: {},
-        warning_text: null,
-      },
-    ],
-    columns,
-    version: "1.0.0",
-    database_uuid: uuidFor(SHARED, "database", SUPERSET_DATABASE),
-  };
-}
-
-function superset(columns: Column[], client: string): Map<string, string> {
-  const files = new Map<string, string>();
+/** The overlay's mart views as Superset datasets: the daily view, and one per list dimension. */
+export function overlayDatasets(overlay: Overlay, bundles: TranslationBundle[], client = clientOf(overlay)): DatasetDef[] {
+  const columns = columnsOf(overlay, bundles);
   const byName = new Map(columns.map((column) => [column.name, column]));
   const time = byName.get("created_at")!;
-  const dimension = (column: Column) => supersetColumn(column.name, column.label, column.multiValued ? "String" : "LowCardinality(String)", { description: column.path });
-  const day = supersetColumn("day", time.label, "Date", { dttm: true, description: `the day of ${time.path}` });
-  const count = supersetColumn("entity_count", "Aantal (per rij)", "UInt64", { groupby: false });
-  files.set("superset/metadata.yaml", toYaml({ version: "1.0.0", type: "SqlaTable", timestamp: "1970-01-01T00:00:00+00:00" }));
-  files.set(
-    `superset/databases/${SUPERSET_DATABASE}.yaml`,
-    toYaml({
-      database_name: "Analytics (ClickHouse)",
-      sqlalchemy_uri: "clickhousedb://default:XXXXXXXXXX@clickhouse:8123/default",
-      cache_timeout: null,
-      expose_in_sqllab: true,
-      allow_run_async: false,
-      allow_ctas: false,
-      allow_cvas: false,
-      allow_dml: false,
-      allow_file_upload: false,
-      extra: { allows_virtual_table_explore: true },
-      uuid: uuidFor(SHARED, "database", SUPERSET_DATABASE),
-      version: "1.0.0",
-    }),
-  );
+  const database: DatabaseDef = {
+    key: SUPERSET_DATABASE,
+    name: "Analytics (ClickHouse)",
+    uri: "clickhousedb://default:XXXXXXXXXX@clickhouse:8123/default",
+    uuid: uuidFor(SHARED, "database", SUPERSET_DATABASE),
+  };
+  const dimension = (column: Column): DatasetColumn => ({ name: column.name, label: column.label, type: column.multiValued ? "String" : "LowCardinality(String)", description: column.path });
+  const day: DatasetColumn = { name: "day", label: time.label, type: "Date", time: true, description: `the day of ${time.path}` };
+  const count: DatasetColumn = { name: "entity_count", label: "Aantal (per rij)", type: "UInt64", groupable: false };
+  const dataset = (view: string, description: string, datasetColumns: DatasetColumn[]): DatasetDef => ({
+    name: viewName(client, view),
+    schema: MART,
+    time: "day",
+    description,
+    uuid: uuidFor(client, "dataset", view),
+    columns: datasetColumns,
+    metrics: [{ name: "count", label: "Aantal entiteiten", kind: "sum", sql: "SUM(entity_count)", description: "Het aantal aangemaakte entiteiten.", format: ",d" }],
+    database,
+  });
   const single = columns.filter((column) => column.kind === "type" || column.name === "created_by" || (column.kind === "dimension" && !column.multiValued));
-  files.set(
-    `superset/datasets/${SUPERSET_DATABASE}/${viewName(client, DAILY_VIEW)}.yaml`,
-    toYaml(dataset(client, DAILY_VIEW, "Aangemaakte entiteiten per dag, type en kenmerk.", [day, ...single.map(dimension), count])),
-  );
-  for (const column of columns.filter((entry) => entry.multiValued))
-    files.set(
-      `superset/datasets/${SUPERSET_DATABASE}/${viewName(client, byView(column))}.yaml`,
-      toYaml(dataset(client, byView(column), `Aangemaakte entiteiten per dag, type en ${column.label.toLowerCase()}; een entiteit telt eenmaal per waarde.`, [day, dimension(byName.get("type")!), dimension(column), count])),
-    );
+  return [
+    dataset(DAILY_VIEW, "Aangemaakte entiteiten per dag, type en kenmerk.", [day, ...single.map(dimension), count]),
+    ...columns
+      .filter((entry) => entry.multiValued)
+      .map((column) =>
+        dataset(byView(column), `Aangemaakte entiteiten per dag, type en ${column.label.toLowerCase()}; een entiteit telt eenmaal per waarde.`, [day, dimension(byName.get("type")!), dimension(column), count]),
+      ),
+  ];
+}
+
+function superset(overlay: Overlay, bundles: TranslationBundle[], client: string): Map<string, string> {
+  const datasets = overlayDatasets(overlay, bundles, client);
+  const files = new Map<string, string>();
+  files.set("superset/metadata.yaml", toYaml({ version: "1.0.0", type: "SqlaTable", timestamp: "1970-01-01T00:00:00+00:00" }));
+  files.set(`superset/databases/${SUPERSET_DATABASE}.yaml`, databaseYaml(datasets[0].database));
+  for (const dataset of datasets) files.set(`superset/datasets/${SUPERSET_DATABASE}/${dataset.name}.yaml`, datasetYaml(dataset));
   return files;
 }
 
@@ -352,6 +305,6 @@ export function generateAnalytics(overlay: Overlay, options: GenerateOptions): M
     ["clickhouse/001_raw.sql", rawSql(columns, table, options.source)],
     ["clickhouse/010_mart.sql", martSql(columns, table, client, options.source)],
     ["dlt/projection.json", JSON.stringify(projection(overlay, columns, { client, database: options.database ?? client, table, source: options.source }), null, 2) + "\n"],
-    ...superset(columns, client),
+    ...superset(overlay, options.bundles, client),
   ]);
 }
