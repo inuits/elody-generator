@@ -154,13 +154,15 @@ placeholders come from the layers under a dashboard:
   `ontology/sessions.shapes.ttl`): one row per browser tab, joined on the
   session id the PWA gives both HyperDX's spans and OpenPanel's events. What is
   the client's stands in the declaration: `ea:browserService` (its browser's
-  OpenTelemetry service), `ea:browserError` (the span names that are an error)
-  and `ea:counts`, a list of `[ ea:key ; rdfs:label ; ea:event … ]` or
+  OpenTelemetry service), `ea:browserError` (the span names that are an error),
+  `ea:groupLabel` (the title of a column `team` with the users' group, for a
+  client where that means something: a library, an organisation; no column
+  without it) and `ea:counts`, a list of `[ ea:key ; rdfs:label ; ea:event … ]` or
   `[ … ea:property "kind" ; ea:value "mutation" ]`: a column per count, from
   OpenPanel events by name or by a property's value. It gives the SQL (the view
   `usage.sessions` over `default.otel_traces` and `openpanel.events`, read as
   its definer so the read-only user does not read those) and the dataset
-  `sessions`: `session`, `started`, `ended`, `minutes`, `user`, `library`, the
+  `sessions`: `session`, `started`, `ended`, `minutes`, `user`, `team`, the
   counts, `browser_errors`, `backend_traces`, `backend_errors`, and the links
   `replay` (HyperDX) and `events` (OpenPanel). Where those two are differs per
   environment: the SQL holds `${HYPERDX_URL}`, `${HYPERDX_SESSION_SOURCE}`,

@@ -9,7 +9,7 @@ podiumnet:SessionsDashboard a ea:Dashboard ;
   ea:slug "sessies" ;
   ea:items (
     [ a ea:Rows ; rdfs:label "Sessies" ; ea:dataset "sessions" ;
-      ea:columns ( "started" "ended" "minutes" "user" "library" "pages" "searches" "filters" "forms" "bulk" "saves"
+      ea:columns ( "started" "ended" "minutes" "user" "pages" "searches" "filters" "forms" "bulk" "saves"
                    "browser_errors" "backend_traces" "backend_errors" "replay" "events" ) ;
       ea:sortBy "started" ; ea:ascending false ; ea:limit 1000 ; ea:search true ; ea:width 12 ; ea:height 120 ]
   ) .

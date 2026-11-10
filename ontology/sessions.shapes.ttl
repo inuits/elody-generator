@@ -12,6 +12,9 @@ ea:SessionOverviewShape a sh:NodeShape ;
     sh:path ea:language ; sh:maxCount 1 ; sh:in ( "nl" "en" ) ;
     sh:message "a session overview's ea:language is \"nl\" or \"en\"" ] ;
   sh:property [
+    sh:path ea:groupLabel ; sh:maxCount 1 ; sh:datatype xsd:string ; sh:minLength 1 ;
+    sh:message "a session overview's ea:groupLabel is the one title of the column with the users' group" ] ;
+  sh:property [
     sh:path ea:browserService ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[A-Za-z0-9_.-]+$" ;
     sh:message "a session overview names the browser's OpenTelemetry service (one ea:browserService)" ] ;
   sh:property [
@@ -36,8 +39,8 @@ ea:SessionOverviewShape a sh:NodeShape ;
     sh:message "a count says what it counts: OpenPanel events by name (ea:event), or by a property's value (ea:property with ea:value)" ] ;
   sh:property [
     sh:path ( ea:counts [ sh:zeroOrMorePath rdf:rest ] rdf:first ea:key ) ;
-    sh:not [ sh:in ( "session" "started" "ended" "minutes" "user" "library" "browser_errors" "backend_traces" "backend_errors" "replay" "events" ) ] ;
-    sh:message "a count's ea:key is not one of the overview's own columns (session, started, ended, minutes, user, library, browser_errors, backend_traces, backend_errors, replay, events)" ] ;
+    sh:not [ sh:in ( "session" "started" "ended" "minutes" "user" "team" "browser_errors" "backend_traces" "backend_errors" "replay" "events" ) ] ;
+    sh:message "a count's ea:key is not one of the overview's own columns (session, started, ended, minutes, user, team, browser_errors, backend_traces, backend_errors, replay, events)" ] ;
   sh:property [
     sh:path ( ea:counts [ sh:zeroOrMorePath rdf:rest ] rdf:first [ sh:alternativePath ( ea:event ea:property ea:value ) ] ) ;
     sh:pattern "^[A-Za-z0-9 _./:-]+$" ;

@@ -32,6 +32,9 @@ describe("session overview: the declaration", () => {
       browserService: "pwa",
       browserErrors: ["console.error", "unhandledrejection"],
     });
+    // podiumnet has no use for the users' group (their e-mail domain)
+    expect(overview.groupLabel).toBeUndefined();
+    expect(readSessions(ttl.replace('ea:language "nl" ;', 'ea:language "nl" ;\n  ea:groupLabel "Bibliotheek" ;')).groupLabel).toBe("Bibliotheek");
     expect(overview.counts.map((count) => count.key)).toEqual(["pages", "searches", "filters", "forms", "bulk", "saves"]);
     expect(overview.counts[0]).toEqual({ key: "pages", label: "Pagina's", events: ["screen_view"] });
     expect(overview.counts[5]).toEqual({ key: "saves", label: "Opslagen", events: [], property: "kind", value: "mutation" });
@@ -43,7 +46,7 @@ describe("session overview: the declaration", () => {
       .replace('ea:browserService "pwa" ;', "")
       .replace('ea:key "pages"', 'ea:key "Pages!"')
       .replace('; ea:event "search" ]', "]")
-      .replace('ea:key "saves"', 'ea:key "started"');
+      .replace('ea:key "saves"', 'ea:key "team"');
     const report = await validateSessions(broken);
     expect(report.conforms).toBe(false);
     const messages = report.issues.map((issue) => issue.message).join("\n");
@@ -91,14 +94,23 @@ describe("session overview: the layer under its dashboard", () => {
     expect(dataset).toMatchObject({ name: "sessions", schema: "usage", time: "started" });
     expect(dataset.database.uri).toBe("clickhousedb://superset:XXXXXXXXXX@clickhouse:8123/usage");
     expect(dataset.columns.map((column) => column.name)).toEqual([
-      "session", "started", "ended", "minutes", "user", "library", "pages", "searches", "filters", "forms", "bulk", "saves",
+      "session", "started", "ended", "minutes", "user", "pages", "searches", "filters", "forms", "bulk", "saves",
       "browser_errors", "backend_traces", "backend_errors", "replay", "events",
     ]);
+    expect(sql).not.toContain("AS team,");
     const label = (name: string) => dataset.columns.find((column) => column.name === name)!.label;
     expect(label("forms")).toBe("Formulieren");
     expect(label("started")).toBe("Begin");
     expect(label("replay")).toBe("Replay (HyperDX)");
     expect(sessionParts({ ...overview, language: "en" }, "podiumnet").datasets[0].columns.find((column) => column.name === "started")!.label).toBe("Start");
+  });
+
+  it("shows the users' group as a column only when the declaration names it", () => {
+    const grouped = sessionParts({ ...overview, groupLabel: "Bibliotheek" }, "podiumnet");
+    const columns = grouped.datasets[0].columns;
+    expect(columns.map((column) => column.name).slice(4, 7)).toEqual(["user", "team", "pages"]);
+    expect(columns.find((column) => column.name === "team")!.label).toBe("Bibliotheek");
+    expect(grouped.sql.get("001_sessions.sql")).toContain("if(u.event_team != '', u.event_team, b.span_team) AS team,");
   });
 
   it("refuses a name that does not fit in SQL", () => {
@@ -194,16 +206,16 @@ INSERT INTO openpanel.events VALUES
       // clickhouse-local has no users to define a view as
       .replace("DEFINER = CURRENT_USER SQL SECURITY DEFINER AS", "AS");
     const check =
-      "SELECT session, toString(started), minutes, user, library, pages, forms, saves, browser_errors, backend_traces, backend_errors, replay, events FROM usage.sessions ORDER BY started FORMAT TSVRaw;";
+      "SELECT session, toString(started), minutes, user, pages, forms, saves, browser_errors, backend_traces, backend_errors, replay, events FROM usage.sessions ORDER BY started FORMAT TSVRaw;";
     // the setup applies the file at every start: twice here
     const run = spawnSync("docker", ["run", "--rm", "-i", IMAGE, "clickhouse-local", "--multiquery"], { input: `${setup}\n${filled}\n${filled}\n${check}`, encoding: "utf-8" });
     expect(run.stderr).toBe("");
     const [first, second] = run.stdout.replace(/\n$/, "").split("\n").map((line) => line.split("\t"));
-    expect(first.slice(0, 11)).toEqual(["tab-1", "2026-11-10 10:00:00", "3.5", "u1", "inuits.eu", "2", "1", "1", "1", "1", "1"]);
-    expect(first[11]).toMatch(/^<a href="https:\/\/hyperdx\.example\.test\/sessions\?sessionSource=src1&sid=replay-1&sfrom=\d+&sto=\d+&from=\d+&to=\d+" target="_blank">replay<\/a>$/);
-    expect(first[12]).toBe('<a href="https://openpanel.example.test/elody/podiumnet-dev/sessions/op-1" target="_blank">events</a>');
+    expect(first.slice(0, 10)).toEqual(["tab-1", "2026-11-10 10:00:00", "3.5", "u1", "2", "1", "1", "1", "1", "1"]);
+    expect(first[10]).toMatch(/^<a href="https:\/\/hyperdx\.example\.test\/sessions\?sessionSource=src1&sid=replay-1&sfrom=\d+&sto=\d+&from=\d+&to=\d+" target="_blank">replay<\/a>$/);
+    expect(first[11]).toBe('<a href="https://openpanel.example.test/elody/podiumnet-dev/sessions/op-1" target="_blank">events</a>');
     // a tab HyperDX saw but OpenPanel did not: a row without counts or links
     expect(second.slice(0, 2)).toEqual(["tab-2", "2026-11-10 11:00:00"]);
-    expect(second.slice(11)).toEqual(["", ""]);
+    expect(second.slice(10)).toEqual(["", ""]);
   }, 120_000);
 });
