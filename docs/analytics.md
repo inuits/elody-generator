@@ -125,6 +125,8 @@ Dashboards are declarations of their own: an `ea:Dashboard` (shapes in
 `ontology/dashboard.shapes.ttl`) lists its items in reading order, laid out in
 rows of 12 columns. An item is an `ea:BigNumber` (one `ea:measure` over an
 `ea:period`), an `ea:Table` (`ea:groupBy` × `ea:measures`, `ea:sortBy`), an
+`ea:Rows` (the dataset's rows as they are: `ea:columns`, `ea:sortBy`; a column
+that holds a link is shown as one), an
 `ea:TimeSeries` (`ea:measures` per `ea:timeGrain`, `ea:style` line, bar or
 stacked bar), an `ea:Ranking` (top `ea:limit` of an `ea:dimension`, as
 horizontal bars) or an `ea:Markdown` text. A chart draws a dataset by name
@@ -148,6 +150,23 @@ placeholders come from the layers under a dashboard:
   placeholders `{availability_goal}`, `{apdex_goal}`, `{apdex_t}`,
   `{apdex_tolerating}`, `{service}`, `{span_name}`, `{source}`. Changing T or a
   tier changes the metrics, not the dashboard.
+- **the session overview** (`ea:SessionOverview`, shapes in
+  `ontology/sessions.shapes.ttl`): one row per browser tab, joined on the
+  session id the PWA gives both HyperDX's spans and OpenPanel's events. What is
+  the client's stands in the declaration: `ea:browserService` (its browser's
+  OpenTelemetry service), `ea:browserError` (the span names that are an error)
+  and `ea:counts`, a list of `[ ea:key ; rdfs:label ; ea:event … ]` or
+  `[ … ea:property "kind" ; ea:value "mutation" ]`: a column per count, from
+  OpenPanel events by name or by a property's value. It gives the SQL (the view
+  `usage.sessions` over `default.otel_traces` and `openpanel.events`, read as
+  its definer so the read-only user does not read those) and the dataset
+  `sessions`: `session`, `started`, `ended`, `minutes`, `user`, `library`, the
+  counts, `browser_errors`, `backend_traces`, `backend_errors`, and the links
+  `replay` (HyperDX) and `events` (OpenPanel). Where those two are differs per
+  environment: the SQL holds `${HYPERDX_URL}`, `${HYPERDX_SESSION_SOURCE}`,
+  `${OPENPANEL_URL}` and `${OPENPANEL_ORG}`, named as `settings` in the
+  manifest, which elody-superset fills in from the chart's
+  `superset.settings`.
 - **the overlay** (`--overlay`): its mart views, metric `count`.
 
 A bundle is a folder of these declarations,
@@ -155,7 +174,8 @@ A bundle is a folder of these declarations,
 `elody-ui analytics bundle <folder> --out <dir>` writes `clickhouse/*.sql`, the
 Superset import bundle under `superset/` (name-based uuids) and
 `manifest.json` (the tables to wait for, the read-only ClickHouse user and its
-databases, the connections that get its password, the dashboards).
+databases, the connections that get its password, the settings its SQL takes
+from the environment, the dashboards).
 
 Nothing client-specific is in the image that applies it (`elody-superset`):
 `elody-ui analytics values --into <values repo>/common/elody.yaml --bundle

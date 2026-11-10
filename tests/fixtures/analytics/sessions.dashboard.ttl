@@ -1,0 +1,15 @@
+@prefix ea:   <https://elody.eu/ns/analytics#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix podiumnet: <https://elody.eu/analytics/podiumnet#> .
+
+# The sessions dashboard: the rows of the session overview's dataset, newest
+# first, with its links to the replay (HyperDX) and the events (OpenPanel).
+podiumnet:SessionsDashboard a ea:Dashboard ;
+  rdfs:label "Sessies" ;
+  ea:slug "sessies" ;
+  ea:items (
+    [ a ea:Rows ; rdfs:label "Sessies" ; ea:dataset "sessions" ;
+      ea:columns ( "started" "ended" "minutes" "user" "library" "pages" "searches" "filters" "forms" "bulk" "saves"
+                   "browser_errors" "backend_traces" "backend_errors" "replay" "events" ) ;
+      ea:sortBy "started" ; ea:ascending false ; ea:limit 1000 ; ea:search true ; ea:width 12 ; ea:height 120 ]
+  ) .

@@ -1,0 +1,19 @@
+@prefix ea:   <https://elody.eu/ns/analytics#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix podiumnet: <https://elody.eu/analytics/podiumnet#> .
+
+# One row per browser tab: what OpenPanel saw it do, what HyperDX saw go wrong.
+# What counts as what is the client's: its events and its browser's service.
+podiumnet:Sessions a ea:SessionOverview ;
+  rdfs:label "Sessies" ;
+  ea:language "nl" ;
+  ea:browserService "pwa" ;
+  ea:browserError "console.error" , "unhandledrejection" ;
+  ea:counts (
+    [ ea:key "pages" ; rdfs:label "Pagina's" ; ea:event "screen_view" ]
+    [ ea:key "searches" ; rdfs:label "Zoekacties" ; ea:event "search" ]
+    [ ea:key "filters" ; rdfs:label "Filters" ; ea:event "filters_applied" ]
+    [ ea:key "forms" ; rdfs:label "Formulieren" ; ea:event "form_opened" ]
+    [ ea:key "bulk" ; rdfs:label "Bulkacties" ; ea:event "bulk_operation" ]
+    [ ea:key "saves" ; rdfs:label "Opslagen" ; ea:property "kind" ; ea:value "mutation" ]
+  ) .

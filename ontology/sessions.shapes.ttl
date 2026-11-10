@@ -1,0 +1,44 @@
+# What a session overview must say for `elody-ui analytics bundle` to read it.
+@prefix ea:   <https://elody.eu/ns/analytics#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+ea:SessionOverviewShape a sh:NodeShape ;
+  sh:targetClass ea:SessionOverview ;
+  sh:property [ sh:path rdfs:label ; sh:minCount 1 ; sh:message "a session overview has a title (rdfs:label)" ] ;
+  sh:property [
+    sh:path ea:language ; sh:maxCount 1 ; sh:in ( "nl" "en" ) ;
+    sh:message "a session overview's ea:language is \"nl\" or \"en\"" ] ;
+  sh:property [
+    sh:path ea:browserService ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[A-Za-z0-9_.-]+$" ;
+    sh:message "a session overview names the browser's OpenTelemetry service (one ea:browserService)" ] ;
+  sh:property [
+    sh:path ea:browserError ; sh:pattern "^[A-Za-z0-9 _./:-]+$" ;
+    sh:message "an ea:browserError is a span name (letters, digits, space and _./:-)" ] ;
+  sh:property [ sh:path ea:counts ; sh:minCount 1 ; sh:maxCount 1 ; sh:message "a session overview lists what it counts (one ea:counts)" ] ;
+  # the counts: the members of the list
+  sh:property [
+    sh:path ( ea:counts [ sh:zeroOrMorePath rdf:rest ] rdf:first ) ;
+    sh:node [ sh:property [ sh:path ea:key ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[a-z][a-z0-9_]*$" ] ] ;
+    sh:message "a count has one ea:key, its column: lowercase letters, digits and _" ] ;
+  sh:property [
+    sh:path ( ea:counts [ sh:zeroOrMorePath rdf:rest ] rdf:first ) ;
+    sh:node [ sh:property [ sh:path rdfs:label ; sh:minCount 1 ; sh:maxCount 1 ] ] ;
+    sh:message "a count has a column title (rdfs:label)" ] ;
+  sh:property [
+    sh:path ( ea:counts [ sh:zeroOrMorePath rdf:rest ] rdf:first ) ;
+    sh:node [ sh:or (
+      [ sh:property [ sh:path ea:event ; sh:minCount 1 ] ]
+      [ sh:property [ sh:path ea:property ; sh:minCount 1 ; sh:maxCount 1 ] ; sh:property [ sh:path ea:value ; sh:minCount 1 ; sh:maxCount 1 ] ]
+    ) ] ;
+    sh:message "a count says what it counts: OpenPanel events by name (ea:event), or by a property's value (ea:property with ea:value)" ] ;
+  sh:property [
+    sh:path ( ea:counts [ sh:zeroOrMorePath rdf:rest ] rdf:first ea:key ) ;
+    sh:not [ sh:in ( "session" "started" "ended" "minutes" "user" "library" "browser_errors" "backend_traces" "backend_errors" "replay" "events" ) ] ;
+    sh:message "a count's ea:key is not one of the overview's own columns (session, started, ended, minutes, user, library, browser_errors, backend_traces, backend_errors, replay, events)" ] ;
+  sh:property [
+    sh:path ( ea:counts [ sh:zeroOrMorePath rdf:rest ] rdf:first [ sh:alternativePath ( ea:event ea:property ea:value ) ] ) ;
+    sh:pattern "^[A-Za-z0-9 _./:-]+$" ;
+    sh:message "an event, property or value is a plain name (letters, digits, space and _./:-)" ] .

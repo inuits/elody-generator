@@ -7,6 +7,7 @@
  * An item is drawn as:
  * - ea:BigNumber   big_number_total: ea:measure over ea:period
  * - ea:Table       table (aggregate): ea:groupBy × ea:measures, sorted by ea:sortBy
+ * - ea:Rows        table (raw): the dataset's rows, their ea:columns as they are (a link stays a link)
  * - ea:TimeSeries  echarts_timeseries_line/_bar over the dataset's time column
  * - ea:Ranking     horizontal echarts_timeseries_bar: the top ea:limit of ea:dimension
  * - ea:Markdown    a text block
@@ -29,7 +30,7 @@ const DASHBOARD_SHAPES_PATH = join(dirname(ANALYTICS_VOCABULARY_PATH), "dashboar
 export type Inline = { label: string; sql: string };
 /** a dataset metric's or column's name, or an inline SQL expression */
 export type Ref = string | Inline;
-export type Kind = "BigNumber" | "Table" | "TimeSeries" | "Ranking" | "Markdown";
+export type Kind = "BigNumber" | "Table" | "Rows" | "TimeSeries" | "Ranking" | "Markdown";
 export type Period = "CurrentMonth" | "Last90Days" | "AllTime";
 
 export type Item = {
@@ -39,6 +40,8 @@ export type Item = {
   dataset?: string;
   measures: Ref[];
   groupBy: Ref[];
+  /** the columns of ea:Rows, by name */
+  columns: string[];
   period: Period;
   dimension?: string;
   subheader?: string;
@@ -62,7 +65,7 @@ export type RenderOptions = {
   variables?: Record<string, string>;
 };
 
-const KINDS: Kind[] = ["BigNumber", "Table", "TimeSeries", "Ranking", "Markdown"];
+const KINDS: Kind[] = ["BigNumber", "Table", "Rows", "TimeSeries", "Ranking", "Markdown"];
 
 export const slugOf = (text: string) =>
   text
@@ -89,7 +92,7 @@ function refs(reading: Reading, subject: string, predicate: string): Ref[] {
 
 function readItem(reading: Reading, node: string, index: number): Item {
   const kind = KINDS.find((candidate) => reading.types(node).includes(ea(candidate)));
-  if (!kind) throw new Error(`item ${index + 1} has no kind (a ea:BigNumber, ea:Table, ea:TimeSeries, ea:Ranking or ea:Markdown)`);
+  if (!kind) throw new Error(`item ${index + 1} has no kind (a ea:BigNumber, ea:Table, ea:Rows, ea:TimeSeries, ea:Ranking or ea:Markdown)`);
   const title = reading.value(node, rdfs("label"));
   const literal = (local: string) => reading.literal(node, ea(local));
   const number = (local: string) => (literal(local) === undefined ? undefined : Number(literal(local)));
@@ -102,6 +105,7 @@ function readItem(reading: Reading, node: string, index: number): Item {
     ...(reading.value(node, ea("dataset")) === undefined ? {} : { dataset: reading.value(node, ea("dataset")) }),
     measures: measure ? [refOf(reading, measure)] : refs(reading, node, ea("measures")),
     groupBy: refs(reading, node, ea("groupBy")),
+    columns: refs(reading, node, ea("columns")).filter((ref): ref is string => typeof ref === "string"),
     period: (local("period") as Period | undefined) ?? "AllTime",
     ...Object.fromEntries(
       (
@@ -218,6 +222,24 @@ function chartParams(item: Item, dataset: DatasetDef, fillText: (text: string) =
         server_pagination: false,
         include_search: item.search ?? false,
       };
+    case "Rows": {
+      for (const name of [...item.columns, ...(item.sortBy ? [item.sortBy] : [])]) {
+        if (!dataset.columns.some((column) => column.name === name)) throw new Error(`${name} is no column of dataset ${dataset.name} (in ${where})`);
+      }
+      return {
+        viz_type: "table",
+        query_mode: "raw",
+        all_columns: item.columns,
+        ...(item.sortBy ? { order_by_cols: [JSON.stringify([item.sortBy, item.ascending ?? true])] } : {}),
+        adhoc_filters: period,
+        row_limit: item.limit ?? 1000,
+        server_pagination: false,
+        include_search: item.search ?? false,
+        // a column may hold a link (<a href>)
+        allow_render_html: true,
+        table_timestamp_format: "%Y-%m-%d %H:%M",
+      };
+    }
     case "TimeSeries":
       return {
         viz_type: item.style === "Line" ? "echarts_timeseries_line" : "echarts_timeseries_bar",

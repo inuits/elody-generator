@@ -16,7 +16,7 @@ ea:DashboardShape a sh:NodeShape ;
   sh:property [ sh:path ea:items ; sh:minCount 1 ; sh:maxCount 1 ; sh:message "a dashboard lists its ea:items" ] .
 
 ea:ItemShape a sh:NodeShape ;
-  sh:targetClass ea:BigNumber , ea:Table , ea:TimeSeries , ea:Ranking , ea:Markdown ;
+  sh:targetClass ea:BigNumber , ea:Table , ea:Rows , ea:TimeSeries , ea:Ranking , ea:Markdown ;
   sh:property [
     sh:path ea:width ; sh:maxCount 1 ; sh:datatype xsd:integer ; sh:minInclusive 1 ; sh:maxInclusive 12 ;
     sh:message "an item's ea:width is 1 to 12 columns" ] ;
@@ -24,7 +24,7 @@ ea:ItemShape a sh:NodeShape ;
   sh:property [ sh:path ea:key ; sh:maxCount 1 ; sh:pattern "^[a-z0-9][a-z0-9-]*$" ] .
 
 ea:ChartShape a sh:NodeShape ;
-  sh:targetClass ea:BigNumber , ea:Table , ea:TimeSeries , ea:Ranking ;
+  sh:targetClass ea:BigNumber , ea:Table , ea:Rows , ea:TimeSeries , ea:Ranking ;
   sh:property [ sh:path rdfs:label ; sh:minCount 1 ; sh:maxCount 1 ; sh:message "a chart has a title (rdfs:label)" ] ;
   sh:property [
     sh:path ea:dataset ; sh:minCount 1 ; sh:maxCount 1 ; sh:datatype xsd:string ;
@@ -61,3 +61,7 @@ ea:MarkdownShape a sh:NodeShape ;
 ea:InlineShape a sh:NodeShape ;
   sh:targetSubjectsOf ea:sql ;
   sh:property [ sh:path rdfs:label ; sh:minCount 1 ; sh:maxCount 1 ; sh:message "an inline measure or group has a label (rdfs:label) and ea:sql" ] .
+
+ea:RowsShape a sh:NodeShape ;
+  sh:targetClass ea:Rows ;
+  sh:property [ sh:path ea:columns ; sh:minCount 1 ; sh:maxCount 1 ; sh:message "rows list the columns they show (ea:columns)" ] .

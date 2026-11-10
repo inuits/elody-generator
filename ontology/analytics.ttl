@@ -118,6 +118,7 @@ ea:Chart a rdfs:Class ;
   rdfs:comment "An item that draws a dataset: rdfs:label is its title, ea:dataset the dataset's name." .
 ea:BigNumber a rdfs:Class ; rdfs:subClassOf ea:Chart ; rdfs:comment "One number: ea:measure over ea:period." .
 ea:Table a rdfs:Class ; rdfs:subClassOf ea:Chart ; rdfs:comment "Rows per ea:groupBy with ea:measures, sorted by ea:sortBy." .
+ea:Rows a rdfs:Class ; rdfs:subClassOf ea:Chart ; rdfs:comment "The dataset's rows as they are: their ea:columns, sorted by ea:sortBy; a column that holds a link is shown as one." .
 ea:TimeSeries a rdfs:Class ; rdfs:subClassOf ea:Chart ; rdfs:comment "ea:measures over the dataset's time column per ea:timeGrain, as ea:style." .
 ea:Ranking a rdfs:Class ; rdfs:subClassOf ea:Chart ; rdfs:comment "The top ea:limit values of ea:dimension by ea:measure, as horizontal bars." .
 ea:Markdown a rdfs:Class ; rdfs:comment "A text (ea:text, Markdown) between the charts." .
@@ -129,6 +130,7 @@ ea:dataset a rdf:Property ; rdfs:comment "The name of the dataset a chart draws.
 ea:measure a rdf:Property ; rdfs:comment "The one measure of a big number or a ranking." .
 ea:measures a rdf:Property ; rdfs:comment "A list of measures: a dataset metric's name, or [ rdfs:label ; ea:sql ] inline." .
 ea:groupBy a rdf:Property ; rdfs:comment "A table's rows: a list of column names, or [ rdfs:label ; ea:sql ] expressions." .
+ea:columns a rdf:Property ; rdfs:comment "The columns ea:Rows shows: a list of the dataset's column names, in order." .
 ea:dimension a rdf:Property ; rdfs:comment "The column a ranking counts by." .
 ea:period a rdf:Property ; rdfs:comment "The time the chart covers: ea:CurrentMonth, ea:Last90Days or ea:AllTime (the default)." .
 ea:CurrentMonth a rdfs:Resource . ea:Last90Days a rdfs:Resource . ea:AllTime a rdfs:Resource .
@@ -145,3 +147,23 @@ ea:width a rdf:Property ; rdfs:comment "An item's width, out of the row's 12 col
 ea:height a rdf:Property ; rdfs:comment "An item's height, in Superset's grid units (8 px)." .
 ea:text a rdf:Property ; rdfs:comment "A Markdown item's text." .
 ea:sql a rdf:Property ; rdfs:comment "A ClickHouse SQL expression." .
+
+# --- the session overview: one row per browser tab, from HyperDX's spans and
+# OpenPanel's events, joined on the session id the PWA gives both
+
+ea:SessionOverview a rdfs:Class ;
+  rdfs:label "Session overview" ;
+  rdfs:comment "A layer under a dashboard: the dataset sessions, one row per browser tab with what it did (ea:counts), what went wrong, and a link to its replay in HyperDX and its events in OpenPanel." .
+
+ea:browserService a rdf:Property ;
+  rdfs:comment "The OpenTelemetry service name of the client's browser application, whose spans carry the tab's session id." .
+ea:browserError a rdf:Property ;
+  rdfs:comment "A span name of the browser's that counts as an error, e.g. \"console.error\"." .
+ea:counts a rdf:Property ;
+  rdfs:comment "What the overview counts per session, an RDF list in column order: each [ ea:key ; rdfs:label ; ea:event and/or ea:property with ea:value ]." .
+ea:event a rdf:Property ;
+  rdfs:comment "An OpenPanel event name a count counts; several are counted together." .
+ea:property a rdf:Property ;
+  rdfs:comment "An OpenPanel event property a count looks at; it counts the events where it is ea:value." .
+ea:value a rdf:Property ;
+  rdfs:comment "The value of ea:property a count counts." .

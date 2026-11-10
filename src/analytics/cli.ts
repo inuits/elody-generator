@@ -20,7 +20,8 @@
  *   the tracking plan: the platform's usage events and the values the
  *   declaration allows per property (tracking-plan.json, tracking-plan.md)
  * elody-ui analytics bundle DIR --out DIR [--client NAME] [--overlay FILE]
- *   a folder of declarations (dashboards, and an SLA under them) as what
+ *   a folder of declarations (dashboards, and an SLA or a session overview
+ *   under them) as what
  *   elody-superset applies: the ClickHouse SQL, the Superset import bundle,
  *   the manifest (clickhouse/, superset/, manifest.json are replaced);
  *   --overlay lets the dashboards draw the overlay's mart views
@@ -51,6 +52,7 @@ import { coverage, coverageMarkdown, parseObserved, trackingPlan, trackingPlanMa
 import { readUiDeclaration } from "../parse.js";
 import { buildBundle } from "./bundle.js";
 import { validateDashboards } from "./dashboard.js";
+import { validateSessions } from "./sessions.js";
 import { validateSla } from "./sla.js";
 import { bundleValues } from "./values.js";
 
@@ -226,7 +228,11 @@ export async function analytics(argv: string[]): Promise<number> {
     let conforms = true;
     for (const name of readdirSync(dir).filter((entry) => entry.endsWith(".ttl"))) {
       const ttl = readFileSync(join(dir, name), "utf-8");
-      const reports = [await validateDashboards(ttl), ...(/ServiceLevelAgreement/.test(ttl) ? [await validateSla(ttl)] : [])];
+      const reports = [
+        await validateDashboards(ttl),
+        ...(/ServiceLevelAgreement/.test(ttl) ? [await validateSla(ttl)] : []),
+        ...(/SessionOverview/.test(ttl) ? [await validateSessions(ttl)] : []),
+      ];
       for (const issue of reports.flatMap((report) => report.issues)) console.error(`${name}: ${formatIssue(issue)}`);
       conforms &&= reports.every((report) => report.conforms);
     }
