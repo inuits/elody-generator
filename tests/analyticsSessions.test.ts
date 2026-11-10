@@ -110,7 +110,7 @@ describe("session overview: the layer under its dashboard", () => {
     const columns = grouped.datasets[0].columns;
     expect(columns.map((column) => column.name).slice(4, 7)).toEqual(["user", "team", "pages"]);
     expect(columns.find((column) => column.name === "team")!.label).toBe("Bibliotheek");
-    expect(grouped.sql.get("001_sessions.sql")).toContain("if(u.event_team != '', u.event_team, b.span_team) AS team,");
+    expect(grouped.sql.get("001_sessions.sql")).toContain("if(b.span_team != '', b.span_team, u.event_team) AS team,");
   });
 
   it("refuses a name that does not fit in SQL", () => {
