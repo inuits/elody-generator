@@ -11,9 +11,7 @@ ea:SessionOverviewShape a sh:NodeShape ;
   sh:property [
     sh:path ea:language ; sh:maxCount 1 ; sh:in ( "nl" "en" ) ;
     sh:message "a session overview's ea:language is \"nl\" or \"en\"" ] ;
-  sh:property [
-    sh:path ea:groupLabel ; sh:maxCount 1 ; sh:datatype xsd:string ; sh:minLength 1 ;
-    sh:message "a session overview's ea:groupLabel is the one title of the column with the users' group" ] ;
+  sh:property [ sh:path ea:userGroup ; sh:maxCount 1 ; sh:message "a session overview has at most one ea:userGroup" ] ;
   sh:property [
     sh:path ea:browserService ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[A-Za-z0-9_.-]+$" ;
     sh:message "a session overview names the browser's OpenTelemetry service (one ea:browserService)" ] ;
@@ -39,9 +37,26 @@ ea:SessionOverviewShape a sh:NodeShape ;
     sh:message "a count says what it counts: OpenPanel events by name (ea:event), or by a property's value (ea:property with ea:value)" ] ;
   sh:property [
     sh:path ( ea:counts [ sh:zeroOrMorePath rdf:rest ] rdf:first ea:key ) ;
-    sh:not [ sh:in ( "session" "started" "ended" "minutes" "user" "team" "browser_errors" "backend_traces" "backend_errors" "replay" "events" ) ] ;
-    sh:message "a count's ea:key is not one of the overview's own columns (session, started, ended, minutes, user, team, browser_errors, backend_traces, backend_errors, replay, events)" ] ;
+    sh:not [ sh:in ( "session" "started" "ended" "minutes" "user" "user_groups" "browser_errors" "backend_traces" "backend_errors" "replay" "events" ) ] ;
+    sh:message "a count's ea:key is not one of the overview's own columns (session, started, ended, minutes, user, user_groups, browser_errors, backend_traces, backend_errors, replay, events)" ] ;
   sh:property [
     sh:path ( ea:counts [ sh:zeroOrMorePath rdf:rest ] rdf:first [ sh:alternativePath ( ea:event ea:property ea:value ) ] ) ;
     sh:pattern "^[A-Za-z0-9 _./:-]+$" ;
     sh:message "an event, property or value is a plain name (letters, digits, space and _./:-)" ] .
+
+# where the client's data model keeps the group a user belongs to
+ea:UserGroupShape a sh:NodeShape ;
+  sh:targetObjectsOf ea:userGroup ;
+  sh:property [ sh:path rdfs:label ; sh:minCount 1 ; sh:maxCount 1 ; sh:message "a user group has a column title (rdfs:label)" ] ;
+  sh:property [
+    sh:path ea:users ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[A-Za-z0-9_]+$" ;
+    sh:message "a user group names the collection of the users (one ea:users: letters, digits and _)" ] ;
+  sh:property [
+    sh:path ea:membership ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[A-Za-z0-9_]+$" ;
+    sh:message "a user group names the user's property with their groups (one ea:membership: letters, digits and _)" ] ;
+  sh:property [
+    sh:path ea:groups ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[A-Za-z0-9_]+$" ;
+    sh:message "a user group names the collection of the groups (one ea:groups: letters, digits and _)" ] ;
+  sh:property [
+    sh:path ea:groupName ; sh:minCount 1 ; sh:maxCount 1 ; sh:pattern "^[A-Za-z0-9_]+$" ;
+    sh:message "a user group names the group's property that is its name (one ea:groupName: letters, digits and _)" ] .

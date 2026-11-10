@@ -6,8 +6,11 @@
  *
  * - what is the client's stands in the declaration: its browser's service, the
  *   spans that are a browser error, what it counts (pages, searches, saves…)
- *   from which OpenPanel events, and whether the users' group is a column
- *   (ea:groupLabel: a library, an organisation; none without it)
+ *   from which OpenPanel events, and the group a user belongs to (ea:userGroup:
+ *   a library, an organisation). The core only says who the user is, by a
+ *   pseudonym of their id; the declaration says where the client's data model
+ *   keeps its users and their groups, and the overview links the two when it
+ *   is read, from the instance's own MongoDB (the connection elody_mongo)
  * - the ClickHouse SQL: the view usage.sessions over default.otel_traces and
  *   openpanel.events, which the read-only user reads as its definer, so not
  *   those tables themselves
@@ -34,12 +37,30 @@ const SESSIONS_SHAPES_PATH = join(dirname(ANALYTICS_VOCABULARY_PATH), "sessions.
 export type Language = "nl" | "en";
 /** what a column counts: OpenPanel events by name, by a property's value, or both */
 export type Count = { key: string; label: string; events: string[]; property?: string; value?: string };
+/**
+ * Where the client's data model keeps the group a user belongs to. Elody keeps
+ * an entity's values as properties.<key>[{ value }]: a user's membership holds
+ * the ids of their groups, a group's groupName its name.
+ */
+export type UserGroup = {
+  /** the column's title */
+  label: string;
+  /** the collection of the users */
+  users: string;
+  /** the user's property with the ids of their groups */
+  membership: string;
+  /** the collection of the groups */
+  groups: string;
+  /** the group's property that is its name */
+  groupName: string;
+};
+
 export type SessionOverview = {
   subject: string;
   title: string;
   language: Language;
-  /** the title of the column with the users' group (HyperDX's team, OpenPanel's group); no column without it */
-  groupLabel?: string;
+  /** the group a user belongs to, in the client's data model; no column without it */
+  userGroup?: UserGroup;
   browserService: string;
   browserErrors: string[];
   counts: Count[];
@@ -62,11 +83,22 @@ export function readSessions(ttl: string): SessionOverview {
       ...(value === undefined ? {} : { value }),
     };
   });
+  const group = reading.node(subject, ea("userGroup"));
   return {
     subject,
     title: reading.value(subject, rdfs("label")) ?? "Sessions",
     language: reading.value(subject, ea("language")) === "en" ? "en" : "nl",
-    ...(reading.value(subject, ea("groupLabel")) === undefined ? {} : { groupLabel: reading.value(subject, ea("groupLabel")) }),
+    ...(group === undefined
+      ? {}
+      : {
+          userGroup: {
+            label: reading.value(group, rdfs("label")) ?? "",
+            users: reading.value(group, ea("users")) ?? "",
+            membership: reading.value(group, ea("membership")) ?? "",
+            groups: reading.value(group, ea("groups")) ?? "",
+            groupName: reading.value(group, ea("groupName")) ?? "",
+          },
+        }),
     browserService: reading.value(subject, ea("browserService")) ?? "",
     browserErrors: reading.values(subject, ea("browserError")).sort(),
     counts,
@@ -127,17 +159,66 @@ export function countSql(count: Count): string {
   return `countIf(${conditions.join(" AND ")})`;
 }
 
+// The client's own collections, read where they are: the instance's MongoDB,
+// through the connection the chart gives ClickHouse (the named collection
+// elody_mongo). In a database of their own, which the read-only user does not get.
+const SOURCE_DATABASE = "elody_source";
+const CONNECTION = "elody_mongo";
+
+function sourceSql(group: UserGroup): string {
+  return `
+-- The group a user belongs to, from the client's data model: its users and its
+-- groups, read where they are (the instance's MongoDB), not copied.
+CREATE DATABASE IF NOT EXISTS ${SOURCE_DATABASE};
+
+CREATE OR REPLACE TABLE ${SOURCE_DATABASE}.users
+(
+    identifiers Array(String),
+    properties  String
+)
+ENGINE = MongoDB(${CONNECTION}, collection = ${quoted(group.users)});
+
+CREATE OR REPLACE TABLE ${SOURCE_DATABASE}.groups
+(
+    id         String,
+    properties String
+)
+ENGINE = MongoDB(${CONNECTION}, collection = ${quoted(group.groups)});
+`;
+}
+
+function groupCtes(group: UserGroup): string {
+  return `,
+    -- a user's pseudonym is the hash the PWA and graphql make of their id: of
+    -- every identifier of a user, one of which is that id
+    members AS (
+        SELECT
+            lower(substring(hex(SHA256(concat('elody:', identifier))), 1, 16)) AS pseudonym,
+            JSONExtractString(link, 'value') AS group_id
+        FROM ${SOURCE_DATABASE}.users
+        ARRAY JOIN identifiers AS identifier
+        ARRAY JOIN JSONExtractArrayRaw(properties, ${quoted(group.membership)}) AS link
+    ),
+    named AS (
+        SELECT id AS group_id, JSONExtractString(properties, ${quoted(group.groupName)}, 1, 'value') AS group_name
+        FROM ${SOURCE_DATABASE}.groups
+    ),
+    user_groups AS (
+        SELECT pseudonym, arrayStringConcat(arraySort(groupUniqArray(group_name)), ', ') AS names
+        FROM members
+        INNER JOIN named USING (group_id)
+        GROUP BY pseudonym
+    )`;
+}
+
 /** Where HyperDX and OpenPanel are, per environment: elody-superset fills them in. */
 const SETTINGS = ["HYPERDX_SESSION_SOURCE", "HYPERDX_URL", "OPENPANEL_ORG", "OPENPANEL_URL"];
 
 function clickhouseSql(overview: SessionOverview, source?: string): string {
   const errors = overview.browserErrors.length ? `countIf(${among("span", overview.browserErrors)})` : "0";
   const counted = overview.counts.map((count) => `            ${countSql(count)} AS ${count.key}`).join(",\n");
-  // the group by its name: HyperDX's team carries it, OpenPanel's events the group's id
-  const columns = [
-    ...(overview.groupLabel === undefined ? [] : ["    if(b.span_team != '', b.span_team, u.event_team) AS team,"]),
-    ...overview.counts.map((count) => `    u.${count.key} AS ${count.key},`),
-  ].join("\n");
+  const columns = overview.counts.map((count) => `    u.${count.key} AS ${count.key},`).join("\n");
+  const group = overview.userGroup;
   return `-- Generated by \`elody-ui analytics bundle\`${source ? ` from ${source}` : ""}; do not edit.
 -- One row per browser tab (the PWA's session id): what OpenPanel saw it do,
 -- what HyperDX saw go wrong, and a link to each. A view: nothing is copied, so
@@ -145,9 +226,9 @@ function clickhouseSql(overview: SessionOverview, source?: string): string {
 -- statement can run again: elody-superset applies this file at every start,
 -- with the settings of its environment filled in.
 CREATE DATABASE IF NOT EXISTS usage;
-
+${group ? sourceSql(group) : ""}
 -- Read as its definer: Superset's read-only user reads the view, not HyperDX's
--- spans or OpenPanel's events themselves.
+-- spans, OpenPanel's events or the client's users themselves.
 CREATE OR REPLACE VIEW usage.sessions
 DEFINER = CURRENT_USER SQL SECURITY DEFINER AS
 WITH
@@ -161,8 +242,7 @@ WITH
             SpanAttributes['session_id'] AS tab_session,
             ResourceAttributes['rum.sessionId'] AS replay_session,
             -- who: the browser names them as HyperDX does, the backend through the elody.* baggage
-            if(SpanAttributes['elody.user'] != '', SpanAttributes['elody.user'], SpanAttributes['userId']) AS pseudonym,
-            if(SpanAttributes['elody.library'] != '', SpanAttributes['elody.library'], SpanAttributes['teamId']) AS team
+            if(SpanAttributes['elody.user'] != '', SpanAttributes['elody.user'], SpanAttributes['userId']) AS pseudonym
         FROM default.otel_traces
     ),
     -- only the browser's spans carry the tab's session; the backend's join them by trace
@@ -173,7 +253,6 @@ WITH
             min(ts) AS first_span,
             max(ts) AS last_span,
             anyIf(pseudonym, pseudonym != '') AS span_user,
-            anyIf(team, team != '') AS span_team,
             ${errors} AS browser_errors,
             groupUniqArray(trace_id) AS traces
         FROM spans
@@ -199,13 +278,18 @@ WITH
             max(created_at) AS last_event,
             -- before login an event has the device as profile and no group
             anyIf(profile_id, notEmpty(groups)) AS event_user,
-            anyIf(groups[1], notEmpty(groups)) AS event_team,
 ${counted}
         FROM openpanel.events
         WHERE properties['session_id'] != ''
         GROUP BY used_session
-    )
-SELECT
+    )${group ? groupCtes(group) : ""}
+SELECT${group ? `
+    s.* EXCEPT (replay, events),
+    g.names AS user_groups,
+    s.replay AS replay,
+    s.events AS events
+FROM (
+SELECT` : ""}
     if(u.used_session != '', u.used_session, b.tab_session) AS session,
     multiIf(b.tab_session = '', toDateTime(u.first_event), u.used_session = '', toDateTime(b.first_span), least(toDateTime(u.first_event), toDateTime(b.first_span))) AS started,
     multiIf(b.tab_session = '', toDateTime(u.last_event), u.used_session = '', toDateTime(b.last_span), greatest(toDateTime(u.last_event), toDateTime(b.last_span))) AS ended,
@@ -228,7 +312,9 @@ ${columns}
         '" target="_blank">events</a>')) AS events
 FROM used AS u
 FULL OUTER JOIN browser AS b ON b.tab_session = u.used_session
-LEFT JOIN backend AS k ON k.backend_session = b.tab_session;
+LEFT JOIN backend AS k ON k.backend_session = b.tab_session${group ? `
+) AS s
+LEFT JOIN user_groups AS g ON g.pseudonym = s.user` : ""};
 `;
 }
 
@@ -248,6 +334,9 @@ export type SessionParts = {
 export function sessionParts(overview: SessionOverview, client: string, source?: string): SessionParts {
   if (!/^[A-Za-z0-9_.-]+$/.test(overview.browserService)) throw new Error(`the overview's browserService is not a service name: ${JSON.stringify(overview.browserService)}`);
   for (const name of overview.browserErrors) if (!NAME.test(name)) throw new Error(`the overview's browserError does not fit in SQL: ${JSON.stringify(name)}`);
+  for (const [part, value] of Object.entries(overview.userGroup ?? {})) {
+    if (part !== "label" && !/^[A-Za-z0-9_]+$/.test(value)) throw new Error(`the user group's ${part} is not a collection or property name: ${JSON.stringify(value)}`);
+  }
   for (const count of overview.counts) {
     if (!/^[a-z][a-z0-9_]*$/.test(count.key)) throw new Error(`a count's key is not a column name: ${JSON.stringify(count.key)}`);
     for (const name of count.events) if (!NAME.test(name)) throw new Error(`the event of count ${count.key} does not fit in SQL: ${JSON.stringify(name)}`);
@@ -268,7 +357,7 @@ export function sessionParts(overview: SessionOverview, client: string, source?:
     own("ended", "DateTime"),
     own("minutes", "Float64"),
     own("user", "String"),
-    ...(overview.groupLabel === undefined ? [] : [{ name: "team", label: overview.groupLabel, type: "String" }]),
+    ...(overview.userGroup === undefined ? [] : [{ name: "user_groups", label: overview.userGroup.label, type: "String" }]),
     ...overview.counts.map((count) => ({ name: count.key, label: count.label, type: "UInt64" })),
     own("browser_errors", "UInt64"),
     own("backend_traces", "UInt64"),

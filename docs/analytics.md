@@ -154,21 +154,29 @@ placeholders come from the layers under a dashboard:
   `ontology/sessions.shapes.ttl`): one row per browser tab, joined on the
   session id the PWA gives both HyperDX's spans and OpenPanel's events. What is
   the client's stands in the declaration: `ea:browserService` (its browser's
-  OpenTelemetry service), `ea:browserError` (the span names that are an error),
-  `ea:groupLabel` (the title of a column `team` with the users' group, for a
-  client where that means something: a library, an organisation; no column
-  without it) and `ea:counts`, a list of `[ ea:key ; rdfs:label ; ea:event … ]` or
+  OpenTelemetry service), `ea:browserError` (the span names that are an error)
+  and `ea:counts`, a list of `[ ea:key ; rdfs:label ; ea:event … ]` or
   `[ … ea:property "kind" ; ea:value "mutation" ]`: a column per count, from
-  OpenPanel events by name or by a property's value. It gives the SQL (the view
+  OpenPanel events by name or by a property's value. The group a user belongs
+  to (a library, an organisation) is the client's too, and not something the
+  PWA or graphql know: they only say who the user is, by a pseudonym of their
+  id. `ea:userGroup [ rdfs:label ; ea:users ; ea:membership ; ea:groups ;
+  ea:groupName ]` says where the client's data model keeps it: the collection
+  of the users, the user's property with the ids of their groups, the
+  collection of the groups and the property that is a group's name. The
+  overview links a session's user to their groups when it is read: it reads
+  those collections where they are (the instance's MongoDB, through the
+  connection `elody_mongo` the chart gives ClickHouse) and makes the same
+  pseudonym of every identifier of a user. It gives the SQL (the view
   `usage.sessions` over `default.otel_traces` and `openpanel.events`, read as
-  its definer so the read-only user does not read those) and the dataset
-  `sessions`: `session`, `started`, `ended`, `minutes`, `user`, `team`, the
-  counts, `browser_errors`, `backend_traces`, `backend_errors`, and the links
-  `replay` (HyperDX) and `events` (OpenPanel). Where those two are differs per
-  environment: the SQL holds `${HYPERDX_URL}`, `${HYPERDX_SESSION_SOURCE}`,
-  `${OPENPANEL_URL}` and `${OPENPANEL_ORG}`, named as `settings` in the
-  manifest, which elody-superset fills in from the chart's
-  `superset.settings`.
+  its definer so the read-only user reads neither those nor the users) and the
+  dataset `sessions`: `session`, `started`, `ended`, `minutes`, `user`,
+  `user_groups` (with `ea:userGroup`), the counts, `browser_errors`,
+  `backend_traces`, `backend_errors`, and the links `replay` (HyperDX) and
+  `events` (OpenPanel). Where those two are differs per environment: the SQL
+  holds `${HYPERDX_URL}`, `${HYPERDX_SESSION_SOURCE}`, `${OPENPANEL_URL}` and
+  `${OPENPANEL_ORG}`, named as `settings` in the manifest, which
+  elody-superset fills in from the chart's `superset.settings`.
 - **the overlay** (`--overlay`): its mart views, metric `count`.
 
 A bundle is a folder of these declarations,

@@ -155,8 +155,12 @@ ea:SessionOverview a rdfs:Class ;
   rdfs:label "Session overview" ;
   rdfs:comment "A layer under a dashboard: the dataset sessions, one row per browser tab with what it did (ea:counts), what went wrong, and a link to its replay in HyperDX and its events in OpenPanel." .
 
-ea:groupLabel a rdf:Property ;
-  rdfs:comment "The title of the column with the users' group (HyperDX's team, OpenPanel's group: a library, an organisation). Without it the overview has no such column." .
+ea:userGroup a rdf:Property ;
+  rdfs:comment "The group a user belongs to, from the client's data model: [ rdfs:label (the column's title) ; ea:users ; ea:membership ; ea:groups ; ea:groupName ]. The overview links a session's user (a pseudonym of their id) to it when it is read. Without it the overview has no such column." .
+ea:users a rdf:Property ; rdfs:comment "The collection of the client's users." .
+ea:membership a rdf:Property ; rdfs:comment "The user's property that holds the ids of the groups they belong to." .
+ea:groups a rdf:Property ; rdfs:comment "The collection of the groups." .
+ea:groupName a rdf:Property ; rdfs:comment "The group's property that is its name." .
 ea:browserService a rdf:Property ;
   rdfs:comment "The OpenTelemetry service name of the client's browser application, whose spans carry the tab's session id." .
 ea:browserError a rdf:Property ;

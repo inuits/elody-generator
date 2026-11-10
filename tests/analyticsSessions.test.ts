@@ -2,7 +2,10 @@
  * The session overview (ea:SessionOverview) is a layer under a dashboard, like
  * the SLA: one row per browser tab, joined on the session id the PWA gives
  * both HyperDX's spans and OpenPanel's events. What counts as a page, a search
- * or a save is the client's and stands in its declaration; where HyperDX and
+ * or a save is the client's and stands in its declaration, and so is the group
+ * a user belongs to: the core only says who the user is (a pseudonym of their
+ * id), the declaration says where the client's data model keeps its users and
+ * their groups, and the overview links the two when it is read. Where HyperDX and
  * OpenPanel are differs per environment, so the links carry ${SETTINGS} that
  * elody-superset fills in. The SQL also runs on ClickHouse when its image is
  * present.
@@ -20,6 +23,8 @@ const fixtures = join(__dirname, "fixtures", "analytics");
 const read = (name: string) => readFileSync(join(fixtures, name), "utf-8");
 const ttl = read("podiumnet.sessions.ttl");
 const overview = readSessions(ttl);
+// with the group a user belongs to, from the client's data model
+const grouped = ttl.replace('  ea:language "nl" ;\n', `  ea:language "nl" ;\n  ea:userGroup [\n    rdfs:label "Organisatie" ;\n    ea:users "users_actual" ; ea:membership "ref_organizations" ;\n    ea:groups "organizations_actual" ; ea:groupName "name" ] ;\n`);
 const parts = sessionParts(overview, "podiumnet", "sessions.ttl");
 const sql = parts.sql.get("001_sessions.sql")!;
 
@@ -32,9 +37,14 @@ describe("session overview: the declaration", () => {
       browserService: "pwa",
       browserErrors: ["console.error", "unhandledrejection"],
     });
-    // podiumnet has no use for the users' group (their e-mail domain)
-    expect(overview.groupLabel).toBeUndefined();
-    expect(readSessions(ttl.replace('ea:language "nl" ;', 'ea:language "nl" ;\n  ea:groupLabel "Bibliotheek" ;')).groupLabel).toBe("Bibliotheek");
+    expect(overview.userGroup).toBeUndefined();
+    expect(readSessions(grouped).userGroup).toEqual({
+      label: "Organisatie",
+      users: "users_actual",
+      membership: "ref_organizations",
+      groups: "organizations_actual",
+      groupName: "name",
+    });
     expect(overview.counts.map((count) => count.key)).toEqual(["pages", "searches", "filters", "forms", "bulk", "saves"]);
     expect(overview.counts[0]).toEqual({ key: "pages", label: "Pagina's", events: ["screen_view"] });
     expect(overview.counts[5]).toEqual({ key: "saves", label: "Opslagen", events: [], property: "kind", value: "mutation" });
@@ -46,7 +56,7 @@ describe("session overview: the declaration", () => {
       .replace('ea:browserService "pwa" ;', "")
       .replace('ea:key "pages"', 'ea:key "Pages!"')
       .replace('; ea:event "search" ]', "]")
-      .replace('ea:key "saves"', 'ea:key "team"');
+      .replace('ea:key "saves"', 'ea:key "user_groups"');
     const report = await validateSessions(broken);
     expect(report.conforms).toBe(false);
     const messages = report.issues.map((issue) => issue.message).join("\n");
@@ -55,6 +65,14 @@ describe("session overview: the declaration", () => {
     expect(messages).toMatch(/ea:event/);
     // a count may not take the name of one of the overview's own columns
     expect(messages).toMatch(/own columns/);
+  });
+
+  it("wants a user group whole: its title, the users, how they belong, the groups and their name", async () => {
+    expect((await validateSessions(grouped)).conforms).toBe(true);
+    const report = await validateSessions(grouped.replace('ea:groups "organizations_actual" ; ', "").replace('"users_actual"', '"users; DROP"'));
+    const messages = report.issues.map((issue) => issue.message).join("\n");
+    expect(messages).toMatch(/ea:groups/);
+    expect(messages).toMatch(/ea:users/);
   });
 });
 
@@ -97,7 +115,8 @@ describe("session overview: the layer under its dashboard", () => {
       "session", "started", "ended", "minutes", "user", "pages", "searches", "filters", "forms", "bulk", "saves",
       "browser_errors", "backend_traces", "backend_errors", "replay", "events",
     ]);
-    expect(sql).not.toContain("AS team,");
+    expect(sql).not.toContain("MongoDB");
+    expect(parts.manifest.readOnlyDatabases).toEqual(["usage"]);
     const label = (name: string) => dataset.columns.find((column) => column.name === name)!.label;
     expect(label("forms")).toBe("Formulieren");
     expect(label("started")).toBe("Begin");
@@ -105,12 +124,22 @@ describe("session overview: the layer under its dashboard", () => {
     expect(sessionParts({ ...overview, language: "en" }, "podiumnet").datasets[0].columns.find((column) => column.name === "started")!.label).toBe("Start");
   });
 
-  it("shows the users' group as a column only when the declaration names it", () => {
-    const grouped = sessionParts({ ...overview, groupLabel: "Bibliotheek" }, "podiumnet");
-    const columns = grouped.datasets[0].columns;
-    expect(columns.map((column) => column.name).slice(4, 7)).toEqual(["user", "team", "pages"]);
-    expect(columns.find((column) => column.name === "team")!.label).toBe("Bibliotheek");
-    expect(grouped.sql.get("001_sessions.sql")).toContain("if(b.span_team != '', b.span_team, u.event_team) AS team,");
+  it("links a user to their groups through the client's data model, when the declaration says where", () => {
+    const withGroup = sessionParts(readSessions(grouped), "podiumnet");
+    const groupSql = withGroup.sql.get("001_sessions.sql")!;
+    const columns = withGroup.datasets[0].columns;
+    expect(columns.map((column) => column.name).slice(4, 7)).toEqual(["user", "user_groups", "pages"]);
+    expect(columns.find((column) => column.name === "user_groups")!.label).toBe("Organisatie");
+    // the client's own collections, read where they are (the instance's MongoDB), not copied
+    expect(groupSql).toContain("CREATE OR REPLACE TABLE elody_source.users\n(\n    identifiers Array(String),\n    properties  String\n)\nENGINE = MongoDB(elody_mongo, collection = 'users_actual');");
+    expect(groupSql).toContain("ENGINE = MongoDB(elody_mongo, collection = 'organizations_actual');");
+    // the same pseudonym as the PWA and graphql give a user: of every identifier, one of which is their id
+    expect(groupSql).toContain("lower(substring(hex(SHA256(concat('elody:', identifier))), 1, 16)) AS pseudonym");
+    expect(groupSql).toContain("JSONExtractArrayRaw(properties, 'ref_organizations')");
+    expect(groupSql).toContain("JSONExtractString(properties, 'name', 1, 'value')");
+    // the read-only user reads the overview, never the users themselves
+    expect(withGroup.manifest.readOnlyDatabases).toEqual(["usage"]);
+    expect(groupSql).not.toMatch(/teamId|elody\.library/);
   });
 
   it("refuses a name that does not fit in SQL", () => {
@@ -187,18 +216,22 @@ CREATE DATABASE openpanel;
 CREATE TABLE openpanel.events (name LowCardinality(String), session_id String, project_id String, profile_id String, groups Array(String),
   properties Map(String, String), created_at DateTime64(3)) ENGINE = MergeTree ORDER BY created_at;
 INSERT INTO default.otel_traces VALUES
-  ('2026-11-10 10:00:00', 't1', 'pwa', 'HTTP POST', 'Unset', {'session_id': 'tab-1', 'userId': 'u1', 'teamId': 'inuits.eu'}, {'rum.sessionId': 'replay-1'}),
+  ('2026-11-10 10:00:00', 't1', 'pwa', 'HTTP POST', 'Unset', {'session_id': 'tab-1', 'userId': 'd53f7ed38c209fc1'}, {'rum.sessionId': 'replay-1'}),
   ('2026-11-10 10:00:05', 't2', 'pwa', 'console.error', 'Unset', {'session_id': 'tab-1'}, {'rum.sessionId': 'replay-1'}),
   ('2026-11-10 10:00:01', 't1', 'graphql', 'POST /api/graphql', 'Error', {}, {}),
   ('2026-11-10 10:00:02', 't1', 'collection', 'GET /entities', 'Unset', {}, {}),
   ('2026-11-10 11:00:00', 't9', 'pwa', 'click', 'Unset', {'session_id': 'tab-2'}, {});
 INSERT INTO openpanel.events VALUES
-  ('screen_view', 'op-1', 'podiumnet-dev', 'u1', ['inuits.eu'], {'session_id': 'tab-1'}, '2026-11-10 10:00:03'),
-  ('screen_view', 'op-1', 'podiumnet-dev', 'u1', ['inuits.eu'], {'session_id': 'tab-1'}, '2026-11-10 10:02:00'),
-  ('mutateEntityValues', 'op-1', 'podiumnet-dev', 'u1', ['inuits.eu'], {'session_id': 'tab-1', 'kind': 'mutation'}, '2026-11-10 10:03:00'),
-  ('form_opened', 'op-1', 'podiumnet-dev', 'u1', ['inuits.eu'], {'session_id': 'tab-1'}, '2026-11-10 10:03:30');
+  ('screen_view', 'op-1', 'podiumnet-dev', 'd53f7ed38c209fc1', ['inuits.eu'], {'session_id': 'tab-1'}, '2026-11-10 10:00:03'),
+  ('screen_view', 'op-1', 'podiumnet-dev', 'd53f7ed38c209fc1', ['inuits.eu'], {'session_id': 'tab-1'}, '2026-11-10 10:02:00'),
+  ('mutateEntityValues', 'op-1', 'podiumnet-dev', 'd53f7ed38c209fc1', ['inuits.eu'], {'session_id': 'tab-1', 'kind': 'mutation'}, '2026-11-10 10:03:00'),
+  ('form_opened', 'op-1', 'podiumnet-dev', 'd53f7ed38c209fc1', ['inuits.eu'], {'session_id': 'tab-1'}, '2026-11-10 10:03:30');
 `;
-    const filled = sql
+    const groupedSql = sessionParts(readSessions(grouped), "podiumnet").sql.get("001_sessions.sql")!;
+    const filled = groupedSql
+      // no MongoDB here: the same tables in memory, with what the collections hold
+      .replace(/ENGINE = MongoDB\(elody_mongo, collection = 'users_actual'\);/, "ENGINE = Memory;\nINSERT INTO elody_source.users VALUES (['an@arsenaal.be', 'kc-1'], '{\"ref_organizations\":[{\"value\":\"ORG-2\"},{\"value\":\"ORG-1\"}]}');")
+      .replace(/ENGINE = MongoDB\(elody_mongo, collection = 'organizations_actual'\);/, "ENGINE = Memory;\nINSERT INTO elody_source.groups VALUES ('ORG-1', '{\"name\":[{\"value\":\"Arsenaal\"}]}'), ('ORG-2', '{\"name\":[{\"value\":\"Compagnie X\"}]}');")
       .replaceAll("${HYPERDX_URL}", "https://hyperdx.example.test")
       .replaceAll("${HYPERDX_SESSION_SOURCE}", "src1")
       .replaceAll("${OPENPANEL_URL}", "https://openpanel.example.test")
@@ -206,16 +239,17 @@ INSERT INTO openpanel.events VALUES
       // clickhouse-local has no users to define a view as
       .replace("DEFINER = CURRENT_USER SQL SECURITY DEFINER AS", "AS");
     const check =
-      "SELECT session, toString(started), minutes, user, pages, forms, saves, browser_errors, backend_traces, backend_errors, replay, events FROM usage.sessions ORDER BY started FORMAT TSVRaw;";
+      "SELECT session, toString(started), minutes, user, user_groups, pages, forms, saves, browser_errors, backend_traces, backend_errors, replay, events FROM usage.sessions ORDER BY started FORMAT TSVRaw;";
     // the setup applies the file at every start: twice here
     const run = spawnSync("docker", ["run", "--rm", "-i", IMAGE, "clickhouse-local", "--multiquery"], { input: `${setup}\n${filled}\n${filled}\n${check}`, encoding: "utf-8" });
     expect(run.stderr).toBe("");
     const [first, second] = run.stdout.replace(/\n$/, "").split("\n").map((line) => line.split("\t"));
-    expect(first.slice(0, 10)).toEqual(["tab-1", "2026-11-10 10:00:00", "3.5", "u1", "2", "1", "1", "1", "1", "1"]);
-    expect(first[10]).toMatch(/^<a href="https:\/\/hyperdx\.example\.test\/sessions\?sessionSource=src1&sid=replay-1&sfrom=\d+&sto=\d+&from=\d+&to=\d+" target="_blank">replay<\/a>$/);
-    expect(first[11]).toBe('<a href="https://openpanel.example.test/elody/podiumnet-dev/sessions/op-1" target="_blank">events</a>');
+    // the user by the pseudonym of their id (kc-1), and with it their organisations from the data model
+    expect(first.slice(0, 11)).toEqual(["tab-1", "2026-11-10 10:00:00", "3.5", "d53f7ed38c209fc1", "Arsenaal, Compagnie X", "2", "1", "1", "1", "1", "1"]);
+    expect(first[11]).toMatch(/^<a href="https:\/\/hyperdx\.example\.test\/sessions\?sessionSource=src1&sid=replay-1&sfrom=\d+&sto=\d+&from=\d+&to=\d+" target="_blank">replay<\/a>$/);
+    expect(first[12]).toBe('<a href="https://openpanel.example.test/elody/podiumnet-dev/sessions/op-1" target="_blank">events</a>');
     // a tab HyperDX saw but OpenPanel did not: a row without counts or links
     expect(second.slice(0, 2)).toEqual(["tab-2", "2026-11-10 11:00:00"]);
-    expect(second.slice(10)).toEqual(["", ""]);
+    expect(second.slice(11)).toEqual(["", ""]);
   }, 120_000);
 });
